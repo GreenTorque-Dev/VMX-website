@@ -905,7 +905,7 @@ ul#navlist li a span {
 }
 .additionalicons {
 	padding:15px;
-	background:#4eccb9;
+	background:#6ea535;
 }
 .additionalicons i {
 	width:30px;
@@ -943,7 +943,8 @@ ul#navlist li a span {
 	line-height:80px;
 	text-align:center;
 	color:#fff;
-	background:#4eccb9;
+	background:#6ea535
+;
 	display:block;
 	-webkit-border-radius:50%;
 	-moz-border-radius:50%;
@@ -1513,7 +1514,8 @@ aside .search input[type="submit"] {
 .dark-version .testimonials img {
 	width:160px !important;
 	margin:auto;
-	border:1px solid #4eccb9;
+	border:1px solid #6ea535
+;
 	border-radius:50%;
 	padding:10px;
 }
@@ -2030,7 +2032,7 @@ aside .search input[type="submit"] {
 	margin:30px 0;
 }
 .price {
-	background:#4eccb9;
+	background:#6ea535;
 	color:#fff;
 	padding:14px;
 	font-size:15px;
@@ -2039,7 +2041,7 @@ aside .search input[type="submit"] {
 }
 .end-product a {
 	background:#fff;
-	color:#4eccb9;
+	color:#6ea535;
 	padding:14px;
 	font-size:15px;
 	font-weight:300;
@@ -2056,11 +2058,12 @@ aside .search input[type="submit"] {
 	color:#000 !important;
 }
 .end-product a:hover {
-	background:#4eccb9 !important;
+	background:#6ea535;
+ !important;
 	color:#fff !important;
 }
 .shop-aside h3 {
-	background:#4eccb9;
+	background:#6ea535;
 	color:#fff;
 	padding:15px;
 	margin:0;
@@ -2099,7 +2102,7 @@ aside .search input[type="submit"] {
 	text-decoration:underline;
 }
 .feat-right2 span {
-	color:#4eccb9;
+	color:#6ea535;
 	font-size:13px;
 	font-weight:300;
 	display:block;
@@ -2292,8 +2295,10 @@ div.caption.modern_small_text_dark.lfb.tp-caption.start,div.caption.big_white.lf
 }
 #contact-form input[type="text"]:focus+span i,.comment-form input[type="text"]:focus+span i {
 	color:#fff;
-	background:#4eccb9;
-	border:1px solid #4eccb9;
+	background:#6ea535
+;
+	border:1px solid #6ea535
+;
 }
 #contact-form textarea,.comment-form textarea {
 	height:92px;
@@ -2356,7 +2361,7 @@ div.caption.modern_small_text_dark.lfb.tp-caption.start,div.caption.big_white.lf
 	background:#4eccb9;
 }
 .pagenation li:hover {
-	background:#4eccb9;
+	background:#6ea535;
 }
 .pagenation li:first-child {
 	margin-left:0;
@@ -2782,7 +2787,7 @@ footer .submit-area {
 	text-indent:-9999px;
 	width:65px;
 	height:65px;
-	background:url(../images/backtop.png) no-repeat center;
+	/* background:url(../images/backtop.png) no-repeat center; */
 }
 .info-box {
 	position:relative;
