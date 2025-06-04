@@ -456,7 +456,7 @@ ul#navlist li a span {
 	margin-bottom:17px;
 }
 .feat-text p {
-	font-size:13px;
+	font-size:15px;
 	color:#fff;
 	margin-bottom:0;
 	font-weight:300;
@@ -1873,7 +1873,7 @@ aside .search input[type="submit"] {
 }
 .service-welcome p {
 	font-weight:300;
-	font-size:20px;
+	font-size:15px;
 	color:#8b8b8b;
 	margin-bottom:25px;
 	line-height:24px;
@@ -2893,3 +2893,32 @@ div.caroufredsel_wrapper {
 min-height: 363px;
 }
 
+.content-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px; /* spacing between text and image */
+}
+.text-content {
+  flex: 1; /* take up available space */
+}
+
+.column3 img {
+  max-width: 300px; /* adjust image size as needed */
+  height: auto;
+}
+.get-started-btn {
+  display: inline-block;
+  margin-top: 10px; /* decreased from 15px */
+  padding: 10px 20px;
+  background-color: #6ea535;
+  color: white;
+  text-decoration: none;
+  border-radius: 5px;
+  font-weight: bold;
+  transition: background-color 0.3s ease;
+}
+
+
+.get-started-btn:hover {
+  background-color: #6ea535;
+}
