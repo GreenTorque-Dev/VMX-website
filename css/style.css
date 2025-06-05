@@ -2925,3 +2925,36 @@ min-height: 363px;
 .font-15 {
   font-size: 15px;
 }
+.btn-read-more {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    color:#aeaeae;
+    background-color: #eef1eb;
+    border: none;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.btn-read-more:hover {
+	color: #fcfcfc;
+    background-color: #5d912d;
+    transform: translateY(-2px);
+}
+.benefits-list {
+	font-family:'Roboto';
+    list-style-type: disc;       /* round bullets */
+    padding-left: 20px;          /* indent bullets */
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #aeaeae;              /* inherit text color */
+    line-height: 1.6;            /* better readability */
+  }
+
+  .benefits-list li {
+    margin-bottom: 10px;         /* space between items */
+    font-size: 15px;             /* match body text size */
+  }
