@@ -19,8 +19,68 @@
   <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
   <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
   <link rel="icon" href="images/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
 	
 </head>
+<style>
+/* Tabs Navigation */
+.tab-links {
+  display: flex;
+  border-bottom: 2px solid #ccc;
+  padding: 5px;
+  margin-bottom: 20px;
+}
+
+.tab-links li {
+  list-style: none;
+  margin-right: 15px;
+}
+
+.tab-links a {
+  display: block;
+  padding: 10px 20px;
+  font-weight: bold;
+  color: #333;
+  border-radius: 5px 5px 0 0;
+  background-color: #f5f5f5;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.tab-links .active a {
+  background-color: #6d747d;
+  color: #fff;
+  border-bottom: 2px solid #939ba3;
+}
+
+/* Tab Content */
+.tabs-widget ul {
+  list-style: none;
+  padding: 0;
+}
+
+.tabs-widget li {
+  background: #fff;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  animation: fadeIn 0.4s ease-in-out;
+  margin-bottom: 10px;
+}
+
+.tabs-widget p {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #444;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {opacity: 0; transform: translateY(10px);}
+  to {opacity: 1; transform: translateY(0);}
+}
+</style>
 <body>
 
 <div id="container">
@@ -37,9 +97,9 @@
             <li>
               <i class="fa fa-caret-square-o-right"></i><a href="#">login</a>
             </li>
-            <li>
+            <!-- <li>
               <i class="fa fa-caret-square-o-right"></i><a href="contact.html">contact us</a>
-            </li>
+            </li> -->
           </ul>
           <div class="socials">
             <a href="#"><i class="fa fa-google-plus"></i> </a>
@@ -57,7 +117,8 @@
          <div class="logo">
              <a href="index.html"><img src="images/vmx.png"></a>
          </div>
-<!-- Navigation -->
+
+        <!-- Navigation -->
         <div id="nav">
           <ul id="navlist" class="sf-menu clearfix">
             <li><a href="index.html"><div class="main-a"> Home </div> <div class="nav-border"></div> <div class="span">start here</div></a>
@@ -82,98 +143,133 @@
           </ul>
         </div>
         <!-- Navigation -->
-		<div class="clear">
-		</div>
-	</div>
-	</header>
+        <div class="clear"></div>
+      </div>
+  </header>
   <!--end header-->
-  <div class="head-banner clearfix">
-    <div class="wrapper">
-      <h4>About Us</h4>
-      <div class="site_map">
-        <a href="index.html">Home</a> About Us
+    <div class="head-banner clearfix">
+      <div class="wrapper">
+        <h4>Products</h4>
+        <div class="site_map">
+          <a href="index.html">Home</a> Products
+        </div>
+        <div class="clear"></div>
       </div>
-      <div class="clear"></div>
-    </div>
-  </div>
-
-  <div class="aboutus wrapper mb30">
-    <div class="dark">
-
-      <div class="column12 biograph">
-        <div class="about-title"><h2>About VMX</h2><br></div>  
-        
-
-        <p class="font-15">
-
-At VMX, we create powerful, efficient open-source software designed to simplify server management. Our products and services help you build secure, cost-effective, and scalable IT infrastructures based on open-source technologies.
-Development & Services
-
-With VMX technology, you get comprehensive yet user-friendly software solutions tailored to your needs. We understand that business continuity is critical, which is why we also offer technical assistance and enterprise-grade services to keep your operations running smoothly.
-
-</p>
-
-        <p class="font-15">Every day, we work closely with our users to understand challenges, improve our products, and deliver better experiences. Backed by a global partner network and an active open-source community, VMX ensures efficient workflows for organizations of all sizes and sectors—including businesses, nonprofits, and educational institutions.
- </p>
- <h2>Our Story</h2><br>
-
-
-        <p>VMX Founded in 2025 by Muhammed Asif and Jaimin Patel, VMX Server Solutions GmbH set out to develop intuitive GNU/Linux software for secure and scalable IT environments.</p>
-      </div>
-
-      <div class="clear"></div>
-
     </div>
 
+      <div class="wrapper"> 
+  <div class="service-welcome">
+
+    <h3 class="main-title">VMX Virtual Environment</h3>
+
+    <div class="content-with-image">
+      <p>
+        Virtual Environment is a comprehensive, open-source server management platform designed for enterprise virtualization. 
+        It seamlessly combines the KVM hypervisor and Linux Containers (LXC) with software-defined storage and networking, 
+        all within a unified platform. Its integrated web-based interface allows for easy management of virtual machines and 
+        containers, cluster high availability, and built-in disaster recovery tools.
+      </p>
+      <img src="images/img2.png" alt="Virtual Environment" class="content-img">
+    </div>
+
+    <h4 class="main-title">Compute, network, and storage in one integrated solution</h4>
+
+    <div class="content-with-image">
+      <p>
+        VMX offers enterprise-grade capabilities with a fully software-based approach, making it an ideal choice for 
+        virtualizing your IT infrastructure. It helps you optimize existing resources, boost efficiency, and reduce costs. 
+        With VMX, you can effortlessly virtualize even the most demanding Linux and Windows workloads, while dynamically 
+        scaling compute and storage to meet growing demands—ensuring your data center is ready for future expansion.
+      </p>
+      <img src="images/img5.jpg" alt="Compute Network Storage" class="content-img">
+    </div>
+
+    <a href="#get-started" class="get-started-btn">Get Started</a>
   </div>
-  <!-- End Aboutus -->
+</div>
+
+      
+      <!-- End Service Welcome -->
 
     
 
+        <!-- Tabs
+        <div class="tabs service-tabs clearfix mb30">  
+          <div class="tabs-widget clearfix">
+              <ul class="tab-links clearfix">
+                <li class="active"><a href="#support">Features</a></li>
+                <li class=""><a href="#visual">Enterprise Support</a></li>
+                <li class=""><a href="#econom">System Requirements</a></li>
+                
+              </ul>
 
-    <div class="fun-facts mb30">
-      <h3 class="main-title">Fun Facts</h3>
-      <span class="main-subtitle">company stats and achievements</span>
-      
-      <div class="our-services">
-        <div class="wrapper">
-          <div class="dark">
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-flask"></i>
-                <h3>956779</h3>
-                <span>Lines of code written</span>
+              <div id="support" style="display: block;">
+                <ul>
+                  <li>
+                    <p>By integrating two virtualization technologies into one platform, VMX offers maximum flexibility for your production environment. Utilize KVM for full virtualization of Windows and Linux systems, and run lightweight containers to deploy isolated, conflict-free Linux applications.</p>
+                
+                  </li>
+                </ul>
               </div>
-            </div>
 
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-coffee"></i>
-                <h3>1479</h3>
-                <span>Coffe Drinked</span>
-              </div>
-            </div>
+              <div id="visual" style="display: none;">
+                <ul>
+                  <li>
+                    
+                   <p>VMX is an ideal solution for enterprise environments, offering a production-ready feature set that's easy to manage. It enhances efficiency and reduces complexity in your data center operations. With robust commercial support and training services, you can ensure smooth and continuous business operations.</p>
 
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-users"></i>
-                <h3>578</h3>
-                <span>Happy Clients</span>
+                
+                  </li>
+                </ul>
               </div>
-            </div>
 
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-suitcase"></i>
-                <h3>2178</h3>
-                <span>Projects Done</span>
+              <div id="econom" style="display: none;">
+                <ul>
+                  <li>
+                    
+                    <p>For production environments, high-quality server hardware is essential. VMX supports clustering, enabling centralized management of multiple installations through its integrated cluster functionality. It is compatible with various storage types, including local storage (DAS), SAN, NAS, as well as shared and distributed storage solutions like Ceph.</p>
+              
+                  </li>
+                </ul>
               </div>
-            </div>
-            <div class="clear"></div>
+
           </div>
-        </div>
-      </div>
+        </div> -->
+        <!-- End Tabs -->
+         <!-- Tabs -->
+<div class="tabs service-tabs clearfix mb30">  
+  <div class="tabs-widget clearfix">
+    <ul class="tab-links clearfix">
+      <li class="active"><a href="#support"><i class="fas fa-cogs"></i> Features</a></li>
+      <li><a href="#visual"><i class="fas fa-building"></i> Enterprise Support</a></li>
+      <li><a href="#econom"><i class="fas fa-server"></i> System Requirements</a></li>
+    </ul>
 
+    <div id="support" style="display: block;">
+      <ul>
+        <li>
+          <p>By integrating two virtualization technologies into one platform, <strong>VMX</strong> offers maximum flexibility for your production environment. Utilize <strong>KVM</strong> for full virtualization of Windows and Linux systems, and run lightweight containers to deploy isolated, conflict-free Linux applications.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div id="visual" style="display: none;">
+      <ul>
+        <li>
+          <p><strong>VMX</strong> is an ideal solution for enterprise environments, offering a production-ready feature set that's easy to manage. It enhances efficiency and reduces complexity in your data center operations. With robust commercial support and training services, you can ensure smooth and continuous business operations.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div id="econom" style="display: none;">
+      <ul>
+        <li>
+          <p>For production environments, high-quality server hardware is essential. <strong>VMX</strong> supports clustering, enabling centralized management of multiple installations through its integrated cluster functionality. It is compatible with various storage types, including <strong>DAS</strong>, <strong>SAN</strong>, <strong>NAS</strong>, and distributed storage like <strong>Ceph</strong>.</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
     </div>
 
     <div class="info-box">
@@ -186,8 +282,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
         </ul>
       </div>
     </div>
-
-  <footer>
+      <footer>
 
     <div class="inner-footer">
       <div class="wrapper clearfix">
@@ -220,6 +315,8 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
 
         </div>
         <!-- End Dark -->
+
+  
       </div>
     </div>
     <!-- End Inner Footer -->
@@ -227,7 +324,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
     <div class="last-div clearfix">
       <div class="wrapper">
         <div class="copyright">
-          © 2014 Arkitekt,  All Rights Reserved
+          © 2025 VMX,  All Rights Reserved
         </div>
 
         <div id="back-to-top">
@@ -247,7 +344,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
     <!-- End Last Div -->
 
   </footer>
-  <!--end footer-->
+  <!--end footer -->
 
 </div>
 <!-- End Id Container -->
@@ -265,8 +362,8 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
   <script type="text/javascript" src="js/jquery.superfish.js"></script>
   <script type="text/javascript" src="js/jquery.flexslider.js"></script>
   <script src="js/jquery.bxslider.js"></script>
-  <script src="js/twitter.js"></script>
    <script type="text/javascript" src="js/script.js"></script>
+  <script src="js/twitter.js"></script>
 
     <!-- include jQuery + carouFredSel plugin -->
     <script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
@@ -274,6 +371,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
     <!-- optionally include helper plugins -->
     <script type="text/javascript" language="javascript" src="js/jquery.mousewheel.min.js"></script>
     <script type="text/javascript" language="javascript" src="js/jquery.touchSwipe.min.js"></script>
+
 
 
 

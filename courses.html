@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en" class="no-js">
 <head>
-	<title>Arkitekt</title>
+	<title>VMX</title>
 
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
@@ -21,6 +21,101 @@
   <link rel="icon" href="images/favicon.ico" type="image/x-icon">
 	
 </head>
+<style>
+/* Uniform heading styles */
+.main-title {
+  font-size: 26px;
+  color: #333;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+/* Section layout consistency */
+.course-section,
+.course-outcomes {
+  background: #f8f9f9;
+  padding: 40px 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.course-content {
+  max-width: 1150px;
+  margin: 0 auto;
+}
+
+/* Shared layout: text + image */
+.content-with-image {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 25px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.content-with-image p,
+.content-with-image ul {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.7;
+  margin: 0;
+  color: #444;
+}
+
+.content-img {
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+  object-fit: cover;
+}
+
+/* Benefits list */
+.benefits-list {
+  list-style-type: disc;
+  padding-left: 20px;
+  margin: 0;
+}
+
+.benefits-list li {
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+/* CTA Button */
+.get-started-btn {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 12px 24px;
+  background-color: #6ea535;
+  color: #fff;
+  border-radius: 6px;
+  font-weight: bold;
+  text-decoration: none;
+  transition: background 0.3s ease;
+}
+
+.get-started-btn:hover {
+  background-color: #5d912d;
+}
+
+/* Responsive layout */
+@media (max-width: 768px) {
+  .content-with-image {
+    flex-direction: column;
+  }
+
+  .content-img {
+    width: 100%;
+    margin-top: 20px;
+  }
+}
+
+
+
+</style>
 <body>
 
 <div id="container">
@@ -37,9 +132,9 @@
             <li>
               <i class="fa fa-caret-square-o-right"></i><a href="#">login</a>
             </li>
-            <li>
+            <!-- <li>
               <i class="fa fa-caret-square-o-right"></i><a href="contact.html">contact us</a>
-            </li>
+            </li> -->
           </ul>
           <div class="socials">
             <a href="#"><i class="fa fa-google-plus"></i> </a>
@@ -57,7 +152,8 @@
          <div class="logo">
              <a href="index.html"><img src="images/vmx.png"></a>
          </div>
-<!-- Navigation -->
+
+		<!-- Navigation -->
         <div id="nav">
           <ul id="navlist" class="sf-menu clearfix">
             <li><a href="index.html"><div class="main-a"> Home </div> <div class="nav-border"></div> <div class="span">start here</div></a>
@@ -89,92 +185,76 @@
   <!--end header-->
   <div class="head-banner clearfix">
     <div class="wrapper">
-      <h4>About Us</h4>
+      <h4>Courses</h4>
       <div class="site_map">
-        <a href="index.html">Home</a> About Us
+        <a href="index.html">Home</a> Courses
       </div>
       <div class="clear"></div>
     </div>
   </div>
-
-  <div class="aboutus wrapper mb30">
-    <div class="dark">
-
-      <div class="column12 biograph">
-        <div class="about-title"><h2>About VMX</h2><br></div>  
-        
-
-        <p class="font-15">
-
-At VMX, we create powerful, efficient open-source software designed to simplify server management. Our products and services help you build secure, cost-effective, and scalable IT infrastructures based on open-source technologies.
-Development & Services
-
-With VMX technology, you get comprehensive yet user-friendly software solutions tailored to your needs. We understand that business continuity is critical, which is why we also offer technical assistance and enterprise-grade services to keep your operations running smoothly.
-
-</p>
-
-        <p class="font-15">Every day, we work closely with our users to understand challenges, improve our products, and deliver better experiences. Backed by a global partner network and an active open-source community, VMX ensures efficient workflows for organizations of all sizes and sectors—including businesses, nonprofits, and educational institutions.
- </p>
- <h2>Our Story</h2><br>
-
-
-        <p>VMX Founded in 2025 by Muhammed Asif and Jaimin Patel, VMX Server Solutions GmbH set out to develop intuitive GNU/Linux software for secure and scalable IT environments.</p>
-      </div>
-
-      <div class="clear"></div>
-
-    </div>
-
-  </div>
-  <!-- End Aboutus -->
-
-    
-
-
-    <div class="fun-facts mb30">
-      <h3 class="main-title">Fun Facts</h3>
-      <span class="main-subtitle">company stats and achievements</span>
+  <!--courses-->
+  <!-- Training Course Section -->
+<div class="aboutus wrapper mb30 course-section">
+  <div class="dark">
+    <div class="column12 biograph course-content">
       
-      <div class="our-services">
-        <div class="wrapper">
-          <div class="dark">
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-flask"></i>
-                <h3>956779</h3>
-                <span>Lines of code written</span>
-              </div>
-            </div>
+      <h2 class="main-title">VMX Training Courses</h2>
 
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-coffee"></i>
-                <h3>1479</h3>
-                <span>Coffe Drinked</span>
-              </div>
-            </div>
+      <div class="content-with-image">
+        <p class="font-15">
+          Our instructor-led training—available virtually or in the classroom—empowers you to master the VMX server virtualization platform with confidence. Designed for IT professionals and teams, this structured program boosts productivity, lowers operational costs, advances your career, and establishes you as a recognized expert among employers and clients.
 
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-users"></i>
-                <h3>578</h3>
-                <span>Happy Clients</span>
-              </div>
-            </div>
-
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-suitcase"></i>
-                <h3>2178</h3>
-                <span>Projects Done</span>
-              </div>
-            </div>
-            <div class="clear"></div>
-          </div>
-        </div>
+          <br><br>
+          Certified instructors from VMX Server Solutions or Authorized VMX Training Partners guide you through Proxmox VE concepts and features, from single-node setups to complex clusters, all within a few days.
+        </p>
+        <img src="images/vmx/7.jpg" alt="VMX Training" class="content-img">
       </div>
 
+      <h4 class="main-title">Benefits of Proxmox VE Training:</h4>
+
+      <div class="content-with-image">
+        <ul class="benefits-list font-15">
+          <li>Master all key concepts and features of VMX VE</li>
+          <li>Gain deep virtualization expertise from certified instructors</li>
+          <li>Experience hands-on labs with real-world scenarios</li>
+          <li>Improve your troubleshooting and problem-solving skills</li>
+          <li>Earn recognition from supervisors, colleagues, and clients</li>
+          <li>Receive an official VMX Certificate of Completion</li>
+          <li>Enjoy “Training Plus” promotion—20% off your subscriptions</li>
+        </ul>
+        <img src="images/vmx/8.jpg" alt="Training Benefits" class="content-img">
+      </div>
+
+      <a href="#get-started" class="get-started-btn">Get Started</a>
+      <br><br>
     </div>
+  </div>
+</div>
+
+<!-- Outcomes Section -->
+<div class="fun-facts mb30 course-outcomes">
+  <div class="course-content">
+    <h3 class="main-title">Outcomes</h3>
+
+    <div class="content-with-image">
+      <p class="font-15">
+        By the end of the course, participants will be fully equipped to confidently deploy and manage a VMX cluster following industry best practices. They will develop a solid understanding of how a VMX cluster operates and how strategic planning can minimize downtime. The course also covers key differences between virtual machines (VMs) and LXC containers, particularly in the context of live guest migration.
+
+        <br><br>
+        Participants will explore built-in shared storage options within a cluster, assessing their strengths and limitations. They will learn to configure VMX and Ceph as a hyper-converged infrastructure (HCI), gaining clarity on how the various components of Ceph interact.
+
+        <br><br>
+        Additionally, attendees will understand how high availability (HA) works for guest systems and how to configure it effectively. The training also introduces the Software Defined Networking (SDN) feature in a clustered environment, enabling centralized management of VLANs and other networking components.
+      </p>
+      <!-- <img src="images/vmx/8.jpg" alt="Training Outcomes" class="content-img"> -->
+    </div>
+  </div>
+</div>
+
+
+
+
+  
 
     <div class="info-box">
       <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
@@ -227,7 +307,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
     <div class="last-div clearfix">
       <div class="wrapper">
         <div class="copyright">
-          © 2014 Arkitekt,  All Rights Reserved
+          © 2025 VMX,  All Rights Reserved
         </div>
 
         <div id="back-to-top">

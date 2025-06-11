@@ -1160,12 +1160,13 @@ aside .search input[type="submit"] {
 }
 .tabs-widget .tab-links li.active {
 	background:#6ea535;
+
 }
 .tabs-widget .tab-links li.active a {
 	color:#fff;
 }
 .tabs-widget .tab-links li:first-child {
-	margin-left:0px;
+	margin-left:50px;
 }
 .tabs-widget .tab-links li:last-child {
 	border-right:0;
@@ -2958,3 +2959,116 @@ min-height: 363px;
     margin-bottom: 10px;         /* space between items */
     font-size: 15px;             /* match body text size */
   }
+/* .content-with-image {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 30px;
+  flex-wrap: nowrap; /* prevent wrapping */
+/* }
+
+.content-with-image p {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.6;
+} */
+
+/* .content-img {
+  width: 250px; /* Fixed size or adjust as needed */
+  /* height: auto;
+  border-radius: 0px; */ 
+  /* box-shadow: 0 4px 10px rgba(0,0,0,0.1); */
+  /* object-fit: cover;
+} */
+
+/* Responsive: stack image below on small screens */
+/* @media (max-width: 768px) {
+  .content-with-image {
+    flex-direction: column;
+  }
+
+  .content-img {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 15px;
+  }
+} */ 
+ .service-welcome {
+  padding: 40px 20px; /* Section-specific padding */
+}
+
+.service-welcome .main-title {
+  margin-bottom: 20px;
+  font-size: 24px;
+  color: #333;
+}
+
+/* Scoped section layout */
+.service-welcome .content-with-image {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 40px;
+  margin-bottom: 50px;
+  flex-wrap: nowrap;
+  padding: 20px;
+  border-radius: 8px;
+  background: #f7f9f7;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Paragraphs in your scoped section */
+.service-welcome .content-with-image p {
+  flex: 1;
+  font-size: 17px;
+  line-height: 1.7;
+  color: #555;
+  margin: 0;
+}
+
+/* Image inside your section only */
+.service-welcome .content-img {
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+
+/* Responsive stacking for small screens */
+@media (max-width: 768px) {
+  .service-welcome .content-with-image {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .service-welcome .content-img {
+    width: 100%;
+    margin-top: 20px;
+  }
+
+  .service-welcome .content-with-image p {
+    text-align: justify;
+  }
+}
+
+/* Styled Get Started button */
+.service-welcome .get-started-btn {
+  display: inline-block;
+  padding: 12px 28px;
+  margin-top: 20px;
+  background-color: #6ea535;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 6px;
+  font-size: 16px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+}
+
+.service-welcome .get-started-btn:hover {
+  background-color: #5a8d2b;
+  transform: translateY(-2px);
+}
+
+
