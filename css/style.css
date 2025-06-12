@@ -2877,7 +2877,7 @@ footer .submit-area {
   left: 0;
   width: 100%;
   height: 100%;
-  background: #f9f9f9; /* or transparent, if preferred */
+  background:#ffffff; /* or transparent, if preferred */
   display: flex;
   justify-content: center;
   align-items: center;
