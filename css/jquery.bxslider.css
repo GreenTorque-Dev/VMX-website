@@ -65,7 +65,7 @@
 }
 
 .slider5 .slide {
-	background: #4eccb9;
+	background: #aeaeae;
 	padding: 20px;
 }
 
@@ -111,7 +111,7 @@
 
 .bx-wrapper .bx-pager.bx-default-pager a:hover,
 .bx-wrapper .bx-pager.bx-default-pager a.active {
-	background: #4eccb9;
+	background: #aeaeae;
 }
 
 /* Our Team Controls */
