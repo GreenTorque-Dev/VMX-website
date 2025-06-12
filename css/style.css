@@ -1240,7 +1240,7 @@ aside .search input[type="submit"] {
 	max-height:15px;
 }
 .tabs-widget>div p {
-	font-size:13px;
+	font-size:15px;
 	color:#808080;
 	line-height:20px;
 	margin:0;
@@ -1708,7 +1708,7 @@ aside .search input[type="submit"] {
 .aboutus p {
 	color:#8b8b8b;
 	font-weight:300;
-	font-size:20px;
+	font-size:17px;
 	margin-bottom:20px;
 	line-height:26px;
 	font-family:'Roboto';
@@ -2971,49 +2971,16 @@ min-height: 363px;
   .benefits-list li {
     margin-bottom: 10px;         /* space between items */
     font-size: 15px;             /* match body text size */
-  }
-/* .content-with-image {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 30px;
-  flex-wrap: nowrap; /* prevent wrapping */
-/* }
-
-.content-with-image p {
-  flex: 1;
-  font-size: 16px;
-  line-height: 1.6;
-} */
-
-/* .content-img {
-  width: 250px; /* Fixed size or adjust as needed */
-  /* height: auto;
-  border-radius: 0px; */ 
-  /* box-shadow: 0 4px 10px rgba(0,0,0,0.1); */
-  /* object-fit: cover;
-} */
-
-/* Responsive: stack image below on small screens */
-/* @media (max-width: 768px) {
-  .content-with-image {
-    flex-direction: column;
+	
   }
 
-  .content-img {
-    width: 100%;
-    max-width: 100%;
-    margin-top: 15px;
-  }
-} */ 
  .service-welcome {
   padding: 40px 20px; /* Section-specific padding */
 }
 
 .service-welcome .main-title {
   margin-bottom: 20px;
-  font-size: 24px;
+  font-size: 28px;
   color: #333;
 }
 
