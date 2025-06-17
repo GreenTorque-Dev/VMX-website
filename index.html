@@ -165,6 +165,23 @@
 }
 
 </style>
+<!-- <script>
+  function setPreloaderSize() {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+    
+    // Optional fallback: force height to match screen
+    const preloader = document.querySelector('.preloader');
+    if (preloader) {
+      preloader.style.height = `${window.innerHeight}px`;
+    }
+  }
+
+  window.addEventListener('resize', setPreloaderSize);
+  window.addEventListener('load', setPreloaderSize);
+</script> -->
+
+
 
 </head>
 <body>
@@ -792,6 +809,7 @@
       });
     });
   </script>
+
 <!-- include jQuery + carouFredSel plugin -->
 <script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
 <!-- optionally include helper plugins -->
