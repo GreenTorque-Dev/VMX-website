@@ -19,6 +19,92 @@
 <link rel="icon" href="images/favicon.ico" type="image/x-icon">
 
 <style>
+	.wrapper.vmx-control-center {
+  max-width: none !important;
+  padding: 0 !important;
+  margin: 0;
+}
+.vmx-control-center .control-content {
+  width: 100vw;
+  height: 100vh;
+  background-image: url('images/vmx/27.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  margin: 0;
+  padding: 0;
+}
+
+.vmx-control-center .control-content {
+  position: relative;
+  width: 100vw;
+  height: 100vh; 
+  background-image: url('images/vmx/27.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vmx-control-center .overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1;
+}
+
+.vmx-control-center .control-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 800px;
+  padding: 40px;
+  color: #fff;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.4); /* Optional semi-transparent box */
+  border-radius: 15px;
+}
+
+.vmx-control-center .main-title {
+  font-size: 36px;
+  margin-bottom: 20px;
+  color: #ffffff;
+}
+
+.vmx-control-center .font-15 {
+  font-size: 17px;
+  margin-bottom: 25px;
+  line-height: 1.6;
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-list li {
+  font-size: 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.feature-list i {
+  color: #6ea535;
+  margin-right: 10px;
+  font-size: 18px;
+}
+
+
+
 	/* General Section Styling */
 .wrapper {
   max-width: 1100px;
@@ -165,21 +251,6 @@
 }
 
 </style>
-<!-- <script>
-  function setPreloaderSize() {
-    const vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-    
-    // Optional fallback: force height to match screen
-    const preloader = document.querySelector('.preloader');
-    if (preloader) {
-      preloader.style.height = `${window.innerHeight}px`;
-    }
-  }
-
-  window.addEventListener('resize', setPreloaderSize);
-  window.addEventListener('load', setPreloaderSize);
-</script> -->
 
 
 
@@ -421,12 +492,42 @@
 		<div class="clear">
 		</div>
 	</div>
+	
+	<div class="wrapper vmx-control-center">
+  <div class="control-content">
+    <div class="overlay"></div> <!-- Dark overlay for readability -->
+    <div class="control-inner">
+      <div class="text-section">
+        <h3 class="main-title">Unified Control Center</h3>
+        <p class="font-15">
+          VMX offers a sleek, modern dashboard that centralizes your virtual machine operations. Whether you're spinning up new VMs, managing storage, or orchestrating container clusters—do it all from one place.
+        </p>
+        <ul class="feature-list">
+          <li><i class="fa fa-check-circle"></i> Visual console access to all VMs</li>
+          <li><i class="fa fa-check-circle"></i> Real-time logs & alerts</li>
+          <li><i class="fa fa-check-circle"></i> Batch operations & scheduling</li>
+          <li><i class="fa fa-check-circle"></i> API support for automation tools</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+<br>
+
+	
+	
+	
+	
+	
+	
+	
+	
 	<div class="recent-work">
 		<h3 class="main-title">Recent Work</h3>
 		<span class="main-subtitle font-15 ">some handpicked projects we’ve done</span>
 		<div class="list_carousel responsive">
 			<ul id="foo4">
-				<li>
+				<!-- <li>
 				<div class="view view-sixth">
 					<img src="images/vmx/24.png"/>
 					<div class="mask">
@@ -439,7 +540,7 @@
 					<h4>Architecture Design</h4>
 					<span>plans, buildings</span>
 				</div>
-				</li>
+				</li> -->
 				<li>
 				<div class="view view-sixth">
 					<img src="images/recent3.jpg"/>
