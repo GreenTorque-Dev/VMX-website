@@ -3037,5 +3037,43 @@ min-height: 363px;
   background-color: #5a8d2b;
   transform: translateY(-2px);
 }
+/*footer responsiveness*/
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 20px;
+}
+
+.footer-links .column {
+  flex: 1 1 300px; /* Grow, shrink, min width */
+  margin: 10px;
+}
+
+.footer-links ul {
+  list-style: none;
+  padding: 0;
+}
+
+.footer-links li {
+  margin: 10px 0;
+}
+
+.footer-links a {
+  color: #333;
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: #007BFF;
+}
+
+/* Responsive fix for smaller devices */
+@media (max-width: 600px) {
+  .footer-links {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 
 

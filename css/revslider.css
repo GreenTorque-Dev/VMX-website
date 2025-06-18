@@ -89,10 +89,10 @@ website:    http://www.themepunch.com
   background-image: linear-gradient(to top, rgba(0,0,0,.1), rgba(255,255,255,.1));
   padding: 15px;
   display: table;
-  color: #000;
+  color: #595f5a;
   font-size: 18px;
   font-family: 'Roboto';
-  font-weight: lighter;
+  font-weight: bold;
   -webkit-border-radius: 7px;
   -moz-border-radius: 7px;
   border-radius: 7px;

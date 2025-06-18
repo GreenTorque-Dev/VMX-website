@@ -18,7 +18,49 @@
 <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
 <link rel="icon" href="images/favicon.ico" type="image/x-icon">
 
+
 <style>
+
+  /*hhh*/
+  .button-group {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.action-btn {
+  background-color: #00a65a;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Roboto', sans-serif;
+  padding: 10px 0;
+  width: 140px; /* consistent width */
+  border-radius: 25px;
+  text-decoration: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transition: background-color 0.3s ease, transform 0.2s ease;
+
+}
+
+.action-btn i {
+  font-size: 16px;
+  color: #fff;
+ 
+}
+
+.action-btn:hover {
+  background-color: #007f45;
+  transform: translateY(-2px);
+}
+
+
+
+  /*hhhh*/
 	.wrapper.vmx-control-center {
   max-width: none !important;
   padding: 0 !important;
@@ -478,11 +520,11 @@
 					
 					<!-- </li> -->
 					<!-- SECOND SLIDE -->
-						<li data-transition="3dcurtain-vertical" data-slotamount="10" data-masterspeed="300">
+						<!-- <li data-transition="3dcurtain-vertical" data-slotamount="10" data-masterspeed="300"> -->
 					<!-- THE MAIN IMAGE IN THE FIRST SLIDE -->
-					<img src="images/vmx/slide2.png" data-fullwidthcentering="on" alt="slide">
+					<!-- <img src="images/vmx/slide2.png" data-fullwidthcentering="on" alt="slide"> -->
 					<!-- THE CAPTIONS IN THIS SLDIE -->
-					<div class="caption large_text lft" data-x="center" data-y="122" data-speed="600" data-start="1200" data-easing="easeOutExpo" data-end="7000" data-endspeed="300" data-endeasing="easeInSine">
+					<!-- <div class="caption large_text lft" data-x="center" data-y="122" data-speed="600" data-start="1200" data-easing="easeOutExpo" data-end="7000" data-endspeed="300" data-endeasing="easeInSine">
 						  Streamline Your Virtual Infrastructure 
 					</div>
 					<div class="caption big_white lfb stt" data-x="center" data-y="172" data-speed="500" data-start="1500" data-easing="easeOutExpo" data-end="7100" data-endspeed="300" data-endeasing="easeInSine">
@@ -514,7 +556,51 @@
 						
 						documentation
 					</div>
-					</li>  
+					</li>   -->
+
+          <li data-transition="3dcurtain-vertical" data-slotamount="10" data-masterspeed="300">
+  <!-- THE MAIN IMAGE IN THE SLIDE -->
+  <img src="images/vmx/slide2.png" data-fullwidthcentering="on" alt="slide">
+
+  <!-- Main Heading -->
+  <div class="caption large_text lft"
+       data-x="center"
+       data-y="120"
+       data-speed="600"
+       data-start="1200"
+       data-easing="easeOutExpo">
+    Streamline Your Virtual Infrastructure
+  </div>
+
+  <!-- Subheading -->
+  <div class="caption big_white lfb stt"
+       data-x="center"
+       data-y="180"
+       data-speed="500"
+       data-start="1500"
+       data-easing="easeOutExpo">
+    VMX offers a powerful control center for managing and scaling your virtual environments
+  </div>
+
+  <!-- Buttons Container -->
+<div class="caption lfb"
+     data-x="center"
+     data-y="300"
+     data-speed="600"
+     data-start="1800"
+     data-easing="easeOutExpo">
+  <div class="button-group">
+    <a href="#download" class="action-btn">
+    Download Trial
+    </a>
+    <a href="#docs" class="action-btn">
+    Read Docs
+    </a>
+  </div>
+</div>
+
+</li>
+
 					
 			<!-- THIRD SLIDE-->
 <!-- <li data-transition="boxfade" data-slotamount="10" data-masterspeed="300">
