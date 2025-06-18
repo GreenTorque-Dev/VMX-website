@@ -91,7 +91,7 @@ website:    http://www.themepunch.com
   display: table;
   color: #595f5a;
   font-size: 18px;
-  font-family: 'Roboto';
+  /* font-family: 'Roboto'; */
   font-weight: bold;
   -webkit-border-radius: 7px;
   -moz-border-radius: 7px;
