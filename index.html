@@ -123,46 +123,6 @@
 }
 
 /* Why Choose Section */
-.whychoose {
-  background: #f8f9fc;
-}
-
-.whychoose-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 30px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.whychoose-content {
-  flex: 1 1 58%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.whychoose-box {
-  display: flex;
-  align-items: flex-start;
-  background: #ffffff;
-  padding: 20px 25px;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.2s ease;
-}
-
-.whychoose-box:hover {
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
-}
-
-.whychoose .icon {
-  font-size: 1.5rem;
-  color: #8bc34a; /* Match feature icon color */
-  margin-right: 20px;
-  flex-shrink: 0;
-  margin-top: 5px;
-}
 
 .whychoose .text h4 {
   font-size: 1.1rem;
@@ -191,7 +151,68 @@
   object-fit: cover;
   border-radius: 10px;
   opacity: 0.85;
+} */
+/*hhh*/
+.whychoose {
+  background: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), url('images/backgrounds/vmx-bg.jpg') center/cover no-repeat;
+  padding: 60px 20px;
 }
+
+.grid-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 25px;
+  margin-bottom: 40px;
+}
+
+.whychoose-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 25px 20px;
+  display: flex;
+  align-items: flex-start;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease;
+}
+
+.whychoose-card:hover {
+  transform: translateY(-5px);
+}
+
+.card-icon {
+  font-size: 1.8rem;
+  color: #689f38;
+  margin-right: 15px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.card-text h4 {
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.card-text p {
+  font-size: 0.95rem;
+  color: #555;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.whychoose-image {
+  text-align: center;
+}
+
+.whychoose-image img {
+  max-width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+  margin-top: 20px;
+}
+
+/*hhh*/
 
 
 /* Features Section */
@@ -249,6 +270,122 @@
 .feature-link:hover {
   color: #33691e;
 }
+.whychoose {
+  background: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)),
+              url('images/vmx/30.jpg') no-repeat center center/cover;
+  padding: 60px 20px;
+}
+
+.whychoose-box {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(5px);
+  border-left: 5px solid #8bc34a;
+}
+
+.whychoose-image img {
+  max-height: 250px;
+  border: 3px solid #e0e0e0;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+  opacity: 1;
+}
+
+
+
+/* last*/
+.feature-slider-wrapper {
+  position: relative;
+  overflow: hidden;
+  max-height: 400px;
+}
+
+.feature-slider {
+  display: flex;
+  transition: transform 0.6s ease-in-out;
+}
+
+.feature-slide {
+  min-width: 100%;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.panel-content {
+  position: relative;
+  color: #fff;
+  text-align: center;
+  z-index: 1;
+  max-width: 700px;
+  padding: 20px;
+}
+
+.panel-content h2 {
+  font-size: 2rem;
+  margin-bottom: 15px;
+}
+
+.panel-content p {
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.panel-content a {
+  display: inline-block;
+  background-color: #fff;
+  color: #333;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.3s;
+}
+
+.panel-content a:hover {
+  background-color: #ddd;
+}
+
+.slider-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2rem;
+  color: white;
+  background: rgba(0,0,0,0.4);
+  border: none;
+  padding: 10px 15px;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.slider-nav.prev { left: 10px; }
+.slider-nav.next { right: 10px; }
+
+.bg-success {
+  background-image: url('images/vmx/29.jpg');
+}
+
+.bg-community {
+  background-image: url('images/vmx/31.jpg');
+}
+
+.bg-announcement {
+  background-image: url('images/vmx/32.jpg');
+}
+
+/* last*/
+
+
 
 </style>
 
@@ -518,97 +655,74 @@
 	
 	
 	
-	
-	
-	
-	
 	<div class="recent-work">
-		<h3 class="main-title">Recent Work</h3>
-		<span class="main-subtitle font-15 ">some handpicked projects we’ve done</span>
+		<h3 class="main-title">Our Partners </h3>
+		<span class="main-subtitle font-15 ">Proudly collaborating with innovative technology partners.</span>
 		<div class="list_carousel responsive">
 			<ul id="foo4">
-				<!-- <li>
-				<div class="view view-sixth">
-					<img src="images/vmx/24.png"/>
-					<div class="mask">
-						<a href="images/recent1.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
 				
-				<div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div>
-				</li> -->
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent3.jpg"/>
+					<img src="images/vmx/p1.jpg"/>
 					<div class="mask">
 						<a href="images/recent3.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
 					</div>
 				</div>
-				<div class="desc">
+				<!-- <div class="desc">
 					<h4>Architecture Design</h4>
 					<span>plans, buildings</span>
-				</div>
+				</div> -->
 				</li>
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent4.jpg"/>
+					<img src="images/vmx/p3.png"/>
 					<div class="mask">
 						<a href="images/recent4.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
 					</div>
 				</div>
-				<div class="desc">
+				<!-- <div class="desc">
 					<h4>Architecture Design</h4>
 					<span>plans, buildings</span>
-				</div>
+				</div> -->
 				</li>
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent5.jpg"/>
+					<img src="images/vmx/p5.png"/>
 					<div class="mask">
 						<a href="images/recent5.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
 					</div>
 				</div>
-				<div class="desc">
+				<!-- <div class="desc">
 					<h4>Architecture Design</h4>
 					<span>plans, buildings</span>
-				</div>
+				</div> -->
 				</li>
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent1.jpg"/>
+					<img src="images/vmx/p2.png"/>
 					<div class="mask">
 						<a href="images/recent1.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
 					</div>
 				</div>
-				<div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div>
+				
 				</li>
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent2.jpg"/>
+					<img src="images/vmx/p6.png"/>
 					<div class="mask">
 						<a href="images/recent2.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
 					</div>
 				</div>
-				<div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div>
+				
 				</li>
 				<li>
 				<div class="view view-sixth">
-					<img src="images/recent3.jpg"/>
+					<img src="images/vmx/p7.png"/>
 					<div class="mask">
 						<a href="images/recent3.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
 						<a href="#"><i class="fa fa-file-o"></i></a>
@@ -616,10 +730,6 @@
 				</div>
 				
 				
-				<div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div>
 				</li>
 			</ul>
 			<div class="clearfix">
@@ -629,79 +739,85 @@
 		</div>
 		<!-- End List Carousel -->
 	</div>
-	<!-- End Recent Works -->
+<!-- Start Why Choose VMX -->
 <div class="whychoose">
   <div class="wrapper">
     <h3 class="main-title">Why Choose VMX?</h3>
-    <div class="whychoose-container">
-      <div class="whychoose-content">
-        <div class="whychoose-box">
-          <div class="icon"><i class="fa fa-comments"></i></div>
-          <div class="text">
-            <h4>Assistance</h4>
-            <p>Enterprise-grade support to ensure smooth operations and quick issue resolution.</p>
-          </div>
-        </div>
-        <div class="whychoose-box">
-          <div class="icon"><i class="fa fa-play"></i></div>
-          <div class="text">
-            <h4>Execution</h4>
-            <p>Reliable implementation and expert consulting tailored for business success.</p>
-          </div>
-        </div>
-        <div class="whychoose-box">
-          <div class="icon"><i class="fa fa-file-text"></i></div>
-          <div class="text">
-            <h4>Documentation</h4>
-            <p>Clear, comprehensive guides that empower users to use VMX effectively.</p>
-          </div>
+    <div class="whychoose-container grid-layout">
+      
+      <div class="whychoose-card">
+        <div class="card-icon"><i class="fa fa-comments"></i></div>
+        <div class="card-text">
+          <h4>Assistance</h4>
+          <p>Enterprise-grade support to ensure smooth operations and quick issue resolution.</p>
         </div>
       </div>
-      <div class="whychoose-image">
-        <img src="images/vmx/6.jpg" alt="VMX Support">
+
+      <div class="whychoose-card">
+        <div class="card-icon"><i class="fa fa-play"></i></div>
+        <div class="card-text">
+          <h4>Execution</h4>
+          <p>Reliable implementation and expert consulting tailored for business success.</p>
+        </div>
       </div>
+
+      <div class="whychoose-card">
+        <div class="card-icon"><i class="fa fa-file-text"></i></div>
+        <div class="card-text">
+          <h4>Documentation</h4>
+          <p>Clear, comprehensive guides that empower users to use VMX effectively.</p>
+        </div>
+      </div>
+
     </div>
+
   </div>
 </div>
+
 
 	<!-- End Features2 -->
+<div class="feature-slider-wrapper">
+  <div class="feature-slider">
 
-
-
-	<div class="wrapper features-section">
-  <div class="feature-block">
-    <div class="icon-area">
-      <i class="fa fa-trophy"></i>
+    <div class="feature-slide bg-success active">
+      <div class="overlay"></div>
+      <div class="panel-content">
+        <h2>Success Stories</h2>
+        <p>Explore how top organizations scaled faster, reduced costs, and boosted performance by switching to VMX.</p>
+        <a href="#">Explore Case Studies →</a>
+      </div>
     </div>
-    <div class="text-area">
-      <h4>Success Stories</h4>
-      <p>Explore how top organizations scaled faster, reduced costs, and boosted performance by switching to VMX. Our virtualization platform powers reliable infrastructure for businesses around the globe.</p>
-      <a href="#" class="feature-link">Explore Case Studies →</a>
+
+    <div class="feature-slide bg-community">
+      <div class="overlay"></div>
+      <div class="panel-content">
+        <h2>Vibrant Community</h2>
+        <p>Join a global network of developers, engineers, and IT leaders shaping the future of virtual environments.</p>
+        <a href="#">Join Our Community →</a>
+      </div>
     </div>
+
+    <div class="feature-slide bg-announcement">
+      <div class="overlay"></div>
+      <div class="panel-content">
+        <h2>Latest Announcements</h2>
+        <p>Be the first to experience next-gen capabilities including clustered storage, enhanced security, and fast deployment.</p>
+        <a href="#">Read the News →</a>
+      </div>
+    </div>
+
   </div>
 
-  <div class="feature-block">
-    <div class="icon-area">
-      <i class="fa fa-users"></i>
-    </div>
-    <div class="text-area">
-      <h4>Vibrant Community</h4>
-      <p>Join a global network of developers, engineers, and IT leaders working together to build the future of virtual environments. Contribute, collaborate, and grow with VMX.</p>
-      <a href="#" class="feature-link">Join Our Community →</a>
-    </div>
-  </div>
-
-  <div class="feature-block">
-    <div class="icon-area">
-      <i class="fa fa-clock-o"></i>
-    </div>
-    <div class="text-area">
-      <h4>Latest Announcements</h4>
-      <p>VMX is launching soon with next-gen capabilities including clustered storage, enhanced security, and lightning-fast deployment. Be the first to experience what’s coming next.</p>
-      <a href="#" class="feature-link">Read the News →</a>
-    </div>
-  </div>
+  <!-- Navigation Buttons -->
+  <button class="slider-nav prev" onclick="changeSlide(-1)">‹<<</button>
+  <button class="slider-nav next" onclick="changeSlide(1)">›>></button>
 </div>
+
+
+
+
+
+
 
 
 	<!-- End Recent Posts -->
@@ -715,94 +831,8 @@
 			</ul>
 		</div>
 	</div>
-	<footer>
-	<!-- <div class="inner-footer">
-		<div class="wrapper clearfix">
-			<div class="dark">
-				<div class="column3 message-form">
-					<img src="images/vmx.png" alt="">
-					<p>
-						This is Photoshop's version of Lorem Ipsum. Proin gravida nibh vel velit auctor
-					</p>
-					<div class="send-message">
-						<form id="contact-form">
-							<h4>Send us a Message</h4>
-							<div class="text-fields">
-								<div class="float-input">
-									<input name="name" id="name" type="text" placeholder="Name">
-								</div>
-								<div class="float-input">
-									<input name="mail" id="mail" type="text" placeholder="Email">
-								</div>
-							</div>
-							<div class="submit-area">
-								<textarea name="comment" id="comment" placeholder="Message"></textarea>
-								<input type="submit" id="submit_contact" class="main-button" value="Send">
-								<div id="msg" class="message">
-								</div>
-							</div>
-						</form>
-					</div>
-				</div>
-				<div class="column3 contact">
-					<h4>Recent Posts</h4> -->
-					<!-- <ul>
-						<li><a href="#"><i class="fa fa-arrow-circle-right"></i> New Search Platform Update</a></li>
-						<li><a href="#"><i class="fa fa-arrow-circle-right"></i> Envato's Most Wanted - $5,000 for Ghost Themes</a></li>
-						<li><a href="#"><i class="fa fa-arrow-circle-right"></i> Update: WordPress Theme Submission Requirements</a></li>
-						<li><a href="#"><i class="fa fa-arrow-circle-right"></i> Envato Staff Vs Community Nike+ </a></li>
-					</ul> -->
-					<!-- <h4>Contact info</h4>
-					<p class="f-phone">
-						<i class="fa fa-phone"></i><span>9930 1234 5679</span>
-					</p>
-					<a href="#" class="f-mail"><i class="fa fa-envelope"></i><span>contact@vmx.com</span></a>
-				</div>
-				<div class="column3 third-row">
-					<div class="tags">
-						<h4>Popular Tags</h4>
-						<a href="#">web design</a>
-						<a href="#">coding</a>
-						<a href="#">woo commerce</a>
-						
-						<div class="clear">
-						</div>
-					</div>
-					<div class="tweets">
-						<h4>Latest Tweets</h4>
-						<div id="example2">
-						</div>
-					</div>
-				</div>
-				<div class="column3 flickr">
-					<div class="singup">
-						<h4>NEWSLETTER SIGNUP</h4>
-						<p>
-							This is Photoshop's version of Lorem Ipsum. Proin gravida nibh vel velit auctor aliquet.
-						</p>
-						<form method="post" id="newsletter_subscribe" name="newsletter_form">
-							<input type="text" name="nl-email" id="nl-email" value="" placeholder="your.address@email.com"/>
-							<input type="submit" name="submit" id="nl-submit" value="Submit"/>
-						</form>
-					</div> -->
-					<!-- <div class="flickr">
-						<h4>Flickr Widget</h4>
-						<ul class="dark clearfix">
-							<li class="column4"><a href="#"><img src="images/flickr2.jpg" alt=""></a></li>
-							<li class="column4"><a href="#"><img src="images/flickr3.jpg" alt=""></a></li>
-							<li class="column4"><a href="#"><img src="images/flickr4.jpg" alt=""></a></li>
-						</ul>
-						<ul class="dark clearfix">
-							<li class="column4"><a href="#"><img src="images/flickr5.jpg" alt=""></a></li>
-							<li class="column4"><a href="#"><img src="images/flickr2.jpg" alt=""></a></li>
-							<li class="column4"><a href="#"><img src="images/flickr3.jpg" alt=""></a></li>
-						</ul>
-					</div> -->
-				<!-- </div>
-			</div> -->
-			<!-- End Dark -->
-		<!-- </div>
-	</div> -->
+	
+
 	  <footer>
 
     <div class="inner-footer">
@@ -867,6 +897,7 @@
 	<img alt="" src="images/preloader.gif">
 </div>
 <!-- include jQuery -->
+
 <script src="js/jquery.min.js"></script>
 <script type="text/javascript" src="js/jquery.imagesloaded.min.js"></script>
 <script type="text/javascript" src="js/jquery.isotope.min.js"></script>
@@ -877,6 +908,26 @@
 <script src="js/jquery.bxslider.js"></script>
 <script src="js/twitter.js"></script>
 <!-- Revolution Slider -->
+<script>
+  let currentSlide = 0;
+
+  function changeSlide(direction) {
+    const slides = document.querySelectorAll('.feature-slide');
+    const totalSlides = slides.length;
+
+    currentSlide = (currentSlide + direction + totalSlides) % totalSlides;
+    const offset = currentSlide * -100;
+
+    document.querySelector('.feature-slider').style.transform = `translateX(${offset}%)`;
+  }
+
+  // ⏳ Auto-slide every 5 seconds
+  setInterval(() => {
+    changeSlide(1);
+  }, 5000); // 5000ms = 5 seconds
+</script>
+
+
 <script type="text/javascript" src="js/jquery.themepunch.plugins.min.js"></script>
 <script type="text/javascript" src="js/jquery.themepunch.revolution.js"></script>
 <script type="text/javascript">

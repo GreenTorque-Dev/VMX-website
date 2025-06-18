@@ -19,6 +19,73 @@
   <link href='http://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
   <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
   <link rel="icon" href="images/favicon.ico" type="image/x-icon">
+  <style>
+
+    /**/
+  
+
+    /**/
+ .who-we-help {
+  text-align: center;
+  padding: 40px 20px;
+  background: #f5f6f8;
+}
+
+.section-header h2 {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  color: #222;
+}
+
+.section-header .subtitle {
+  font-size: 1rem;
+  color: #666;
+  margin-bottom: 30px;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 30px;
+}
+
+.help-card {
+  background: #fff;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  transition: transform 0.3s ease;
+}
+
+.help-card:hover {
+  transform: translateY(-5px);
+}
+
+.icon-circle {
+  font-size: 2rem;
+  color: #8bc34a;
+  background: #e8f5e9;
+  width: 60px;
+  height: 60px;
+  line-height: 60px;
+  margin: 0 auto 15px;
+  border-radius: 50%;
+}
+
+.help-card h4 {
+  margin: 10px 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.help-card p {
+  font-size: 0.95rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+
+  </style>
 	
 </head>
 <body>
@@ -126,12 +193,52 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
     </div>
 
   </div>
+
+
+
+
   <!-- End Aboutus -->
+   <div class="who-we-help wrapper mb30">
+  <div class="section-header">
+    <h2>Who We Help</h2>
+    <p class="subtitle">Empowering industries with secure, scalable virtual infrastructure.</p>
+  </div>
+
+  <div class="help-grid">
+    <div class="help-card">
+      <div class="icon-circle">	<i class="fa fa-book"></i>
+
+</div>
+      <h4>Educational Institutions</h4>
+      <p>Enable students and faculty with hands-on, real-world server environments for learning and experimentation.</p>
+    </div>
+
+    <div class="help-card">
+      <div class="icon-circle"><i class="fa fa-briefcase"></i></div>
+      <h4>Businesses</h4>
+      <p>Simplify infrastructure management, reduce IT overhead, and scale operations with confidence and clarity.</p>
+    </div>
+
+    <div class="help-card">
+      <div class="icon-circle"><i class="fa fa-users"></i></div>
+      <h4>Nonprofits & NGOs</h4>
+      <p>Operate efficiently and securely with limited resources by leveraging open-source virtual technologies.</p>
+    </div>
+
+    <div class="help-card">
+      <div class="icon-circle"><i class="fa fa-code"></i></div>
+      <h4>Developers & SysAdmins</h4>
+      <p>Gain full control over your environment with CLI access, automation tools, and powerful VM orchestration.</p>
+    </div>
+  </div>
+</div>
+
+
 
     
 
 
-    <div class="fun-facts mb30">
+    <!-- <div class="fun-facts mb30">
       <h3 class="main-title">Fun Facts</h3>
       <span class="main-subtitle">company stats and achievements</span>
       
@@ -174,7 +281,7 @@ With VMX technology, you get comprehensive yet user-friendly software solutions 
         </div>
       </div>
 
-    </div>
+    </div> -->
 
     <div class="info-box">
       <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
