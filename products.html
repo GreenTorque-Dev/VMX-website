@@ -24,7 +24,7 @@
   
 	
 </head>
-<style>
+<!-- <style>
 /* Tabs Navigation */
 .tab-links {
   display: flex;
@@ -53,10 +53,10 @@
   background-color: #6d747d;
   color: #fff;
   border-bottom: 2px solid #939ba3;
-}
+} -->
 
-/* Tab Content */
-.tabs-widget ul {
+<!-- /* Tab Content */ -->
+<!-- .tabs-widget ul {
   list-style: none;
   padding: 0;
 }
@@ -81,6 +81,53 @@
   from {opacity: 0; transform: translateY(10px);}
   to {opacity: 1; transform: translateY(0);}
 }
+</style> -->
+<style>
+ .card-container {
+  display: flex;
+  justify-content: center;        /* center all cards horizontally */
+  gap: 30px;                      /* space between cards */
+  flex-wrap: wrap;                /* wrap on smaller screens */
+  padding: 20px 40px;             /* left and right margin inside the container */
+  box-sizing: border-box;
+}
+
+.slide {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 320px;
+  flex: 1 1 300px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transition: transform 0.3s ease;
+}
+
+.slide:hover {
+  transform: translateY(-5px);
+}
+
+.view img {
+  max-width: 100%;
+  height: auto;
+}
+
+.get-trial-btn {
+  background-color: #6ea535;
+  color: #fff;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 5px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 15px;
+  transition: background 0.3s;
+}
+
+.get-trial-btn:hover {
+  background-color: #7a7a7b;
+}
+
 </style>
 <body>
 
@@ -154,7 +201,7 @@
       </div>
     </div>
 
-      <div class="wrapper"> 
+      <!-- <div class="wrapper"> 
   <div class="service-welcome">
 
     <h3 class="main-title">VMX Virtual Environment</h3>
@@ -185,10 +232,10 @@
   </div>
 </div>
 
-      
+       -->
       
          <!-- Tabs -->
-<div class="tabs service-tabs clearfix mb30">  
+<!-- <div class="tabs service-tabs clearfix mb30">  
   <div class="tabs-widget clearfix">
     <ul class="tab-links clearfix">
       <li class="active"><a href="#support">	 Features</a></li>
@@ -221,7 +268,57 @@
     </div>
   </div>
 </div>
+    </div> -->
+  <div class="recent-posts">
+  <h3 class="main-title">Enterprise Solutions</h3>
+  <span class="main-subtitle">Choose the solution that fits your environment</span>
+
+  <!-- Flex wrapper -->
+  <div class="card-container">
+    
+    <!-- Card 1 -->
+    <div class="slide">
+      <div class="view view-first">
+        <img src="images/vmx/4.jpg" alt="EnterprisePrime Logo" />
+      </div>
+      <div class="repost-text">
+        <h4>EnterprisePrime</h4>
+        <p style="font-weight: bold; color: #e74c3c;">Up to 4Gbps — $6,690</p>
+        <p>A fully featured, high-performance ADC solution suitable for growing environments.</p>
+        <button class="get-trial-btn">Get Trial</button>
+      </div>
     </div>
+
+    <!-- Card 2 -->
+    <div class="slide">
+      <div class="view view-first">
+        <img src="images/vmx/4.jpg" alt="EnterpriseFlex Logo" />
+      </div>
+      <div class="repost-text">
+        <h4>EnterpriseFlex <span style="color: #6ea535; font-size: 14px;">(Recommended)</span></h4>
+        <p style="font-weight: bold; color: #e74c3c;">Up to 48Gbps — $13,380</p>
+        <p>Our most popular hardware ADC offering performance, flexibility, and future proofing.</p>
+        <button class="get-trial-btn">Get Trial</button>
+      </div>
+    </div>
+
+    <!-- Card 3 -->
+    <div class="slide">
+      <div class="view view-first">
+        <img src="images/vmx/4.jpg" alt="EnterpriseMax Logo" />
+      </div>
+      <div class="repost-text">
+        <h4>EnterpriseMax</h4>
+        <p style="font-weight: bold; color: #e74c3c;">Up to 88Gbps — $28,090</p>
+        <p>Unparalleled raw performance for complex environments such as large object storage deployments and healthcare networks.</p>
+        <button class="get-trial-btn">Get Trial</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+		
 
     <div class="info-box">
       <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
