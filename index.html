@@ -1,1073 +1,846 @@
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en">
+
 <head>
-<title>VMX</title>
-<meta charset="utf-8">
-<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<link rel="stylesheet" type="text/css" href="css/font-awesome.css" media="screen">
-<link rel="stylesheet" type="text/css" href="css/jquery.fancybox-1.3.4.css" media="screen">
-<link rel="stylesheet" type="text/css" href="css/style.css" media="screen">
-<link rel="stylesheet" type="text/css" href="css/jquery.bxslider.css" media="screen">
-<link rel="stylesheet" type="text/css" href="css/fullwidth.css" media="screen">
-<link rel="stylesheet" href="css/jquery.fancybox-1.3.4.css" type="text/css" media="screen">
-<link rel="stylesheet" type="text/css" href="css/revslider.css" media="screen">
-<link rel="stylesheet" href="css/dr-framework.css" type="text/css" media="screen">
-<link href='https://fonts.googleapis.com/css?family=Roboto:400,300,100,500,400italic,300italic,100italic,500italic,700,700italic,900,900italic' rel='stylesheet' type='text/css'>
-<link href='https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
-<link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
-<link rel="icon" href="images/favicon.ico" type="image/x-icon">
-
-
-<style>
- .read-more-btn.small {
-  background-color: #6ea535;
-  color: #fff;
-  padding: 6px 14px;
-  font-size: 13px;
-  text-decoration: none;
-  border-radius: 4px;
-  font-weight: 500;
-  transition: background 0.3s ease;
-}
-
-.read-more-btn.small:hover {
-  background-color: #9ba09e;
-}
-
-
-
-  /*hhh*/
-  .button-group {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-}
-
-.action-btn {
-  background-color: #00a65a;
-  color: #fff;
-  font-size: 14px;
-  font-family: 'Roboto';
-  padding: 10px 0;
-  width: 140px; /* consistent width */
-  border-radius: 25px;
-  text-decoration: none;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  transition: background-color 0.3s ease, transform 0.2s ease;
-
-}
-
-.action-btn i {
-  font-size: 16px;
-  color: #fff;
- 
-}
-
-.action-btn:hover {
-  background-color: #007f45;
-  transform: translateY(-2px);
-}
-
-
-
-  /*hhhh*/
-	.wrapper.vmx-control-center {
-  max-width: none !important;
-  padding: 0 !important;
-  margin: 0;
-}
-.vmx-control-center .control-content {
-  width: 100vw;
-  height: 100vh;
-  background-image: url('images/vmx/27.jpg');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  margin: 0;
-  padding: 0;
-}
-
-.vmx-control-center .control-content {
-  position: relative;
-  width: 100vw;
-  height: 100vh; 
-  background-image: url('images/vmx/27.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  border-radius: 0;
-  overflow: hidden;
-  box-shadow: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.vmx-control-center .overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 1;
-}
-
-.vmx-control-center .control-inner {
-  position: relative;
-  z-index: 2;
-  max-width: 800px;
-  padding: 40px;
-  color: #fff;
-  text-align: left;
-  background: rgba(0, 0, 0, 0.4); /* Optional semi-transparent box */
-  border-radius: 15px;
-}
-
-.vmx-control-center .main-title {
-  font-size: 36px;
-  margin-bottom: 20px;
-  color: #ffffff;
-}
-
-.vmx-control-center .font-15 {
-  font-size: 17px;
-  margin-bottom: 25px;
-  line-height: 1.6;
-}
-
-.feature-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.feature-list li {
-  font-size: 16px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-}
-
-.feature-list i {
-  color: #6ea535;
-  margin-right: 10px;
-  font-size: 18px;
-}
-
-
-
-	/* General Section Styling */
-.wrapper {
-  max-width: 1100px;
-  margin: 0 auto;
-  /* padding: 40px 20px; */
-  font-family: 'Segoe UI', sans-serif;
-}
-
-/* Shared Title Style */
-.main-title {
-  text-align: center;
-  font-size: 1.8rem;
-  font-weight: 600;
-  margin-bottom: 30px;
-  color: #222;
-}
-
-/* Why Choose Section */
-
-.whychoose .text h4 {
-  font-size: 1.1rem;
-  color: #333;
-  font-weight: 600;
-  margin: 0 0 6px;
-}
-
-.whychoose .text p {
-  font-size: 0.95rem;
-  color: #555;
-  margin: 0;
-  line-height: 1.5;
-}
-
-.whychoose-image {
-  flex: 1 1 38%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.whychoose-image img {
-  width: 100%;
-  max-height: 200px;
-  object-fit: cover;
-  border-radius: 10px;
-  opacity: 0.85;
-} */
-/*hhh*/
-.whychoose {
-  background: linear-gradient(rgba(255,255,255,0.9), rgba(255,255,255,0.9)), url('images/backgrounds/vmx-bg.jpg') center/cover no-repeat;
-  padding: 60px 20px;
-}
-
-.grid-layout {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 25px;
-  margin-bottom: 40px;
-}
-
-.whychoose-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 25px 20px;
-  display: flex;
-  align-items: flex-start;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease;
-}
-
-.whychoose-card:hover {
-  transform: translateY(-5px);
-}
-
-.card-icon {
-  font-size: 1.8rem;
-  color: #689f38;
-  margin-right: 15px;
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.card-text h4 {
-  font-size: 1.1rem;
-  color: #333;
-  font-weight: 600;
-  margin: 0 0 6px;
-}
-
-.card-text p {
-  font-size: 0.95rem;
-  color: #555;
-  line-height: 1.5;
-  margin: 0;
-}
-
-.whychoose-image {
-  text-align: center;
-}
-
-.whychoose-image img {
-  max-width: 100%;
-  border-radius: 10px;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
-  margin-top: 20px;
-}
-
-/*hhh*/
-
-
-/* Features Section */
-.features-section {
-  background-color: #ffffff;
-}
-
-.feature-block {
-  display: flex;
-  background: #ffffff;
-  border-left: 5px solid #8bc34a;
-  margin-bottom: 30px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
-  border-radius: 10px;
-  transition: transform 0.3s ease;
-  padding: 20px 25px;
-}
-
-.feature-block:hover {
-  transform: translateY(-5px);
-}
-
-.icon-area {
-  flex: 0 0 50px;
-  font-size: 1.5rem;
-  color: #8bc34a;
-  margin-right: 20px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-.text-area h4 {
-  font-size: 1.1rem;
-  color: #333;
-  margin-bottom: 6px;
-  font-weight: 600;
-}
-
-.text-area p {
-  font-size: 0.95rem;
-  color: #555;
-  line-height: 1.5;
-  margin-bottom: 10px;
-}
-
-.feature-link {
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-  color: #558b2f;
-  transition: color 0.3s;
-}
-
-.feature-link:hover {
-  color: #33691e;
-}
-.whychoose {
-  background: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)),
-              url('images/vmx/30.jpg') no-repeat center center/cover;
-  padding: 60px 20px;
-}
-
-.whychoose-box {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(5px);
-  border-left: 5px solid #8bc34a;
-}
-
-.whychoose-image img {
-  max-height: 250px;
-  border: 3px solid #e0e0e0;
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
-  opacity: 1;
-}
-
-
-
-/* last*/
-.feature-slider-wrapper {
-  position: relative;
-  overflow: hidden;
-  max-height: 400px;
-}
-
-.feature-slider {
-  display: flex;
-  transition: transform 0.6s ease-in-out;
-}
-
-.feature-slide {
-  min-width: 100%;
-  position: relative;
-  background-size: cover;
-  background-position: center;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 400px;
-}
-
-.overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.panel-content {
-  position: relative;
-  color: #fff;
-  text-align: center;
-  z-index: 1;
-  max-width: 700px;
-  padding: 20px;
-}
-
-.panel-content h2 {
-  font-size: 2rem;
-  margin-bottom: 15px;
-}
-
-.panel-content p {
-  font-size: 1.1rem;
-  margin-bottom: 20px;
-  line-height: 1.6;
-}
-
-.panel-content a {
-  display: inline-block;
-  background-color: #fff;
-  color: #333;
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background 0.3s;
-}
-
-.panel-content a:hover {
-  background-color: #ddd;
-}
-
-.slider-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 2rem;
-  color: white;
-  background: rgba(0,0,0,0.4);
-  border: none;
-  padding: 10px 15px;
-  cursor: pointer;
-  z-index: 2;
-}
-
-.prev { left: 10px; }
-.next { right: 10px; }
-
-.bg-success {
-  background-image: url('images/vmx/29.jpg');
-}
-
-.bg-community {
-  background-image: url('images/vmx/31.jpg');
-}
-
-.bg-announcement {
-  background-image: url('images/vmx/32.jpg');
-}
-
-/* last*/
-
-
-
-</style>
-
-
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VMX — Transforming Infrastructure. Driving Results.</title>
+  <meta name="description" content="Enterprise-grade virtualization without the complexity or cost barriers." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+    rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css">
 </head>
+
 <body>
-<div id="container">
-	<header>
-	<div class="sub-header clearfix">
-		<div class="wrapper">
-			<ul>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="#">terms & conditions</a>
-				</li>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="about.html">about us</a>
-				</li>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="#">login</a>
-				</li>
-				<!-- <li>
-				<i class="fa fa-caret-square-o-right"></i><a href="contact.html">contact us</a>
-				</li> -->
-			</ul>
-			<div class="socials">
-				<a href="#"><i class="fa fa-google-plus"></i></a>
-				<a href="#"><i class="fa fa-twitter"></i></a>
-				<a href="#"><i class="fa fa-pinterest"></i></a>
-				<a href="#"><i class="fa fa-dribbble"></i></a>
-				<a href="#"><i class="fa fa-linkedin"></i></a>
-				<a href="#"><i class="fa fa-facebook"></i></a>
-			</div>
-		</div>
-	</div>
-	<div class="upper-header wrapper">
-		<div class="logo">
-			<a href="index.html"><img src="images/vmx.png"></a>
-		</div>
-		<!-- Navigation -->
-        <div id="nav">
-          <ul id="navlist" class="sf-menu clearfix">
-            <li><a href="index.html"><div class="main-a"> Home </div> <div class="nav-border"></div> <div class="span">start here</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="home-boxed.html"><span>--</span>Home Boxed</a></li>
-                <li><a href="home-blog.html"><span>--</span>Home Blog</a></li>
-                <li><a href="home-portfolio.html"><span>--</span>Home Portfolio</a></li>
-                <li><a href="home-fullportfolio.html"><span>--</span>Home Portfolio Full Screen</a></li>
-                <li><a href="home-dark.html"><span>--</span>Home Dark</a></li>
-              </ul> -->
-            </li>
-           
-            <li><a href="products.html"><div class="main-a"> Products </div> <div class="nav-border"></div> <div class="span">Our Products</div></a></li>
-            <li class="current"><a href="resources.html"><div class="main-a"> Resources </div> <div class="nav-border"></div> <div class="span">what we offer</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="shop.html"><span>--</span>Shop</a></li>
-                <li><a href="shop-list.html"><span>--</span>Shop List View</a></li>
-              </ul> -->
-           </li>
-             <li><a href="about.html"><div class="main-a"> About </div> <div class="nav-border"></div> <div class="span">who we are</div></a></li>
-            <li><a href="contact.html"><div class="main-a"> Contact </div> <div class="nav-border"></div> <div class="span">get in touch</div></a></li>
+
+  <!-- Blue pill decoration -->
+  <div class="blue-pill"></div>
+
+  <!-- Scroll to top -->
+  <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M18 15l-6-6-6 6" />
+    </svg>
+  </button>
+
+  <!-- ── HEADER ─────────────────────────── -->
+  <header class="site-header sticky-top">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg py-3">
+        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+        <div class="collapse navbar-collapse" id="mainNav">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+            <li class="nav-item"><a class="nav-link active" href="index.html">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="products.html">Product</a></li>
+            <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
+            <li class="nav-item"><a class="nav-link" href="pricing.html">Pricing</a></li>
+            <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+            <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+            <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
+            <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
+            <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
           </ul>
         </div>
-        <!-- Navigation -->
-		<div class="clear">
-		</div>
-	</div>
-	</header>
-	<!--end header-->
-	<!-- Slider -->
-	<div class="slider">
-		<div class="fullwidthbanner-container">
-			<div class="fullwidthbanner" id="intro">
-				<ul>
-					<!-- THE FIRST SLIDE -->
-					<!-- <li data-transition="boxfade" data-slotamount="10" data-masterspeed="300"> -->
-					<!-- THE MAIN IMAGE IN THE FIRST SLIDE -->
-					<!-- <img src="images/vmx/20.png" data-fullwidthcentering="on" alt="slide"> -->
-					<!-- THE CAPTIONS IN THIS SLDIE -->
-					<!-- <div class="" data-x="20" data-y="140" data-speed="100" data-start="1600" data-easing="easeOutExpo"> -->
-						<!-- <h4>Welcome to our Website</h4>
-						<p>
-							Streamline Your Data Center Operations
-						</p>
-						<a href="#"><i class="fa fa-arrow-circle-o-right"></i>Learn More</a> -->
-					<!-- </div> -->
-					<!-- <div class="caption lfl" data-x="380" data-y="92" data-speed="300" data-start="2000" data-easing="easeOutExpo">
-						 <img src="images/vmx/19.png" alt="Image" style="display: inline-block;">
-					</div> -->
-					
-					<!-- </li> -->
-					<!-- SECOND SLIDE -->
-						<!-- <li data-transition="3dcurtain-vertical" data-slotamount="10" data-masterspeed="300"> -->
-					<!-- THE MAIN IMAGE IN THE FIRST SLIDE -->
-					<!-- <img src="images/vmx/slide2.png" data-fullwidthcentering="on" alt="slide"> -->
-					<!-- THE CAPTIONS IN THIS SLDIE -->
-					<!-- <div class="caption large_text lft" data-x="center" data-y="122" data-speed="600" data-start="1200" data-easing="easeOutExpo" data-end="7000" data-endspeed="300" data-endeasing="easeInSine">
-						  Streamline Your Virtual Infrastructure 
-					</div>
-					<div class="caption big_white lfb stt" data-x="center" data-y="172" data-speed="500" data-start="1500" data-easing="easeOutExpo" data-end="7100" data-endspeed="300" data-endeasing="easeInSine">
-						 VMX offers a powerful control center for deploying, managing, and scaling virtual environments—all in one place
-					</div>
-					
-					<div class="caption lfl" data-x="372" data-y="237" data-speed="600" data-start="1800" data-easing="easeOutExpo" data-end="7200" data-endspeed="300" data-endeasing="easeInSine">
-						<img src="images/revolution/icon1.png" alt="Image 1">
-					</div>
-					<div class="caption modern_small_text_dark lfb" data-x="382" data-y="370" data-speed="600" data-start="2000" data-easing="easeOutExpo" data-end="7350" data-endspeed="300" data-endeasing="easeInSine">
-						  Download Trial
-					</div>
-					<div class="caption lft" data-x="482" data-y="237" data-speed="600" data-start="2300" data-easing="easeOutExpo" data-end="7400" data-endspeed="300" data-endeasing="easeInSine">
-						<img src="images/revolution/icon2.png" alt="Image 2">
-					</div>
-					<div class="caption modern_small_text_dark lfb" data-x="492" data-y="370" data-speed="600" data-start="2500" data-easing="easeOutExpo" data-end="7450" data-endspeed="300" data-endeasing="easeInSine">
-						Explore Features
-					</div>
-					<div class="caption lft" data-x="592" data-y="237" data-speed="600" data-start="2800" data-easing="easeOutExpo" data-end="7500" data-endspeed="300" data-endeasing="easeInSine">
-						<img src="images/revolution/icon3.png" alt="Image 3">
-					</div>
-					<div class="caption modern_small_text_dark lfb" data-x="610" data-y="370" data-speed="600" data-start="3000" data-easing="easeOutExpo" data-end="7550" data-endspeed="300" data-endeasing="easeInSine">
-						 Monitoring
-					</div> 
-					<div class="caption lfr" data-x="702" data-y="237" data-speed="600" data-start="3300" data-easing="easeOutExpo" data-end="7600" data-endspeed="300" data-endeasing="easeInSine">
-						<img src="images/revolution/icon4.png" alt="Image 4">
-					</div>
-					<div class="caption modern_small_text_dark lfb" data-x="705" data-y="370" data-speed="600" data-start="3500" data-easing="easeOutExpo" data-end="7650" data-endspeed="300" data-endeasing="easeInSine">
-						
-						documentation
-					</div>
-					</li>   -->
+      </nav>
+    </div>
+  </header>
 
-          <li data-transition="3dcurtain-vertical" data-slotamount="10" data-masterspeed="300">
-  <!-- THE MAIN IMAGE IN THE SLIDE -->
-  <img src="images/vmx/slide2.png" data-fullwidthcentering="on" alt="slide">
+  <main>
 
-  <!-- Main Heading -->
-  <div class="caption large_text lft"
-       data-x="center"
-       data-y="120"
-       data-speed="600"
-       data-start="1200"
-       data-easing="easeOutExpo">
-    Streamline Your Virtual Infrastructure
-  </div>
+    <!-- ── HERO ─────────────────────────────── -->
+    <section class="hero-section">
+      <div class="hero-hex-bg"></div>
+      <div class="container text-center py-5">
+        <h1 class="hero-h1 mb-4 " id="heroHeading">
+          <span class="word-line">
+            <span class="reveal-word" data-delay="0">Transforming Infrastructure.</span>
 
-  <!-- Subheading -->
-  <div class="caption big_white lfb stt"
-       data-x="center"
-       data-y="180"
-       data-speed="500"
-       data-start="1500"
-       data-easing="easeOutExpo">
-    VMX offers a powerful control center for managing and scaling your virtual environments
-  </div>
+          </span>
+          <span class="word-line">
+            <span class="reveal-word green" data-delay="0.22">Driving results.</span>
 
-  <!-- Buttons Container -->
-<div class="caption lfb"
-     data-x="center"
-     data-y="300"
-     data-speed="600"
-     data-start="1800"
-     data-easing="easeOutExpo">
-  <div class="button-group">
-    <a href="#download" class="action-btn">
-    Download Trial
-    </a>
-    <a href="#docs" class="action-btn">
-    Read Docs
-    </a>
-  </div>
-</div>
-
-</li>
-
-		<!--slide3-->
-    <!-- THIRD SLIDE -->
-<li data-transition="boxfade" data-slotamount="10" data-masterspeed="300">
-  <!-- MAIN IMAGE -->
-  <img src="images/vmx/slide4.png" data-fullwidthcentering="on" alt="VMX Demo Slide">
-
-  <!-- Main Heading -->
-  <div class="caption large_text lft"
-       data-x="right"
-       data-hoffset="-50"
-       data-y="center"
-       data-voffset="-40"
-       data-speed="600"
-       data-start="1200"
-       data-easing="easeOutExpo"
-       style="color: #ffffff; font-weight: bold; text-align: right;">
-    Empower Your Infrastructure with VMX
-
-  </div>
-
-  <!-- Subheading -->
-  <div class="caption big_white lfb stt"
-       data-x="right"
-       data-hoffset="-50"
-       data-y="center"
-       data-voffset="10"
-       data-speed="500"
-       data-start="1500"
-       data-easing="easeOutExpo"
-       style="color: #f1f1f1; text-align: right;">
-    Simplify VM deployment, monitoring, and scaling with our unified control center
-
-  </div>
-
-  <!-- Read More Button -->
-  <div class="caption lfb stt"
-       data-x="right"
-       data-hoffset="-50"
-       data-y="center"
-       data-voffset="60"
-       data-speed="500"
-       data-start="1800"
-       data-easing="easeOutExpo">
-    <a href="#about" class="read-more-btn small">Read More</a>
-  </div>
-</li>
-
-
-
-    <!-- EMBEDDED VIDEO (Resized) -->
-    <!-- <div class="tp-caption video sfr"
-         data-x="right"
-         data-hoffset="-60"
-         data-y="center"
-         data-voffset="-100"
-         data-speed="1000"
-         data-start="1000"
-         data-easing="easeOutBack">
-        <iframe width="400" height="225"
-                src="https://www.youtube.com/embed/YE7VzlLtp-4?hd=1&amp;wmode=opaque&amp;controls=1&amp;showinfo=0&amp;rel=0"
-                frameborder="0"
-                allowfullscreen
-                style="border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-        </iframe>
-    </div> -->
-</li> 
-
-				</ul>
-				<div class="tp-bannertimer">
-				</div>
-			</div>
-		</div>
-	</div>
-	<!----jjj-->
-	<div class="wrapper dark features mb20">
-		<div class="column4">
-			<div class="feature-box">
-				<div class="feat-text">
-					<h4>VMX Platform</h4>
-					<p class="font-15 ">
-
-				   VMX is a powerful platform for business virtualization. It allows you to manage VMs, containers, clustering, and storage through one simple, unified web interface.
-					</p>
-				</div>
-							<i class="fa fa-desktop"></i>
-			</div>
-		</div>
-		<div class="column4">
-			<div class="feature-box">
-				<div class="feat-text">
-					<h4>Compatibility</h4>
-					<p class="font-15 ">	
-						VMX makes it simple to migrate VMs and containers across nodes with minimal downtime, supporting flexible growth and scalable infrastructure management.
-					</p>
-				</div>
-					<i class="fa fa-cogs"></i>
-			</div>
-		</div>
-		<div class="column4">
-			<div class="feature-box">
-				<div class="feat-text">
-					<h4>Easy Migration</h4>
-					<p class="font-15 ">
-						VMX enables easy migration of virtual machines and containers across nodes, minimizing downtime and ensuring seamless infrastructure scalability and flexibility.
-					</p>
-				</div>
-					<i class="fa fa-exchange"></i>
-			</div>
-		</div>
-		<div class="clear">
-		</div>
-	</div>
-	
-	<div class="wrapper vmx-control-center">
-  <div class="control-content">
-    <div class="overlay"></div> <!-- Dark overlay for readability -->
-    <div class="control-inner">
-      <div class="text-section">
-        <h3 class="main-title">Unified Control Center</h3>
-        <p class="font-15">
-          VMX offers a sleek, modern dashboard that centralizes your virtual machine operations. Whether you're spinning up new VMs, managing storage, or orchestrating container clusters—do it all from one place.
+          </span>
+        </h1>
+        <p class="hero-lead mx-auto mb-5 gsap-init" id="heroLead">
+          All the power, control, and scalability of enterprise virtualization with none of the complexities or cost
+          barriers.
         </p>
-        <ul class="feature-list">
-          <li><i class="fa fa-check-circle"></i> Visual console access to all VMs</li>
-          <li><i class="fa fa-check-circle"></i> Real-time logs & alerts</li>
-          <li><i class="fa fa-check-circle"></i> Batch operations & scheduling</li>
-          <li><i class="fa fa-check-circle"></i> API support for automation tools</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</div>
-<br>
-
-	
-	
-	
-	
-	<div class="recent-work">
-		<h3 class="main-title">Our Partners </h3>
-		<span class="main-subtitle font-15 ">Proudly collaborating with innovative technology partners.</span>
-		<div class="list_carousel responsive">
-			<ul id="foo4">
-				
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p1.jpg"/>
-					<div class="mask">
-						<a href="images/recent3.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				<!-- <div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div> -->
-				</li>
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p3.png"/>
-					<div class="mask">
-						<a href="images/recent4.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				<!-- <div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div> -->
-				</li>
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p5.png"/>
-					<div class="mask">
-						<a href="images/recent5.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				<!-- <div class="desc">
-					<h4>Architecture Design</h4>
-					<span>plans, buildings</span>
-				</div> -->
-				</li>
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p2.png"/>
-					<div class="mask">
-						<a href="images/recent1.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				
-				</li>
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p6.png"/>
-					<div class="mask">
-						<a href="images/recent2.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				
-				</li>
-				<li>
-				<div class="view view-sixth">
-					<img src="images/vmx/p7.png"/>
-					<div class="mask">
-						<a href="images/recent3.jpg" data-fancybox-group="group"><i class="fa fa-search"></i></a>
-						<a href="#"><i class="fa fa-file-o"></i></a>
-					</div>
-				</div>
-				
-				
-				</li>
-			</ul>
-			<div class="clearfix">
-			</div>
-			<a id="prev3" class="prev" href="#">&lt;</a>
-			<a id="next3" class="next" href="#">&gt;</a>
-		</div>
-		<!-- End List Carousel -->
-	</div>
-<!-- Start Why Choose VMX -->
-<div class="whychoose">
-  <div class="wrapper">
-    <h3 class="main-title">Why Choose VMX?</h3>
-    <div class="whychoose-container grid-layout">
-      
-      <div class="whychoose-card">
-        <div class="card-icon"><i class="fa fa-comments"></i></div>
-        <div class="card-text">
-          <h4>Assistance</h4>
-          <p>Enterprise-grade support to ensure smooth operations and quick issue resolution.</p>
+        <div class="d-flex justify-content-center gap-3 gsap-init" id="heroCtas">
+          <a href="contact.html" class="btn btn-primary px-4 py-3">Request a Demo</a>
+          <a href="products.html" class="btn btn-outline-secondary px-4 py-3">Explore Features</a>
         </div>
       </div>
+    </section>
 
-      <div class="whychoose-card">
-        <div class="card-icon"><i class="fa fa-play"></i></div>
-        <div class="card-text">
-          <h4>Execution</h4>
-          <p>Reliable implementation and expert consulting tailored for business success.</p>
-        </div>
-      </div>
-
-      <div class="whychoose-card">
-        <div class="card-icon"><i class="fa fa-file-text"></i></div>
-        <div class="card-text">
-          <h4>Documentation</h4>
-          <p>Clear, comprehensive guides that empower users to use VMX effectively.</p>
-        </div>
-      </div>
-
-    </div>
-
-  </div>
-</div>
-
-
-	<!-- End Features2 -->
-<div class="feature-slider-wrapper">
-  <div class="feature-slider">
-
-    <div class="feature-slide bg-success active">
-      <div class="overlay"></div>
-      <div class="panel-content">
-        <h2>Success Stories</h2>
-        <p>Explore how top organizations scaled faster, reduced costs, and boosted performance by switching to VMX.</p>
-        <a href="#">Explore Case Studies →</a>
-      </div>
-    </div>
-
-    <div class="feature-slide bg-community">
-      <div class="overlay"></div>
-      <div class="panel-content">
-        <h2>Vibrant Community</h2>
-        <p>Join a global network of developers, engineers, and IT leaders shaping the future of virtual environments.</p>
-        <a href="#">Join Our Community →</a>
-      </div>
-    </div>
-
-    <div class="feature-slide bg-announcement">
-      <div class="overlay"></div>
-      <div class="panel-content">
-        <h2>Latest Announcements</h2>
-        <p>Be the first to experience next-gen capabilities including clustered storage, enhanced security, and fast deployment.</p>
-        <a href="#">Read the News →</a>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Navigation Buttons -->
-   
-			<a id="prev3" class="prev" href="#">&lt;</a>
-			<a id="next3" class="next" href="#">&gt;</a>
-	
-</div>
-
-
-
-
-
-
-
-
-	<!-- End Recent Posts -->
-	<div class="info-box">
-		<a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
-		<div class="info-content">
-			<ul>
-				<li><i class="fa fa-phone"></i>9930 1234 5679</li>
-				<li><i class="fa fa-envelope"></i><a href="#">contact@vmx.com</a></li>
-				<li><i class="fa fa-home"></i>street address example</li>
-			</ul>
-		</div>
-	</div>
-	
-
-	  <footer>
-
-    <div class="inner-footer">
-      <div class="wrapper clearfix">
-        <div class="dark">
-          <div class="column3 message-form">
-            <img class="footer-logo" src="images/vmx/footerlogo.png" alt="">
-            <p>Green Cloud Services CO LLC
-2719 Hollywood Blvd.Hollywood, FL 33020, USA </p>
-      
+    <!-- ── UPGRADE ───────────────────────────── -->
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-6" id="upgradeText">
+            <h2 class="section-h mb-4">
+              <span class="word-line scroll-reveal" data-words="Give Your" data-delays="0,0.08"></span>
+              <span class="word-line scroll-reveal" data-words="Infrastructure" data-delays="0.18"></span>
+              <span class="word-line scroll-reveal" data-words="an Upgrade" data-delays="0.28,0.36"></span>
+            </h2>
+            <p class="text-muted mb-3">Modernize your IT environment to deliver greater performance, tighter security,
+              and lower operational costs with the VMX enterprise virtualization solution.</p>
+            <p class="text-muted mb-4">Whether you're looking to consolidate servers, support remote teams, or prepare
+              for future growth, VMX gives you the flexibility to adapt and scale—without complexity and high costs of
+              building new systems from scratch.</p>
           </div>
+          <div class="col-lg-6" id="upgradeImg">
 
-          <div class="column3 contact">
-           
+            <div class="upgrade-img" style="border:2px solid #ddd; border-radius:18px">
+              <img src="images/vmx/index-1.jpeg" alt="Infrastructure upgrade"
+                style="width:100%; height:280px; object-fit:cover; border-radius:16px">
+            </div>
 
-            <h4>Contact info</h4>
-            <p class="f-phone"><i class="fa fa-phone"></i><span>(844)2202204 (Toll free)</span></p>
-            <a  href="#" class="f-mail"><i class="fa fa-envelope"></i><span>support@greencloud.live</span></a>
           </div>
-          <div class="container footer-links">
-  <div class="column3 contact">
-    <h4 style="padding-right: 15px !important;">Useful Links</h4>
-    <ul>
-    <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Home</a></li>
-    <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Products</a></li>
-    <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Resources</a></li>
-    <li><a href="#"><i class="fa fa-arrow-circle-right"></i> About</a></li>
-    <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Contact</a></li>
-    </ul>
-  </div>
-</div>
-
         </div>
-        <!-- End Dark -->
+      </div>
+    </section>
+
+    <!-- ── GREEN CLOUD WAY ───────────────────── -->
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5 max-w-700" id="wayHead">
+          <h2 class="section-h mb-3">
+            <span class="word-line scroll-reveal" data-words="Enterprise Virtualization," data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="the Green Cloud Way."
+              data-delays="0.2,0.28,0.36,0.44"></span>
+          </h2>
+          <p class="text-muted mt-3">Comprehensive, user-friendly design. Clean architecture. Powerful
+            infrastructure—engineered for simplicity, built to scale, and designed to meet the evolving needs of the
+            modern IT environment.</p>
+        </div>
+        <div class="row g-4" id="wayCards">
+          <div class="col-md-6 col-lg-3">
+            <div class="way-card gsap-init">
+              <div class="card-icon mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <h3 class="h5 mb-2">Full Enterprise Solution</h3>
+              <p class="text-muted small mb-0">From startups to global enterprises—all the enterprise-grade capabilities
+                you need.</p>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-3">
+            <div class="way-card gsap-init">
+              <div class="card-icon mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+                </svg>
+              </div>
+              <h3 class="h5 mb-2">Clean Design Architecture</h3>
+              <p class="text-muted small mb-0">Designed for easy maintenance, consistent performance, and long-term
+                reliability.</p>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-3">
+            <div class="way-card gsap-init">
+              <div class="card-icon mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </div>
+              <h3 class="h5 mb-2">Built for Future Growth</h3>
+              <p class="text-muted small mb-0">Scalable. Adaptable. Sustainable. Virtualization that grows with your
+                business.</p>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-3">
+            <div class="way-card gsap-init">
+              <div class="card-icon mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2">
+                  <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+                  <path
+                    d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+                </svg>
+              </div>
+              <h3 class="h5 mb-2">Unparalleled Support 24/7</h3>
+              <p class="text-muted small mb-0">All the technical support you need, when you need it. 24 hours a day, 7
+                days a week.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ONE SOLUTION ──────────────────────── -->
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5" style="max-width:820px" id="limitlessHead">
+          <h2 class="section-h mb-3">
+            <span class="word-line scroll-reveal" data-words="One Solution." data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="Limitless Application." data-delays="0.2,0.29"></span>
+          </h2>
+          <p class="text-muted mt-3">There is no one-size-fits-all solution to enterprise virtualization, but somehow,
+            we have been able to create one tool to meet every use case. From virtual machine cloning to
+            multi-environment orchestration, nested virtualization, and seamless workload migration, you've got all the
+            features your business needs, neatly packaged in one clean, user-friendly system.</p>
+          <p class="mt-3 fw-semibold">All the Features You Need</p>
+        </div>
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="featGrid">
+          <!-- Feature cards -->
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <path d="M8 21h8M12 17v4" />
+                </svg></div>
+              <h3>Basic Virtualization</h3>
+              <p>Create and manage virtual machines on physical hardware.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M8 17l4-4 4 4M12 13V3" />
+                  <rect x="2" y="17" width="20" height="4" rx="1" />
+                </svg></div>
+              <h3>VM Cloning</h3>
+              <p>Instantly duplicate existing VMs for testing or deployment.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9,22 9,12 15,12 15,22" />
+                </svg></div>
+              <h3>Nested Virtualization</h3>
+              <p>Run virtual machines inside other virtual machines.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg></div>
+              <h3>Live VM Migration</h3>
+              <p>Move running VMs between hosts without downtime.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v4l3 3" />
+                </svg></div>
+              <h3>Live Storage Migration</h3>
+              <p>Transfer VM storage while machines stay running.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17,8 12,3 7,8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg></div>
+              <h3>VMX Replication</h3>
+              <p>Replicate VMs for disaster recovery.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13,2 3,14 12,14 11,22 21,10 12,10" />
+                </svg></div>
+              <h3>Native Performance</h3>
+              <p>Achieve near-bare-metal performance with minimal overhead.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path
+                    d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
+                </svg></div>
+              <h3>Hotplugging</h3>
+              <p>Add/remove hardware components without VM shutdown.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" />
+                  <line x1="6" y1="6" x2="6" y2="6" />
+                  <line x1="6" y1="18" x2="6" y2="18" />
+                </svg></div>
+              <h3>iSCSI &amp; FC Support</h3>
+              <p>Connect to enterprise storage via iSCSI and Fibre Channel.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg></div>
+              <h3>Local Disks, LVM, NFS</h3>
+              <p>Use local drives, LVM, and NFS storage backends.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg></div>
+              <h3>nBalance WAF Support</h3>
+              <p>Integrate with nBalance Web Application Firewall.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg></div>
+              <h3>Immutable backup Support</h3>
+              <p>Tamper-proof backups powered by G-Immute technology.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 6s4-2 11-2 11 2 11 2M1 12s4-2 11-2 11 2 11 2M1 18s4-2 11-2 11 2 11 2" />
+                </svg></div>
+              <h3>VM Monitoring Alerts</h3>
+              <p>Automated notifications for VM performance and health.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SUPPORT ────────────────────────────── -->
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5" style="max-width:820px" id="supportHead">
+          <h2 class="section-h mb-3">
+            <span class="word-line scroll-reveal" data-words="Round-the-Clock" data-delays="0,0.09,0.18"></span>
+            <span class="word-line scroll-reveal" data-words="Virtualization Support" data-delays="0.28,0.37"
+              data-colors=",green"></span>
+          </h2>
+          <p class="text-muted mt-3">Your virtualization solution is only as good as the maintenance and support
+            services that keep things running smoothly. We offer round-the-clock, enterprise-grade security, monitoring,
+            and management services to ensure that your system remains optimized, secured, and running smoothly.</p>
+        </div>
+        <div class="row g-5 align-items-start" id="supportContent">
+          <div class="col-lg-5">
+
+            <div class="support-list-item active" data-image="images/vmx/img-1.webp">
+              <span class="s-num">1. Third-Party Integration Support</span>
+              <h4>Connect external applications</h4>
+              <p>Connect and integrate with external applications and services.</p>
+            </div>
+
+            <div class="support-list-item" data-image="images/vmx/img-2.webp">
+              <span class="s-num">2. System Health Monitoring</span>
+              <h4>Track performance</h4>
+              <p>Track overall system performance and infrastructure status.</p>
+            </div>
+
+            <div class="support-list-item" data-image="images/vmx/img-3.webp">
+              <span class="s-num">3. Patch Management & Updates</span>
+              <h4>Automated security patches</h4>
+              <p>Automated security patches and system updates.</p>
+            </div>
+
+            <div class="support-list-item" data-image="images/vmx/img-4.webp">
+              <span class="s-num">4. Performance Optimization</span>
+              <h4>Fine-tune resources</h4>
+              <p>Fine-tune system resources for maximum efficiency.</p>
+            </div>
+
+            <div class="support-list-item" data-image="images/vmx/img-5.webp">
+              <span class="s-num">5. Configuration Support</span>
+              <h4>Setup & Customization</h4>
+              <p>Assistance with system setup and customization.</p>
+            </div>
+
+            <div class="support-list-item" data-image="images/vmx/img-6.webp">
+              <span class="s-num">6. Training & Enablement</span>
+              <h4>User Education</h4>
+              <p>User education and skill development programs.</p>
+            </div>
+
+          </div>
+          <div class="col-lg-7">
+
+            <div class="text-center">
+
+              <div class="support-img-wrap text-center">
+                <img id="supportImage" src="images/vmx/img-1.webp" alt="Support" class="img-fluid rounded">
+              </div>
+
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PRICING ────────────────────────────── -->
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5" style="max-width:840px" id="pricingHead">
+          <h2 class="section-h mb-3">
+            <span class="word-line scroll-reveal" data-words="Flexible Plans" data-delays="0,0.09"
+              data-colors=",green"></span>
+            <span class="word-line scroll-reveal" data-words="for Every Team" data-delays="0.2,0.29,0.38"
+              data-colors=",,dim"></span>
+          </h2>
+          <p class="text-muted mt-3">VMX is enterprise virtualization made affordable. Whether you're just getting
+            started or managing complex multi-site infrastructure, our subscription models are built to scale with you.
+          </p>
+        </div>
+        <div class="row g-4 justify-content-center" id="pricingCards">
+          <div class="col-md-6 col-lg-4">
+            <div class="price-card gsap-init">
+              <div class="tier">Core</div>
+              <p class="text-muted small mb-4">Essentialise your brand presence with our Essential Package</p>
+
+              <hr>
+              <a href="pricing.html" class="btn btn-outline-secondary w-100 py-3 mt-2">Get Started Now →</a>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-4">
+            <div class="price-card featured gsap-init">
+              <div class="tier">Business</div>
+              <p class="mb-4" style="color:rgba(255,255,255,0.7);font-size:0.875rem">Unlock your brand's potential with
+                our Standard Package</p>
+
+              <hr style="border-color:rgba(255,255,255,0.3)">
+              <a href="pricing.html" class="btn btn-light w-100 py-3 mt-2 fw-semibold"
+                style="color:var(--green-primary)">Get Started Now →</a>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-4">
+            <div class="price-card gsap-init">
+              <div class="tier">Enterprise</div>
+              <p class="text-muted small mb-4">The pinnacle of creativity &amp; performance with our Premium Package</p>
+
+              <hr>
+              <a href="pricing.html" class="btn btn-outline-secondary w-100 py-3 mt-2">Get Started Now →</a>
+            </div>
+          </div>
+        </div>
+        <p class="text-center price-note mt-4">You have a large team? <a href="contact.html"
+            class="text-decoration-none" style="color:var(--green-primary)">Contact us</a> for information about more
+          enterprise options.</p>
+      </div>
+    </section>
+
+    <!-- ── STATS (SCATTERED) ──────────────────── -->
+    <section class="section-soft stats-scatter-section py-5">
+      <div class="container py-4">
+        <div class="text-center mb-2" id="statsHead">
+          <h2 class="section-h">
+            <span class="word-line scroll-reveal" data-words="A journey of innovation"
+              data-delays="0,0.07,0.14,0.21"></span>
+            <span class="word-line scroll-reveal" data-words="and success" data-delays="0.3,0.37"></span>
+          </h2>
+        </div>
+        <div class="scatter-wrap" id="scatterWrap">
+          <!-- World ring decoration -->
+          <svg class="scatter-bg-rings" width="600" height="400" viewBox="0 0 600 400">
+            <circle cx="300" cy="200" r="180" stroke-dasharray="4 10" />
+            <circle cx="300" cy="200" r="130" stroke-dasharray="4 10" />
+            <circle cx="300" cy="200" r="80" stroke-dasharray="4 10" />
+          </svg>
+          <!-- Scatter cards -->
+          <div class="scard scard-1 gsap-init">
+            <div class="s-icon">𝕏</div>
+            <div class="s-num">18k+</div>
+            <div class="s-label">Code Commit</div>
+          </div>
+          <div class="scard scard-2 gsap-init">
+            <div class="s-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+            </div>
+            <div class="s-num">9k+</div>
+            <div class="s-label">Projects Completed</div>
+          </div>
+          <div class="scard scard-3 gsap-init">
+            <div class="s-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
+            <div class="s-num">126+</div>
+            <div class="s-label">Awards Achieved</div>
+          </div>
+          <div class="scard scard-4 gsap-init">
+            <div class="s-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+              </svg>
+            </div>
+            <div class="s-num">20k+</div>
+            <div class="s-label">Users Monthly</div>
+          </div>
+          <div class="scard scard-5 gsap-init">
+            <div class="s-icon">in</div>
+            <div class="s-num">1B+</div>
+            <div class="s-label">Requests Served</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TESTIMONIALS ───────────────────────── -->
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="text-center mb-5" id="testiHead">
+          <h2 class="section-h">
+            <span class="word-line scroll-reveal" data-words="Loved by developers" data-delays="0,0.08,0.16"></span>
+            <span class="word-line scroll-reveal" data-words="like you" data-delays="0.26,0.33"></span>
+          </h2>
+        </div>
+        <div class="row g-4" id="testiGrid">
+          <!-- Left col: 2 stacked testimonials -->
+          <div class="col-lg-5 d-flex flex-column gap-4">
+            <div class="testi-card gsap-init">
+              <p class="quote">"I feels like the first time I booted my computer with an SSD. It's so much faster and
+                simpler that it changed how I do things, feels like the first time I booted my computer with an SSD.
+                It's so much faster and simpler that it changed how I do things."</p>
+              <div class="reviewer">
+                <div class="avatar">D</div>
+                <div>
+                  <span class="testi-name">David Chen</span>
+                  <span class="testi-role">CEO / BaseHub</span>
+                </div>
+              </div>
+            </div>
+            <div class="testi-card gsap-init">
+              <p class="quote">"After spending many hours on auth issues that seemed simple (but were not), we moved to
+                and all that burden was lifted. We kind of wish we'd made that decision earlier."</p>
+              <div class="reviewer">
+                <div class="avatar">C</div>
+                <div>
+                  <span class="testi-name">Chris Phan</span>
+                  <span class="testi-role">CEO / GitHub</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Middle: Clutch badge -->
+          <div class="col-lg-2 d-flex">
+            <div class="clutch-card w-100 gsap-init">
+              <div class="clutch-logo">Clutch</div>
+              <div class="clutch-ring">4.9</div>
+              <div class="stars">★★★★★</div>
+              <div class="clutch-sub">Based on 24 reviews</div>
+            </div>
+          </div>
+          <!-- Right col: 2 stacked testimonials -->
+          <div class="col-lg-5 d-flex flex-column gap-4">
+            <div class="testi-card gsap-init">
+              <p class="quote">"We tried them all, no other software beats Tecko. We redesigned our feedback loop to
+                extract concrete customer insights in no time with the autopilot feature. It's a no-brainer for any
+                product team."</p>
+              <div class="reviewer">
+                <div class="avatar">M</div>
+                <div>
+                  <span class="testi-name">MoxiGaming</span>
+                  <span class="testi-role">CEO / Taskfun</span>
+                </div>
+              </div>
+            </div>
+            <div class="testi-card gsap-init">
+              <p class="quote">"Tecko has revolutionized how I manage my finances. From paying bills effortlessly to
+                ensuring I get paid on time, it's become an indispensable tool for my business. Highly recommended!"</p>
+              <div class="reviewer">
+                <div class="avatar">D</div>
+                <div>
+                  <span class="testi-name">Dev Nguyen</span>
+                  <span class="testi-role">CEO / Slice</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── FAQ ───────────────────────────────── -->
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5" style="max-width:640px" id="faqHead">
+          <h2 class="section-h">
+            <span class="word-line scroll-reveal" data-words="Frequently asked" data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="questions" data-delays="0.2"></span>
+          </h2>
+        </div>
+        <div class="row justify-content-center" id="faqAccordionWrap">
+          <div class="col-lg-8">
+            <div class="accordion accordion-flush" id="faqAccordion">
+              <div class="accordion-item">
+                <h3 class="accordion-header">
+                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                    How experienced is your team?
+                  </button>
+                </h3>
+                <div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                  <div class="accordion-body p-4 pt-0 text-muted small">Our team is highly experienced, with each member
+                    bringing a diverse range of skills and knowledge acquired through years of dedicated work.</div>
+                </div>
+              </div>
+              <div class="accordion-item">
+                <h3 class="accordion-header">
+                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                    What sets VMX apart from others?
+                  </button>
+                </h3>
+                <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                  <div class="accordion-body p-4 pt-0 text-muted small">VMX combines enterprise-grade capability with a
+                    clean, simple architecture. No bloated stacks—just one powerful platform.</div>
+                </div>
+              </div>
+              <div class="accordion-item">
+                <h3 class="accordion-header">
+                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                    How do you handle project timelines and deadlines?
+                  </button>
+                </h3>
+                <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                  <div class="accordion-body p-4 pt-0 text-muted small">We follow structured milestone management plans
+                    tracking targets smoothly step-by-step.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── CTA ───────────────────────────────── -->
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="cta-banner p-5 text-center text-white" id="ctaBanner">
+          <h2 class="text-white mb-3">Experience the Future <br>of Virtual Infrastructure</h2>
+          <p style="color:rgba(255,255,255,0.6);max-width:540px;margin:0 auto 2rem">See firsthand how our virtualization
+            solution can transform your business. Book a free demo today.</p>
+          <a href="contact.html" class="btn btn-light text-dark px-4 py-3 fw-semibold">Book a Demo</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── FOOTER ────────────────────────────── -->
+  <footer class="bg-white text-secondary py-5 border-top mt-5">
+    <div class="container py-4">
+      <div class="row g-5 border-bottom pb-5 mb-4">
+        <div class="col-lg-4">
+          <div class="mb-5">
+            <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo">
+          </div>
+          <div class="d-flex gap-3 fs-5 mb-4">
+            <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+            <a href="#" class="text-secondary text-decoration-none">in</a>
+          </div>
+          <div class="mt-4 d-flex gap-2">
+            <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
+              style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+            <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-2">
+          <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+            <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+            <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+            <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+            <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+            <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+          </ul>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+            <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL 33020, USA</li>
+            <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+            <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+            <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="text-center text-muted" style="font-size:0.8rem">
+        <span>&copy; 2025 , All Rights Reserved</span>
       </div>
     </div>
-    
-	<!-- End Inner Footer -->
-	<div class="last-div clearfix">
-		<div class="wrapper">
-			<div class="copyright">
-				 © 2025 , All Rights Reserved
-			</div>
-			<div id="back-to-top">
-				<a href="#top">Back to Top</a>
-			</div>
-			<div class="f-socials">
-				<a href="#"><i class="fa fa-google-plus"></i></a>
-				<a href="#"><i class="fa fa-twitter"></i></a>
-				<a href="#"><i class="fa fa-pinterest"></i></a>
-				<a href="#"><i class="fa fa-dribbble"></i></a>
-				<a href="#"><i class="fa fa-linkedin"></i></a>
-				<a href="#"><i class="fa fa-facebook"></i></a>
-			</div>
-		</div>
-	</div>
-	<!-- End Last Div -->
-	</footer>
-	<!--end footer-->
-</div>
-<div class="preloader">
-	<img alt="" src="images/preloader.gif">
-</div>
-<!-- include jQuery -->
+  </footer>
 
-<script src="js/jquery.min.js"></script>
-<script type="text/javascript" src="js/jquery.imagesloaded.min.js"></script>
-<script type="text/javascript" src="js/jquery.isotope.min.js"></script>
-<script type="text/javascript" src="js/script.js"></script>
-<script type="text/javascript" src="js/jquery.fancybox-1.3.4.pack.js"></script>
-<script type="text/javascript" src="js/jquery.superfish.js"></script>
-<script type="text/javascript" src="js/jquery.flexslider.js"></script>
-<script src="js/jquery.bxslider.js"></script>
-<script src="js/twitter.js"></script>
-<!-- Revolution Slider -->
-<script>
-  let currentSlide = 0;
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 
-  function changeSlide(direction) {
-    const slides = document.querySelectorAll('.feature-slide');
-    const totalSlides = slides.length;
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
 
-    currentSlide = (currentSlide + direction + totalSlides) % totalSlides;
-    const offset = currentSlide * -100;
+    /* ─── UTILITY: build word spans inside .scroll-reveal elements ─── */
+    function buildScrollReveal() {
+      document.querySelectorAll('.scroll-reveal').forEach(line => {
+        const words = line.dataset.words.split(',');
+        const delays = (line.dataset.delays || '').split(',').map(Number);
+        const colors = (line.dataset.colors || '').split(',');
+        line.innerHTML = '';
+        words.forEach((word, i) => {
+          const span = document.createElement('span');
+          span.className = 'reveal-word';
+          if (colors[i] === 'green') span.classList.add('green');
+          if (colors[i] === 'dim') span.classList.add('dim');
+          span.textContent = word + ' ';
+          span.dataset.delay = delays[i] || 0;
+          line.appendChild(span);
+        });
+      });
+    }
+    buildScrollReveal();
 
-    document.querySelector('.feature-slider').style.transform = `translateX(${offset}%)`;
-  }
+    /* ─── HERO ANIMATION ─── */
+    const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
+    gsap.set(heroWords, { opacity: 0, y: '110%' });
 
-  // ⏳ Auto-slide every 5 seconds
-  setInterval(() => {
-    changeSlide(1);
-  }, 5000); // 5000ms = 5 seconds
-</script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const tl = gsap.timeline({ delay: 0.2 });
+      heroWords.forEach(w => {
+        tl.to(w, {
+          opacity: 1, y: '0%',
+          duration: 0.75,
+          ease: 'power3.out'
+        }, parseFloat(w.dataset.delay));
+      });
+
+      tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.55);
+      tl.to('#heroCtas', { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 0.7);
+      gsap.set(['#heroLead', '#heroCtas'], { y: 24 });
+    });
+
+    /* ─── GENERIC SCROLL WORD REVEAL ─── */
+    function registerWordReveal(headingEl) {
+      if (!headingEl) return;
+      const words = headingEl.querySelectorAll('.reveal-word');
+      if (!words.length) return;
+      ScrollTrigger.create({
+        trigger: headingEl,
+        start: 'top 82%',
+        onEnter: () => {
+          words.forEach(w => {
+            gsap.to(w, {
+              opacity: 1, y: '0%',
+              duration: 0.8,
+              delay: parseFloat(w.dataset.delay) || 0,
+              ease: 'power3.out'
+            });
+          });
+        }
+      });
+    }
+
+    // Register all section headings
+    document.querySelectorAll('[id$="Head"], [id$="Text"]').forEach(el => {
+      registerWordReveal(el.querySelector('h2') || el);
+    });
+
+    /* ─── GSAP-INIT FADE-UP ─── */
+    gsap.utils.toArray('.gsap-init').forEach((el, i) => {
+      gsap.set(el, { opacity: 0, y: 36 });
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 88%',
+        onEnter: () => {
+          gsap.to(el, {
+            opacity: 1, y: 0,
+            duration: 0.65,
+            delay: (i % 4) * 0.08,
+            ease: 'power2.out'
+          });
+        }
+      });
+    });
+
+    /* ─── UPGRADE SECTION ─── */
+    gsap.set('#upgradeImg', { opacity: 0, x: 50 });
+    ScrollTrigger.create({
+      trigger: '#upgradeText',
+      start: 'top 75%',
+      onEnter: () => {
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 1, ease: 'power3.out' });
+      }
+    });
+
+    /* ─── SUPPORT SIDEBAR INTERACTION ─── */
+    const supportItems = document.querySelectorAll('.support-list-item');
+    supportItems.forEach(item => {
+      item.addEventListener('click', () => {
+        supportItems.forEach(s => s.classList.remove('active'));
+        item.classList.add('active');
+      });
+    });
+
+    /* ─── SCATTER CARDS STAGGER ─── */
+    ScrollTrigger.create({
+      trigger: '#scatterWrap',
+      start: 'top 75%',
+      onEnter: () => {
+        gsap.to('.scard', {
+          opacity: 1, y: 0, scale: 1,
+          stagger: 0.12,
+          duration: 0.7,
+          ease: 'back.out(1.4)'
+        });
+      }
+    });
+    gsap.set('.scard', { opacity: 0, y: 30, scale: 0.9 });
+
+    /* ─── SCROLL-TO-TOP BUTTON ─── */
+    const scrollBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+      scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
 
 
-<script type="text/javascript" src="js/jquery.themepunch.plugins.min.js"></script>
-<script type="text/javascript" src="js/jquery.themepunch.revolution.js"></script>
-<script type="text/javascript">
-    var tpj=jQuery;
-    tpj.noConflict();
-    tpj(document).ready(function() {
-      if (tpj.fn.cssOriginal!=undefined)
-      tpj.fn.css = tpj.fn.cssOriginal;
-      tpj('.fullwidthbanner').revolution({
-        delay:6000,
-        startwidth:1170,
-        startheight:680,
-        onHoverStop: "on",
-                thumbWidth: 100,
-                thumbHeight: 50,
-                thumbAmount: 3,
-                hideThumbs: 200,
-                navigationType: "bullet",
-                navigationArrows: "verticalcentered",
-                navigationStyle: "round",
-                touchenabled: "on",
-                navOffsetHorizontal: 0,
-                navOffsetVertical: 20,
-                stopAtSlide: -1,
-                stopAfterLoops: -1,
-                hideCaptionAtLimit: 0,
-                hideAllCaptionAtLilmit: 0,
-                hideSliderAtLimit: 0,
-                fullWidth: "on",
-                shadow: 0
+    document.querySelectorAll(".support-list-item").forEach(item => {
+      item.addEventListener("click", function () {
+
+        document.querySelectorAll(".support-list-item").forEach(el => {
+          el.classList.remove("active");
+        });
+
+        this.classList.add("active");
+
+        document.getElementById("supportImage").src =
+          this.dataset.image;
       });
     });
   </script>
-
-<!-- include jQuery + carouFredSel plugin -->
-<script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
-<!-- optionally include helper plugins -->
-<script type="text/javascript" language="javascript" src="js/jquery.mousewheel.min.js"></script>
-<script type="text/javascript" language="javascript" src="js/jquery.touchSwipe.min.js"></script>
 </body>
+
 </html>

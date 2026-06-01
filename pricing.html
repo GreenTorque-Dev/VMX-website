@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pricing — VMX Solution That Grows With You</title>
+    <meta name="description" content="Three plans. Complete control. Virtualization solution that grows with you." />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+        rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css">
+
+    <style>
+        /* ─── STYLE VARIABLES MANIFEST ─── */
+        :root {
+            --green-primary: #60A630;
+            --green-banner-bg: #74B83E;
+            --text-dark: #1A1A1A;
+            --gray-row-bg: #F8F9FA;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #4A4A4A;
+            background-color: #FAFAFA;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        .section-h {
+            font-family: 'Red Hat Display', sans-serif;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .hero-h1-huge {
+            font-size: 4.5rem;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+        }
+
+        /* ─── DYNAMIC PRICING CARDS MAPPING ─── */
+        .card-tier-container {
+            background: #FFFFFF;
+            border: 1px solid #EAECEF;
+            border-radius: 20px;
+            padding: 3.5rem 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Business Plan Card Highlight Style (image_fa5fa9.png) */
+        .card-tier-container.featured-plan {
+            background-color: #74B83E !important;
+            border-color: #74B83E !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 15px 35px rgba(96, 166, 48, 0.2);
+        }
+
+        .card-tier-container.featured-plan h3,
+        .card-tier-container.featured-plan p,
+        .card-tier-container.featured-plan .amount-display,
+        .card-tier-container.featured-plan .amount-display small {
+            color: #FFFFFF !important;
+        }
+
+        .amount-display {
+            font-size: 2.8rem;
+            font-weight: 800;
+            font-family: 'Red Hat Display', sans-serif;
+            color: var(--text-dark);
+            letter-spacing: -0.01em;
+        }
+
+        .feature-list-specs {
+            list-style: none;
+            padding: 0;
+            margin: 2rem 0;
+        }
+
+        .feature-list-specs li {
+            padding: 0.5rem 0;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        /* Checkmark configurations */
+        .feature-list-specs li::before {
+            content: "✓";
+            color: #74B83E;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .card-tier-container.featured-plan .feature-list-specs li::before {
+            color: #FFFFFF !important;
+        }
+
+        /* ─── TABLE CONFIGURATIONS ─── */
+        .table-compare-card th {
+            font-family: 'Red Hat Display', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            padding: 1.5rem 1rem;
+        }
+
+        .table-compare-card td {
+            padding: 1.25rem 1rem;
+            font-size: 0.95rem;
+        }
+
+        /* ─── INITIAL ANIMATION COORDINATES ─── */
+        .gsap-init,
+        .reveal-word,
+        .hero-sub {
+            opacity: 0;
+            will-change: transform, opacity;
+        }
+
+        .word-line {
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: top;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="blue-pill"></div>
+
+    <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 15l-6-6-6 6" />
+        </svg>
+    </button>
+
+    <header class="site-header sticky-top">
+        <div class="container">
+            <nav class="navbar navbar-expand-lg py-3">
+                <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+                <div class="collapse navbar-collapse" id="mainNav">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="products.html">Product</a></li>
+                        <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="pricing.html">Pricing</a></li>
+                        <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+                        <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+                        <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
+                        <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
+                        <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+
+        <section class="hero-section text-center py-5">
+            <div class="hero-hex-bg"></div>
+            <div class="container py-4">
+                <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">Pricing</span>
+                <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
+                    <span class="word-line">
+                        <span class="reveal-word green" data-delay="0">Virtualization</span>
+                    </span>
+                    <span class="word-line">
+                        <span class="reveal-word" data-delay="0.22">Solution That</span>
+                    </span>
+                    <br>
+                    <span class="word-line">
+                        <span class="reveal-word" data-delay="0.4">Grows With You</span>
+                    </span>
+                </h1>
+                <p class="hero-sub text-muted mx-auto fs-5 mb-4 max-w-700" id="heroLead" style="line-height: 1.6;">
+                    Whether you are just starting with virtualization or are looking to manage complex,
+                    multi-environment enterprise-grade systems, we've got a plan for you.
+                </p>
+                <p class="fw-bold text-dark text-center fs-6 mb-5 uppercase tracking-wide gsap-init">Three Plans.
+                    Complete Control.</p>
+
+                <div class="row g-4 row-cols-1 row-cols-md-3 align-items-stretch text-start mt-2">
+
+                    <div class="col gsap-init">
+                        <div class="card-tier-container h-100 d-flex flex-column justify-content-between">
+                            <div>
+                                <h3 class="h3 fw-bold text-center mb-2" style="font-size: 2rem;">Core</h3>
+                                <p class="text-muted text-center small mb-4">For businesses beginning their
+                                    virtualization journey.</p>
+                                <hr class="my-4 opacity-50">
+                                <!-- <div class="amount-display text-center mb-2">$12.99 <small
+                                        class="fs-6 text-muted font-normal">/ mo</small></div> -->
+                                <ul class="feature-list-specs">
+                                    <li>Basic virtualization</li>
+                                    <li>Live VM Migration</li>
+                                    <li>Native Performance</li>
+                                    <li>Secure Boot &amp; TPM Support</li>
+                                    <li>Snapshot</li>
+                                    <li>Local disks, LVM, NFS</li>
+                                    <li>G-Immute Immutable Backup Support</li>
+                                    <li>nBalance WAF Support</li>
+                                    <li>Standard business hours support</li>
+                                </ul>
+                            </div>
+                            <a href="contact.html"
+                                class="btn btn-light w-100 py-3 border border-light-subtle rounded-3 text-dark fw-medium mt-auto"
+                                style="background: #EAECEF;">Get Started Now →</a>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="card-tier-container featured-plan h-100 d-flex flex-column justify-content-between">
+                            <div>
+                                <h3 class="h3 fw-bold text-center mb-2" style="font-size: 2rem;">Business</h3>
+                                <p class="text-white-50 text-center small mb-4">For scaling environments and serious
+                                    workloads.</p>
+                                <hr class="my-4 opacity-25" style="border-color: #FFF;">
+                                <!-- <div class="amount-display text-center mb-2">$39.99 <small
+                                        class="fs-6 text-white-50 font-normal">/ mo</small></div> -->
+                                <ul class="feature-list-specs">
+                                    <li>Everything contained in Standard</li>
+                                    <li>Live Storage Migration</li>
+                                    <li>Additional security policies</li>
+                                    <li>VM Cloning</li>
+                                    <li>Firewall Support</li>
+                                    <li>VM Monitoring Alerts</li>
+                                    <li>iSCSI Fiber Support</li>
+                                    <li>HotPlugging</li>
+                                </ul>
+                            </div>
+                            <a href="contact.html"
+                                class="btn btn-white w-100 py-3 rounded-3 fw-bold text-success mt-auto"
+                                style="background: #FFFFFF;">Get Started Now →</a>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="card-tier-container h-100 d-flex flex-column justify-content-between">
+                            <div>
+                                <h3 class="h3 fw-bold text-center mb-2" style="font-size: 2rem;">Enterprise</h3>
+                                <p class="text-muted text-center small mb-4">The ultimate solution for enterprise-scale
+                                    operations.</p>
+                                <hr class="my-4 opacity-50">
+                                <!-- <div class="amount-display text-center mb-2">$69.99 <small
+                                        class="fs-6 text-muted font-normal">/ mo</small></div> -->
+                                <ul class="feature-list-specs">
+                                    <li>Everything contained in Enterprise</li>
+                                    <li>Logging &amp; Tracing</li>
+                                    <li>OS Templates</li>
+                                    <li>VM Replication</li>
+                                    <li>Nested Virtualization</li>
+                                    <li>24/7 priority support</li>
+                                </ul>
+                            </div>
+                            <a href="contact.html"
+                                class="btn btn-light w-100 py-3 border border-light-subtle rounded-3 text-dark fw-medium mt-auto"
+                                style="background: #EAECEF;">Get Started Now →</a>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-5 bg-white border-top border-bottom">
+            <div class="container py-4">
+                <div class="text-center mx-auto mb-5" id="wayHead">
+                    <h2 class="section-h mb-3 fs-1">Select a <span
+                            style="color: var(--green-primary);">Virtualization</span>Tier</h2>
+                </div>
+
+                <div class="table-responsive rounded-4 border bg-white table-compare-card gsap-init">
+                    <table class="table table-striped align-middle mb-0 text-center text-nowrap table-hover"
+                        style="font-size: 0.95rem;">
+                        <thead class="table-light border-bottom">
+                            <tr>
+                                <th class="text-start py-4 px-5 text-muted" style="font-size: 1.6rem;">Features</th>
+                                <th style="color: var(--green-primary);">Community</th>
+                                <th style="color: var(--green-primary);">Core</th>
+                                <th style="color: var(--green-primary);">Business</th>
+                                <th style="color: var(--green-primary);">Enterprise</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">VM Creation &amp; Management</td>
+                                <td>Limited GUI+ CLI</td>
+                                <td>Limited GUI+ CLI</td>
+                                <td>GUI + CLI</td>
+                                <td>GUI + Automation Tools</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Number of VMs Supported</td>
+                                <td>2 VMs</td>
+                                <td>4 VMs</td>
+                                <td>8 VMs</td>
+                                <td>Unlimited VMs</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">CPUs-Sockets</td>
+                                <td>1</td>
+                                <td>2</td>
+                                <td>Unlimited</td>
+                                <td>Unlimited</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">RAM Supported</td>
+                                <td>16GB/VM</td>
+                                <td>32GB/VM</td>
+                                <td class="text-muted">—</td>
+                                <td class="text-muted">—</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Snapshots</td>
+                                <td class="text-muted">Not Available</td>
+                                <td class="text-muted">Not Available</td>
+                                <td>Automated + Scheduled</td>
+                                <td>Automated + Scheduled</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">VM Replication (on-demand)</td>
+                                <td class="text-muted">Not available</td>
+                                <td class="text-muted">Not available</td>
+                                <td>Available</td>
+                                <td>Available</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Networking</td>
+                                <td>NAT Only</td>
+                                <td>Bridge,Teaming</td>
+                                <td>Bridge, Teaming, VLAN</td>
+                                <td>Bridge, Teaming, VLAN</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Passthrough(CPU/USB/PCI)</td>
+                                <td class="text-muted">Not Available</td>
+                                <td class="text-muted">Not Available</td>
+                                <td>Available</td>
+                                <td>Full support</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Monitoring &amp; Logging</td>
+                                <td class="text-muted">Not Available</td>
+                                <td>Basic logs</td>
+                                <td>System-level logging, VM Monitoring</td>
+                                <td>Real-time analytics, System-level logging, VM Monitoring</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Security Features</td>
+                                <td class="text-muted">Not Available</td>
+                                <td>Basic Config</td>
+                                <td>Advanced Config</td>
+                                <td>Advanced Config</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Integration &amp; Automation</td>
+                                <td class="text-muted">Not Available</td>
+                                <td class="text-muted">None</td>
+                                <td>Basic, nBalance WAF, LB</td>
+                                <td>Basic, nBalance WAF &amp; LB, G-Immute</td>
+                            </tr>
+                            <tr>
+                                <td class="text-start fw-bold py-3 px-5 text-dark">Support</td>
+                                <td class="text-muted">Not Available</td>
+                                <td>Community support</td>
+                                <td>Email support</td>
+                                <td>Priority Support</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-5">
+            <div class="container py-4">
+                <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
+                    style="background-color: #0F1115; border-radius: 24px; position: relative;">
+                    <svg class="position-absolute end-0 bottom-0 mb-4 me-4 opacity-10 d-none d-md-block" width="120"
+                        height="120" viewBox="0 0 100 100">
+                        <polygon points="50,1 93,25 93,75 50,99 7,75 7,25" fill="none" stroke="#FFF" stroke-width="2" />
+                    </svg>
+                    <h2 class="text-white h1 hero-h1-huge mb-3"
+                        style="font-family: 'Red Hat Display', sans-serif; font-size: 3.8rem;">Realize Your Business’s
+                        Full Potential</h2>
+                    <p class="mx-auto mb-5 text-white-50 fs-6" style="max-width: 680px; line-height: 1.6;">
+                        Want an inside look at how our solution works before committing to a paid subscription? We’ve
+                        got a demo with your name on it!
+                    </p>
+                    <a href="contact.html" class="btn btn-light px-5 py-3 fw-bold text-dark rounded-3 border-0"
+                        style="background-color: #EAECEF; font-size: 0.95rem;">Book a Free Demo</a>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white text-secondary py-5 border-top mt-5">
+        <div class="container py-4">
+            <div class="row g-5 border-bottom pb-5 mb-4">
+                <div class="col-lg-4">
+                    <div class="mb-5">
+                        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;"
+                            alt="VMX Logo">
+                    </div>
+                    <div class="d-flex gap-3 fs-5 mb-4">
+                        <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+                        <a href="#" class="text-secondary text-decoration-none">in</a>
+                    </div>
+                    <div class="mt-4 d-flex gap-2">
+                        <input type="email" placeholder="Subscribe to our newsletter"
+                            class="form-control form-control-sm"
+                            style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+                        <button class="btn btn-sm btn-dark px-4 fw-semibold"
+                            style="background: #0F1115;">Subscribe</button>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+                        <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+                        <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+                        <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+                        <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+                        <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+                    </ul>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+                        <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL
+                            33020, USA</li>
+                        <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+                        <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+                        <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="text-center text-muted" style="font-size:0.8rem">
+                <span>&copy; 2025 , All Rights Reserved</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        function buildScrollReveal() {
+            document.querySelectorAll('.scroll-reveal').forEach(line => {
+                const words = line.dataset.words.split(',');
+                const delays = (line.dataset.delays || '').split(',').map(Number);
+                const colors = (line.dataset.colors || '').split(',');
+                line.innerHTML = '';
+                words.forEach((word, i) => {
+                    const span = document.createElement('span');
+                    span.className = 'reveal-word';
+                    if (colors[i] === 'green') span.classList.add('green');
+                    if (colors[i] === 'dim') span.classList.add('dim');
+                    span.textContent = word + ' ';
+                    span.dataset.delay = delays[i] || 0;
+                    line.appendChild(span);
+                });
+            });
+        }
+        buildScrollReveal();
+
+        const heroWords = document.querySelectorAll('.hero-h1 .reveal-word');
+        gsap.set(heroWords, { opacity: 0, y: '110%' });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const tl = gsap.timeline({ delay: 0.15 });
+            heroWords.forEach(w => {
+                tl.to(w, {
+                    opacity: 1, y: '0%',
+                    duration: 0.8,
+                    ease: 'power4.out'
+                }, parseFloat(w.dataset.delay));
+            });
+            tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
+            gsap.set('#heroLead', { y: 30 });
+        });
+
+        function registerWordReveal(headingEl) {
+            if (!headingEl) return;
+            const words = headingEl.querySelectorAll('.reveal-word');
+            if (!words.length) return;
+            ScrollTrigger.create({
+                trigger: headingEl,
+                start: 'top 85%',
+                onEnter: () => {
+                    words.forEach(w => {
+                        gsap.to(w, {
+                            opacity: 1, y: '0%',
+                            duration: 0.8,
+                            delay: parseFloat(w.dataset.delay) || 0,
+                            ease: 'power3.out'
+                        });
+                    });
+                }
+            });
+        }
+
+        document.querySelectorAll('.section-h, h2').forEach(el => {
+            registerWordReveal(el);
+        });
+
+        gsap.utils.toArray('.gsap-init, .card-tier-container, table').forEach((el, i) => {
+            gsap.set(el, { opacity: 0, y: 35 });
+            ScrollTrigger.create({
+                trigger: el,
+                start: 'top 88%',
+                onEnter: () => {
+                    gsap.to(el, {
+                        opacity: 1, y: 0,
+                        duration: 0.6,
+                        delay: (i % 4) * 0.08,
+                        ease: 'power2.out'
+                    });
+                }
+            });
+        });
+
+        const scrollBtn = document.getElementById('scrollTopBtn');
+        window.addEventListener('scroll', () => {
+            scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+    </script>
+</body>
+
+</html>

@@ -1,387 +1,434 @@
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en">
+
 <head>
-	<title>VMX</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About Us — VMX Server Solutions</title>
+  <meta name="description"
+    content="We are VMX Server Solutions—delivering enterprise-grade virtualization since 2021." />
 
-	<meta charset="utf-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+    rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css">
 
-  <link rel="stylesheet" type="text/css" href="css/font-awesome.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.fancybox-1.3.4.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/style.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.bxslider.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/fullwidth.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/revslider.css" media="screen">
-  <link rel="stylesheet" href="css/dr-framework.css" type="text/css" media="screen">
-
-  <link href='https://fonts.googleapis.com/css?family=Roboto:400,300,100,500,400italic,300italic,100italic,500italic,700,700italic,900,900italic' rel='stylesheet' type='text/css'>
-  <link href='https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
-  <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
-  <link rel="icon" href="images/favicon.ico" type="image/x-icon">
   <style>
+    /* ─── STYLE ARCHITECTURE CONFIGURATIONS ─── */
+    :root {
+      --green-primary: #60A630;
+      --green-banner-bg: #74B83E;
+      --text-dark: #1A1A1A;
+      --gray-light-bg: #FAFAFA;
+    }
 
-   
- .who-we-help {
-  text-align: center;
-  padding: 40px 20px;
-  background: #f5f6f8;
-}
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #4A4A4A;
+      background-color: var(--gray-light-bg);
+    }
 
-.section-header h2 {
-  font-size: 2rem;
-  margin-bottom: 10px;
-  color: #222;
-}
+    h1,
+    h2,
+    h3,
+    h4,
+    .section-h {
+      font-family: 'Red Hat Display', sans-serif;
+      font-weight: 700;
+      color: var(--text-dark);
+    }
 
-.section-header .subtitle {
-  font-size: 1rem;
-  color: #666;
-  margin-bottom: 30px;
-}
+    .hero-h1-huge {
+      font-size: 4.8rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
 
-.help-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 30px;
-}
+    @media (max-width: 768px) {
+      .hero-h1-huge {
+        font-size: 3rem;
+      }
+    }
 
-.help-card {
-  background: #fff;
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-  transition: transform 0.3s ease;
-}
+    /* ─── METRIC TICKER BOARD STYLING (image_e34d44.png) ─── */
+    .metric-count-heading {
+      font-family: 'Red Hat Display', sans-serif;
+      font-size: 4.5rem;
+      font-weight: 800;
+      color: var(--text-dark);
+      line-height: 1;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
 
-.help-card:hover {
-  transform: translateY(-5px);
-}
+    .metric-count-heading span {
+      display: inline-block;
+    }
 
-.icon-circle {
-  font-size: 2rem;
-  color: #8bc34a;
-  background: #e8f5e9;
-  width: 60px;
-  height: 60px;
-  line-height: 60px;
-  margin: 0 auto 15px;
-  border-radius: 50%;
-}
+    .metric-count-heading .plus-accent {
+      color: var(--green-primary);
+    }
 
-.help-card h4 {
-  margin: 10px 0;
-  font-size: 1.1rem;
-  color: #333;
-}
+    .metric-desc-txt {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #6C7A93;
+    }
 
-.help-card p {
-  font-size: 0.95rem;
-  color: #555;
-  line-height: 1.5;
-}
+    /* ─── DYNAMIC GRAPHIC WIREFRAME BACKDROP (image_e34d25.png) ─── */
+    .asymmetric-graphic-frame {
+      border: 1px solid #E2E5E9;
+      background-color: #FFFFFF;
+      border-radius: 24px;
+      min-height: 380px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.01);
+    }
 
+    /* ─── ANIMATION TIMELINE ENGINE INTERNALS ─── */
+    .gsap-init,
+    .reveal-word,
+    .hero-sub {
+      opacity: 0;
+      will-change: transform, opacity;
+    }
 
+    .word-line {
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: top;
+    }
   </style>
-	
 </head>
+
 <body>
 
-<div id="container">
-  <header>
-      <div class="sub-header clearfix">
-        <div class="wrapper">
-          <ul>
-            <li>
-              <i class="fa fa-caret-square-o-right"></i><a href="#">terms & conditions</a>
-            </li>
-            <li>
-              <i class="fa fa-caret-square-o-right"></i><a href="about.html">about us</a>
-            </li>
-            <li>
-              <i class="fa fa-caret-square-o-right"></i><a href="#">login</a>
-            </li>
-            <li>
-              <i class="fa fa-caret-square-o-right"></i><a href="contact.html">contact us</a>
-            </li>
-          </ul>
-          <div class="socials">
-            <a href="#"><i class="fa fa-google-plus"></i> </a>
-            <a href="#"><i class="fa fa-twitter"></i> </a>
-            <a href="#"><i class="fa fa-pinterest"></i> </a>
-            <a href="#"><i class="fa fa-dribbble"></i> </a>
-            <a href="#"><i class="fa fa-linkedin"></i> </a>
-            <a href="#"><i class="fa fa-facebook"></i> </a>
-          </div>
-        </div>        
-      </div>
+  <div class="blue-pill"></div>
 
-      <div class="upper-header wrapper">
+  <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M18 15l-6-6-6 6" />
+    </svg>
+  </button>
 
-         <div class="logo">
-             <a href="index.html"><img src="images/vmx.png"></a>
-         </div>
-<!-- Navigation -->
-        <div id="nav">
-          <ul id="navlist" class="sf-menu clearfix">
-            <li><a href="index.html"><div class="main-a"> Home </div> <div class="nav-border"></div> <div class="span">start here</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="home-boxed.html"><span>--</span>Home Boxed</a></li>
-                <li><a href="home-blog.html"><span>--</span>Home Blog</a></li>
-                <li><a href="home-portfolio.html"><span>--</span>Home Portfolio</a></li>
-                <li><a href="home-fullportfolio.html"><span>--</span>Home Portfolio Full Screen</a></li>
-                <li><a href="home-dark.html"><span>--</span>Home Dark</a></li>
-              </ul> -->
-            </li>
-            
-            <li><a href="products.html"><div class="main-a"> Products </div> <div class="nav-border"></div> <div class="span">Our Products</div></a></li>
-            <li class="current"><a href="resources.html"><div class="main-a"> Resources </div> <div class="nav-border"></div> <div class="span">what we offer</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="shop.html"><span>--</span>Shop</a></li>
-                <li><a href="shop-list.html"><span>--</span>Shop List View</a></li>
-              </ul> -->
-           </li>
-            <li><a href="about.html"><div class="main-a"> About </div> <div class="nav-border"></div> <div class="span">who we are</div></a></li>
-            <li><a href="contact.html"><div class="main-a"> Contact </div> <div class="nav-border"></div> <div class="span">get in touch</div></a></li>
+    <header class="site-header sticky-top">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg py-3">
+        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+        <div class="collapse navbar-collapse" id="mainNav">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+            <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="products.html">Product</a></li>
+            <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
+            <li class="nav-item"><a class="nav-link" href="pricing.html">Pricing</a></li>
+            <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+            <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+            <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
+            <li class="nav-item"><a class="nav-link active" href="about.html">About Us</a></li>
+            <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
           </ul>
         </div>
-        <!-- Navigation -->
-		<div class="clear">
-		</div>
-	</div>
-	</header>
-  <!--end header-->
-  <div class="head-banner clearfix">
-    <div class="wrapper">
-      <h4>About Us</h4>
-      <div class="site_map">
-        <a href="index.html">Home</a> About Us
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <section class="hero-section text-center py-5">
+      <div class="hero-hex-bg"></div>
+      <div class="container py-4">
+        <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">About VMX</span>
+        <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
+          <span class="word-line">
+            <span class="reveal-word" data-delay="0">We Are VMX</span>
+          </span>
+          <br>
+          <span class="word-line">
+            <span class="reveal-word green" data-delay="0.25">Server Solutions</span>
+          </span>
+        </h1>
       </div>
-      <div class="clear"></div>
-    </div>
-  </div>
+    </section>
 
-  <div class="aboutus wrapper mb30">
-    <div class="dark">
+    <section class="section py-5 bg-white border-top">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
 
-      <div class="column12 biograph">
-        <div class="about-title"><h2>About VMX</h2><br></div>  
-        
-
-        <p class="">
-
-At VMX, we create powerful, efficient software designed to simplify server management. Our products and services help you build secure, cost-effective, and scalable IT infrastructures based on technologies.
-Development & Services
-
-With VMX technology, you get comprehensive yet user-friendly software solutions tailored to your needs. We understand that business continuity is critical, which is why we also offer technical assistance and enterprise-grade services to keep your operations running smoothly.
-
-</p>
-
-        <p class="">Every day, we work closely with our users to understand challenges, improve our products, and deliver better experiences. Backed by a global partner network and Community, VMX ensures efficient workflows for organizations of all sizes and sectors—including businesses, nonprofits, and educational institutions.
- </p>
- <h2 style="font-size: 20px;">OUR STORY</h2><br>
-
-
-        <p>VMX Founded in 2025 by Muhammed Asif and Jaimin Patel, VMX Server Solutions GmbH set out to develop intuitive GNU/Linux software for secure and scalable IT environments.</p>
-      </div>
-
-      <div class="clear"></div>
-
-    </div>
-
-  </div>
-
-
-
-
-  <!-- End Aboutus -->
-   <div class="who-we-help wrapper mb30">
-  <div class="section-header">
-    <h2>Who We Help</h2>
-    <p class="subtitle">Empowering industries with secure, scalable virtual infrastructure.</p>
-  </div>
-
-  <div class="help-grid">
-    <div class="help-card">
-      <div class="icon-circle">	<i class="fa fa-book"></i>
-
-</div>
-      <h4>Educational Institutions</h4>
-      <p>Enable students and faculty with hands-on, real-world server environments for learning and experimentation.</p>
-    </div>
-
-    <div class="help-card">
-      <div class="icon-circle"><i class="fa fa-briefcase"></i></div>
-      <h4>Businesses</h4>
-      <p>Simplify infrastructure management, reduce IT overhead, and scale operations with confidence and clarity.</p>
-    </div>
-
-    <div class="help-card">
-      <div class="icon-circle"><i class="fa fa-users"></i></div>
-      <h4>Nonprofits & NGOs</h4>
-      <p>Operate efficiently and securely with limited resources by leveraging virtual technologies.</p>
-    </div>
-
-    <div class="help-card">
-      <div class="icon-circle"><i class="fa fa-code"></i></div>
-      <h4>Developers & SysAdmins</h4>
-      <p>Gain full control over your environment with CLI access, automation tools, and powerful VM orchestration.</p>
-    </div>
-  </div>
-</div>
-
-
-
-    
-
-
-    <!-- <div class="fun-facts mb30">
-      <h3 class="main-title">Fun Facts</h3>
-      <span class="main-subtitle">company stats and achievements</span>
-      
-      <div class="our-services">
-        <div class="wrapper">
-          <div class="dark">
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-flask"></i>
-                <h3>956779</h3>
-                <span>Lines of code written</span>
-              </div>
+          <div class="col-lg-6" id="upgradeImg">
+            <div class="p-4 border rounded shadow-sm d-flex align-items-center justify-content-center"
+              style="min-height: 380px; background-color: #F8F9FA; border-radius: 24px !important;">
+              <svg width="260" height="200" viewBox="0 0 240 200" fill="none">
+                <rect x="20" y="30" width="200" height="130" rx="16" fill="#60A630" fill-opacity="0.05" stroke="#60A630"
+                  stroke-width="2" />
+                <circle cx="70" cy="95" r="24" fill="#60A630" fill-opacity="0.2" />
+                <circle cx="170" cy="95" r="24" fill="#6E7CF8" fill-opacity="0.2" />
+                <path d="M95 95h50" stroke="#4A4A4A" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4" />
+              </svg>
             </div>
-
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-coffee"></i>
-                <h3>1479</h3>
-                <span>Coffe Drinked</span>
-              </div>
-            </div>
-
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-users"></i>
-                <h3>578</h3>
-                <span>Happy Clients</span>
-              </div>
-            </div>
-
-            <div class="column3">
-              <div class="service-item">
-                <i class="fa fa-suitcase"></i>
-                <h3>2178</h3>
-                <span>Projects Done</span>
-              </div>
-            </div>
-            <div class="clear"></div>
           </div>
+
+          <div class="col-lg-6" id="upgradeText">
+            <h2 class="section-h mb-4 fs-1">We are VMX Server Solutions</h2>
+            <p class="text-muted mb-4 fs-6" style="line-height: 1.7;">Developed in 2021 as a byproduct of Green Cloud
+              Services' commitment to revolutionizing enterprise virtualization, VMX Server Solutions has since evolved
+              into a trusted leader in tailored virtualization solutions. The goal today is to deliver enterprise-grade
+              virtualization solutions and support services that are comprehensive, efficient, and scalable—solutions
+              designed to meet the evolving demands of modern IT environments.</p>
+            <a href="contact.html" class="btn btn-outline-dark px-4 py-2-5 rounded-3 fw-medium gsap-init"
+              style="font-size: 0.95rem; border-color: #D1D5DB;">Contact Us</a>
+          </div>
+
         </div>
       </div>
+    </section>
 
-    </div> -->
+    <section class="section py-5 border-top border-bottom" style="background-color: #FDFDFD;">
+      <div class="container py-4">
+        <div class="row g-4 justify-content-center">
 
-    <div class="info-box">
-      <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
-      <div class="info-content">
-        <ul>
-          <li><i class="fa fa-phone"></i>9930 1234 5679</li>
-          <li><i class="fa fa-envelope"></i><a href="#">contact@domain.com</a></li>
-          <li><i class="fa fa-home"></i>street address example</li>
-        </ul>
+          <div class="col-sm-6 col-lg-3 text-start border-end border-light-subtle px-4 gsap-init">
+            <div class="metric-count-heading">
+              <span class="count-ticker" data-target="16">0</span><span class="plus-accent">+</span>
+            </div>
+            <h4 class="h6 fw-bold text-dark mb-3">Years of Experience</h4>
+            <p class="metric-desc-txt">We bring a wealth of experience honed through years of hands-on involvement,
+              continuous learning, and adaptation to evolving trends and challenges.</p>
+          </div>
+
+          <div class="col-sm-6 col-lg-3 text-start border-end border-light-subtle px-4 gsap-init">
+            <div class="metric-count-heading">
+              <span class="count-ticker" data-target="12">0</span><span class="plus-accent"
+                style="color: var(--text-dark);">K</span>
+            </div>
+            <h4 class="h6 fw-bold text-dark mb-3">Projects completed</h4>
+            <p class="metric-desc-txt">From bustling metropolitan cities to remote rural communities, our commitment to
+              excellence and innovation has driven us to deliver exceptional results.</p>
+          </div>
+
+          <div class="col-sm-6 col-lg-3 text-start border-end border-light-subtle px-4 gsap-init">
+            <div class="metric-count-heading">
+              <span class="count-ticker" data-target="196">0</span><span class="plus-accent">+</span>
+            </div>
+            <h4 class="h6 fw-bold text-dark mb-3">Awards achieved</h4>
+            <p class="metric-desc-txt">These accolades stand as a testament to our unwavering commitment to excellence,
+              innovation, and industry-leading performance framework configurations.</p>
+          </div>
+
+          <div class="col-sm-6 col-lg-3 text-start px-4 gsap-init">
+            <div class="metric-count-heading">
+              <span class="count-ticker" data-target="55">0</span><span class="plus-accent">%</span>
+            </div>
+            <h4 class="h6 fw-bold text-dark mb-3">Returned of clients</h4>
+            <p class="metric-desc-txt">This statistic speaks volumes about the trust and satisfaction our clients have
+              in our services, reflecting multi-year hardware integration lifecycles.</p>
+          </div>
+
+        </div>
       </div>
-    </div>
+    </section>
 
-  <footer>
+    <section class="section py-5 bg-white">
+      <div class="container py-4">
+        <div class="row g-5 align-items-center">
 
-    <div class="inner-footer">
-      <div class="wrapper clearfix">
-        <div class="dark">
-          <div class="column3 message-form">
-            <img src="images/vmx/footerlogo.png" alt="">
-            <p>Green Cloud Services CO LLC
-2719 Hollywood Blvd.Hollywood, FL 33020, USA </p>
-      
+          <div class="col-lg-7" id="simplicityText">
+            <h2 class="section-h mb-4 hero-h1" style="font-size: 4rem; font-weight: 800; line-height: 1.15;">
+              Precision-Built <span style="color: var(--green-primary);">Virtualization,</span> <br>No Distractions
+            </h2>
+            <p class="text-muted mb-0 fs-5" style="line-height: 1.7;">Ours is a mission to create the perfect enterprise
+              virtualization solutions. Our entire team is dedicated to making this dream a reality. Born from over a
+              decade of deep industry experience and years of development and testing, our debut product, VMX Version 1,
+              delivers on our vision with a powerful, efficient, and future-ready virtualization solution that is highly
+              scalable, intuitive, and comprehensive.</p>
           </div>
 
-          <div class="column3 contact">
-           
-
-            <h4>Contact info</h4>
-            <p class="f-phone"><i class="fa fa-phone"></i><span>(844)2202204 (Toll free)</span></p>
-            <a  href="#" class="f-mail"><i class="fa fa-envelope"></i><span>support@greencloud.live</span></a>
-          </div>
-     
-          <div class="container footer-links">
-            <div class="column3 contact">
-              <h4>Useful Links</h4>
-               <ul>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Home</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Products</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Resources</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> About</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Contact</a></li>
-              </ul>
+          <div class="col-lg-5" id="upgradeImg">
+            <div class="asymmetric-graphic-frame gsap-element-animate" data-animation="slide-in-right">
+              <svg class="opacity-10 absolute-center" width="160" height="160" viewBox="0 0 100 100">
+                <defs>
+                  <pattern id="hexGrid" width="14" height="24" patternUnits="userSpaceOnUse"
+                    patternTransform="scale(1)">
+                    <path d="M14 0L7 12L0 0" fill="none" stroke="#000" stroke-width="1.5" />
+                    <path d="M7 12L14 24L0 24" fill="none" stroke="#000" stroke-width="1.5" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#hexGrid)" />
+              </svg>
             </div>
           </div>
 
         </div>
-        <!-- End Dark -->
       </div>
-    </div>
-    <!-- End Inner Footer -->
+    </section>
 
-    <div class="last-div clearfix">
-      <div class="wrapper">
-        <div class="copyright">
-          © 2025 VMX,  All Rights Reserved
-        </div>
-
-        <div id="back-to-top">
-          <a href="#top">Back to Top</a>
-        </div>
-
-        <div class="f-socials">
-          <a href="#"><i class="fa fa-google-plus"></i> </a>
-          <a href="#"><i class="fa fa-twitter"></i> </a>
-          <a href="#"><i class="fa fa-pinterest"></i> </a>
-          <a href="#"><i class="fa fa-dribbble"></i> </a>
-          <a href="#"><i class="fa fa-linkedin"></i> </a>
-          <a href="#"><i class="fa fa-facebook"></i> </a>
+    <section class="section py-4">
+      <div class="container">
+        <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
+          style="background-color: var(--green-banner-bg); border-radius: 24px;">
+          <h2 class="text-white h1 fw-bold mb-3" style="font-family: 'Red Hat Display', sans-serif;">Join the Future of
+            Virtualization</h2>
+          <p class="mx-auto mb-4 text-white-50 fs-6" style="max-width: 650px; line-height: 1.6;">
+            See how VMX can transform your infrastructure. Book a free live demonstration pipeline session setup with
+            our deployment engineers.
+          </p>
+          <a href="contact.html" class="btn btn-light px-5 py-3 fw-bold text-dark rounded-3 border-0 shadow-sm"
+            style="background-color: #FFFFFF; font-size: 0.95rem;">Book a Free Demo</a>
         </div>
       </div>
-    </div>
-    <!-- End Last Div -->
+    </section>
 
+  </main>
+
+  <footer class="bg-white text-secondary py-5 border-top mt-5">
+    <div class="container py-4">
+      <div class="row g-5 border-bottom pb-5 mb-4">
+        <div class="col-lg-4">
+          <div class="mb-5">
+            <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo">
+          </div>
+          <div class="d-flex gap-3 fs-5 mb-4">
+            <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+            <a href="#" class="text-secondary text-decoration-none">in</a>
+          </div>
+          <div class="mt-4 d-flex gap-2">
+            <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
+              style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+            <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-2">
+          <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+            <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+            <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+            <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+            <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+            <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+          </ul>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+            <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL 33020, USA</li>
+            <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+            <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+            <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="text-center text-muted" style="font-size:0.8rem">
+        <span>&copy; 2025 , All Rights Reserved</span>
+      </div>
+    </div>
   </footer>
-  <!--end footer-->
 
-</div>
-<!-- End Id Container -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 
-  <div class="preloader">
-    <img alt="" src="images/preloader.gif">
-  </div>
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
 
+    function buildScrollReveal() {
+      document.querySelectorAll('.scroll-reveal').forEach(line => {
+        const words = line.dataset.words.split(',');
+        const delays = (line.dataset.delays || '').split(',').map(Number);
+        const colors = (line.dataset.colors || '').split(',');
+        line.innerHTML = '';
+        words.forEach((word, i) => {
+          const span = document.createElement('span');
+          span.className = 'reveal-word';
+          if (colors[i] === 'green') span.classList.add('green');
+          if (colors[i] === 'dim') span.classList.add('dim');
+          span.textContent = word + ' ';
+          span.dataset.delay = delays[i] || 0;
+          line.appendChild(span);
+        });
+      });
+    }
+    buildScrollReveal();
 
-  <!-- include jQuery -->
-  <script src="js/jquery.min.js"></script>
-  <script type="text/javascript" src="js/jquery.imagesloaded.min.js"></script>
-  <script type="text/javascript" src="js/jquery.isotope.min.js"></script>
-  <script type="text/javascript" src="js/jquery.fancybox-1.3.4.pack.js"></script>
-  <script type="text/javascript" src="js/jquery.superfish.js"></script>
-  <script type="text/javascript" src="js/jquery.flexslider.js"></script>
-  <script src="js/jquery.bxslider.js"></script>
-  <script src="js/twitter.js"></script>
-   <script type="text/javascript" src="js/script.js"></script>
+    const heroWords = document.querySelectorAll('.hero-h1 .reveal-word');
+    gsap.set(heroWords, { opacity: 0, y: '110%' });
 
-    <!-- include jQuery + carouFredSel plugin -->
-    <script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const tl = gsap.timeline({ delay: 0.15 });
+      heroWords.forEach(w => {
+        tl.to(w, {
+          opacity: 1, y: '0%',
+          duration: 0.8,
+          ease: 'power4.out'
+        }, parseFloat(w.dataset.delay));
+      });
+      tl.to('.hero-sub', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
+      gsap.set('.hero-sub', { y: 30 });
+    });
 
-    <!-- optionally include helper plugins -->
-    <script type="text/javascript" language="javascript" src="js/jquery.mousewheel.min.js"></script>
-    <script type="text/javascript" language="javascript" src="js/jquery.touchSwipe.min.js"></script>
+    // ─── ADVANCED GSAP SCROLL-TRIGGER NUMERIC TICKER ENGINE ───
+    function initMetricTickers() {
+      gsap.utils.toArray('.count-ticker').forEach(ticker => {
+        const endValue = parseInt(ticker.getAttribute('data-target'), 10);
 
+        gsap.fromTo(ticker,
+          { textContent: 0, opacity: 0 },
+          {
+            textContent: endValue,
+            opacity: 1,
+            duration: 2,
+            ease: "power2.out",
+            snap: { textContent: 1 }, // Steps incrementally by 1 integer
+            scrollTrigger: {
+              trigger: ticker,
+              start: "top 85%",
+              toggleActions: "play none none none"
+            },
+            onUpdate: function () {
+              // Optional: format inner tracking context values during transition loop
+            }
+          }
+        );
+      });
+    }
+    initMetricTickers();
 
+    gsap.utils.toArray('.gsap-init, .metric-desc-txt').forEach((el, i) => {
+      gsap.set(el, { opacity: 0, y: 35 });
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 88%',
+        onEnter: () => {
+          gsap.to(el, {
+            opacity: 1, y: 0,
+            duration: 0.6,
+            delay: (i % 4) * 0.08,
+            ease: 'power2.out'
+          });
+        }
+      });
+    });
 
+    gsap.set('#upgradeImg', { opacity: 0, x: -40 });
+    ScrollTrigger.create({
+      trigger: '#upgradeText',
+      start: 'top 75%',
+      onEnter: () => {
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.85, ease: 'power3.out' });
+      }
+    });
+
+    const scrollBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+      scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
+  </script>
 </body>
+
 </html>

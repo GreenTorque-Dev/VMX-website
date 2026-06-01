@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Partners — VMX Alliance Ecosystem</title>
+    <meta name="description"
+        content="Become a VMX Authorized Partner. Join our global network of IT consultants, infrastructure providers, and developers." />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+        rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css">
+
+    <style>
+        /* ─── EXACT INTEGRATED DESIGN SPECIFICATIONS ─── */
+        :root {
+            --green-primary: #60A630;
+            --green-soft-bg: #E6F3D6;
+            --text-dark: #1A1A1A;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #4A4A4A;
+            background-color: #FAFAFA;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        .section-h {
+            font-family: 'Red Hat Display', sans-serif;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .hero-h1-huge {
+            font-size: 5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+        }
+
+        @media (max-width: 768px) {
+            .hero-h1-huge {
+                font-size: 3.2rem;
+            }
+        }
+
+        /* ─── BENEFITS LIST SPECIFICATIONS ─── */
+        .benefit-item-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 0;
+            border-bottom: 1px solid #EAECEF;
+            font-size: 1.05rem;
+            color: #4A4A4A;
+        }
+
+        .benefit-check-icon {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            border-radius: 50%;
+            background-color: var(--green-soft-bg);
+            color: var(--green-primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        /* ─── APPLICATION FORM UI SPECIFICATIONS (image_e354de.png) ─── */
+        .app-form-card {
+            background: #FFFFFF;
+            border: 1px solid #EAECEF;
+            border-radius: 24px;
+            padding: 3.5rem;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.02);
+        }
+
+        .form-group-block {
+            margin-bottom: 1.75rem;
+        }
+
+        .form-group-block label {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 0.6rem;
+            display: block;
+        }
+
+        .form-control-spec {
+            width: 100%;
+            padding: 0.85rem 1.25rem;
+            font-size: 1rem;
+            background-color: #FFFFFF;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            color: var(--text-dark);
+            transition: all 0.2s ease;
+        }
+
+        .form-control-spec:focus {
+            outline: none;
+            border-color: var(--green-primary);
+            box-shadow: 0 0 0 3px rgba(96, 166, 48, 0.15);
+        }
+
+        .btn-submit-form {
+            background-color: #0066B2;
+            color: #FFFFFF;
+            font-weight: 600;
+            padding: 0.85rem 2rem;
+            border: none;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+        }
+
+        .btn-submit-form:hover {
+            background-color: #005291;
+        }
+
+        /* ─── GSAP LOAD CONFIGURATION VARIABLES ─── */
+        .gsap-init,
+        .reveal-word,
+        .hero-sub {
+            opacity: 0;
+            will-change: transform, opacity;
+        }
+
+        .word-line {
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: top;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="blue-pill"></div>
+
+    <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 15l-6-6-6 6" />
+        </svg>
+    </button>
+
+    <header class="site-header sticky-top">
+        <div class="container">
+            <nav class="navbar navbar-expand-lg py-3">
+                <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+                <div class="collapse navbar-collapse" id="mainNav">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="products.html">Product</a></li>
+                        <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
+                        <li class="nav-item"><a class="nav-link" href="pricing.html">Pricing</a></li>
+                        <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+                        <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="partners.html">Partners</a></li>
+                        <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
+                        <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+
+        <section class="hero-section text-center py-5">
+            <div class="hero-hex-bg"></div>
+            <div class="container py-4">
+                <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
+                    <span class="word-line">
+                        <span class="reveal-word" data-delay="0">Our</span>
+                    </span>
+                    <span class="word-line">
+                        <span class="reveal-word green" data-delay="0.22">Partnerships</span>
+                    </span>
+                </h1>
+                <p class="hero-sub text-muted mx-auto fs-5 mb-0 max-w-700" id="heroLead" style="line-height: 1.6;">
+                    At VMX, we understand the value of strong, reliable partnerships. They're what brought us this far
+                    and are the solid foundation we trust in to ensure our infrastructure and products keep running at
+                    peak performance.
+                </p>
+            </div>
+        </section>
+
+        <section class="section py-5">
+            <div class="container py-4">
+                <div class="row g-5 align-items-center">
+
+                    <div class="col-lg-6" id="upgradeText">
+                        <h2 class="section-h mb-3 fs-1">VMX Authorized Partner Program</h2>
+                        <p class="text-muted mb-4 fs-6" style="line-height: 1.7;">We're always open to partnering with
+                            IT companies and developers around the world. If you are a technology consultant,
+                            infrastructure solutions provider, software developer, or IT vendor, you might benefit from
+                            becoming a partner seller.</p>
+
+                        <h3 class="h4 fw-bold mb-4 mt-5 text-dark" style="font-family: 'Red Hat Display', sans-serif;">
+                            As an Authorized Partner you enjoy</h3>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="benefit-item-row gsap-init">
+                                <span class="benefit-check-icon">✓</span> Discounts on all VMX products
+                            </div>
+                            <div class="benefit-item-row gsap-init">
+                                <span class="benefit-check-icon">✓</span> Product training and certification
+                            </div>
+                            <div class="benefit-item-row gsap-init">
+                                <span class="benefit-check-icon">✓</span> Free NFR (Not for Resale) Licenses
+                            </div>
+                            <div class="benefit-item-row gsap-init">
+                                <span class="benefit-check-icon">✓</span> Access to exclusive marketing materials
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 text-center" id="upgradeImg">
+                        <div class="p-4 rounded border bg-white shadow-sm d-flex align-items-center justify-content-center"
+                            style="min-height: 400px;">
+                            <svg width="340" height="280" viewBox="0 0 240 200" fill="none">
+                                <circle cx="120" cy="90" r="55" fill="#EBF3FC" />
+                                <rect x="95" y="65" width="50" height="50" rx="8" fill="#FFFFFF" stroke="#0066B2"
+                                    stroke-width="2" />
+                                <path d="M105 90h30M120 75v30" stroke="#0066B2" stroke-width="2"
+                                    stroke-linecap="round" />
+                                <circle cx="45" cy="135" r="22" fill="#EBF7ED" />
+                                <circle cx="195" cy="135" r="22" fill="#FAF0E6" />
+                                <path d="M52 135l-5 5-3-3" stroke="#60A630" stroke-width="2" stroke-linecap="round" />
+                                <path d="M110 165h20" stroke="#EAECEF" stroke-width="4" stroke-linecap="round" />
+                                <path d="M70 120c15-10 30-10 45 0" stroke="#D1D5DB" stroke-width="1.5"
+                                    stroke-dasharray="3 3" />
+                                <path d="M125 120c15-10 30-10 45 0" stroke="#D1D5DB" stroke-width="1.5"
+                                    stroke-dasharray="3 3" />
+                            </svg>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section class="section-soft py-5 bg-white border-top border-bottom">
+            <div class="container py-3 text-center">
+                <h2 class="section-h mb-5 fs-2 font-black" style="font-size: 2.2rem; letter-spacing: -0.01em;">Our
+                    Partner Brands, Big and Small</h2>
+                <div
+                    class="d-flex flex-wrap justify-content-center align-items-center gap-5 pt-2 grayscale opacity-75 gsap-init">
+                    <span class="fw-bold fs-4 text-muted">nBalance</span>
+                    <span class="fw-bold fs-4 text-muted">NaviG</span>
+                    <span class="fw-bold fs-4 text-muted">G-Immute</span>
+                    <span class="fw-bold fs-4 text-muted">Cloudgrid</span>
+                    <span class="fw-bold fs-4 text-muted">VMX</span>
+                    <span class="fw-bold fs-4 text-muted">nBalance</span>
+                    <span class="fw-bold fs-4 text-muted">NaviG</span>
+                    <span class="fw-bold fs-4 text-muted">G-Immute</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-5">
+            <div class="container py-4 max-w-800">
+
+                <div class="text-center mx-auto mb-5" id="pricingHead">
+                    <h2 class="section-h mb-3 fs-1">Become a VMX Partner</h2>
+                    <p class="text-muted fs-6">From tech brands to freelance developers, we are open to partnering with
+                        you.</p>
+                </div>
+
+                <div class="app-form-card shadow-sm gsap-init">
+                    <form action="#" method="POST" onsubmit="event.preventDefault();">
+
+                        <div class="form-group-block">
+                            <label for="salutation">Salutation</label>
+                            <input type="text" id="salutation" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="form-group-block">
+                            <label for="firstname">Firstname</label>
+                            <input type="text" id="firstname" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="form-group-block">
+                            <label for="lastname">Lastname</label>
+                            <input type="text" id="lastname" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="form-group-block">
+                            <label for="title">Title</label>
+                            <input type="text" id="title" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="form-group-block">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="form-group-block mb-4">
+                            <label for="phone">Phone</label>
+                            <input type="text" id="phone" class="form-control-spec" placeholder="">
+                        </div>
+
+                        <div class="pt-2 text-start">
+                            <button type="submit" class="btn btn-submit-form shadow-sm fs-6 px-4 py-2-5">Submit</button>
+                        </div>
+
+                    </form>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white text-secondary py-5 border-top mt-5">
+        <div class="container py-4">
+            <div class="row g-5 border-bottom pb-5 mb-4">
+                <div class="col-lg-4">
+                    <div class="mb-5">
+                        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;"
+                            alt="VMX Logo">
+                    </div>
+                    <div class="d-flex gap-3 fs-5 mb-4">
+                        <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+                        <a href="#" class="text-secondary text-decoration-none">in</a>
+                    </div>
+                    <div class="mt-4 d-flex gap-2">
+                        <input type="email" placeholder="Subscribe to our newsletter"
+                            class="form-control form-control-sm"
+                            style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+                        <button class="btn btn-sm btn-dark px-4 fw-semibold"
+                            style="background: #0F1115;">Subscribe</button>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+                        <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+                        <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+                        <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+                        <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+                        <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+                    </ul>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+                        <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL
+                            33020, USA</li>
+                        <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+                        <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+                        <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="text-center text-muted" style="font-size:0.8rem">
+                <span>&copy; 2025 , All Rights Reserved</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        function buildScrollReveal() {
+            document.querySelectorAll('.scroll-reveal').forEach(line => {
+                const words = line.dataset.words.split(',');
+                const delays = (line.dataset.delays || '').split(',').map(Number);
+                const colors = (line.dataset.colors || '').split(',');
+                line.innerHTML = '';
+                words.forEach((word, i) => {
+                    const span = document.createElement('span');
+                    span.className = 'reveal-word';
+                    if (colors[i] === 'green') span.classList.add('green');
+                    if (colors[i] === 'dim') span.classList.add('dim');
+                    span.textContent = word + ' ';
+                    span.dataset.delay = delays[i] || 0;
+                    line.appendChild(span);
+                });
+            });
+        }
+        buildScrollReveal();
+
+        const heroWords = document.querySelectorAll('.hero-h1 .reveal-word');
+        gsap.set(heroWords, { opacity: 0, y: '110%' });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const tl = gsap.timeline({ delay: 0.15 });
+            heroWords.forEach(w => {
+                tl.to(w, {
+                    opacity: 1, y: '0%',
+                    duration: 0.8,
+                    ease: 'power4.out'
+                }, parseFloat(w.dataset.delay));
+            });
+            tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
+            gsap.set('#heroLead', { y: 30 });
+        });
+
+        function registerWordReveal(headingEl) {
+            if (!headingEl) return;
+            const words = headingEl.querySelectorAll('.reveal-word');
+            if (!words.length) return;
+            ScrollTrigger.create({
+                trigger: headingEl,
+                start: 'top 85%',
+                onEnter: () => {
+                    words.forEach(w => {
+                        gsap.to(w, {
+                            opacity: 1, y: '0%',
+                            duration: 0.8,
+                            delay: parseFloat(w.dataset.delay) || 0,
+                            ease: 'power3.out'
+                        });
+                    });
+                }
+            });
+        }
+
+        document.querySelectorAll('.section-h, h2').forEach(el => {
+            registerWordReveal(el);
+        });
+
+        gsap.utils.toArray('.gsap-init, .benefit-item-row, .app-form-card').forEach((el, i) => {
+            gsap.set(el, { opacity: 0, y: 35 });
+            ScrollTrigger.create({
+                trigger: el,
+                start: 'top 88%',
+                onEnter: () => {
+                    gsap.to(el, {
+                        opacity: 1, y: 0,
+                        duration: 0.6,
+                        delay: (i % 4) * 0.08,
+                        ease: 'power2.out'
+                    });
+                }
+            });
+        });
+
+        gsap.set('#upgradeImg', { opacity: 0, x: 40 });
+        ScrollTrigger.create({
+            trigger: '#upgradeText',
+            start: 'top 75%',
+            onEnter: () => {
+                gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.85, ease: 'power3.out' });
+            }
+        });
+
+        const scrollBtn = document.getElementById('scrollTopBtn');
+        window.addEventListener('scroll', () => {
+            scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+    </script>
+</body>
+
+</html>

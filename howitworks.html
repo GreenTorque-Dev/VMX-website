@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>How it Works — VMX Virtualization Explained</title>
+    <meta name="description"
+        content="Virtualization made simple. Learn how VMX delivers virtual machines, servers, storage, and desktops on shared hardware." />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+        rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css">
+
+    <style>
+        /* ─── EXACT BRAND COLOR IDENTITY MANIFEST ─── */
+        :root {
+            --green-primary: #60A630;
+            --green-soft-bg: #E2EFCB;
+            --green-banner-bg: #74B83E;
+            --text-dark: #1A1A1A;
+            --gray-light-bg: #F4F6F8;
+        }
+
+        /* ─── BASE STRUCTURAL OVERRIDES MATCHING IMAGES ─── */
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #4A4A4A;
+            background-color: #FAFAFA;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        .section-h {
+            font-family: 'Red Hat Display', sans-serif;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        /* ─── HERO TYPOGRAPHY CUSTOMIZATION ─── */
+        .hero-h1-huge {
+            font-size: 5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+        }
+
+        @media (max-width: 768px) {
+            .hero-h1-huge {
+                font-size: 3rem;
+            }
+        }
+
+        /* ─── DECORATIVE CONTAINERS ─── */
+        .intro-info-box {
+            background-color: #F0F4F8;
+            border-radius: 16px;
+            padding: 2rem;
+            font-size: 1.1rem;
+            color: #5A6A85;
+            line-height: 1.6;
+        }
+
+        .definition-green-banner {
+            background-color: var(--green-banner-bg);
+            border-radius: 20px;
+            padding: 3rem;
+            color: #FFFFFF !important;
+            text-align: left;
+        }
+
+        .definition-green-banner h2,
+        .definition-green-banner p {
+            color: #FFFFFF !important;
+        }
+
+        .practical-example-box {
+            background-color: var(--green-soft-bg);
+            border-radius: 16px;
+            border-left: 6px solid var(--green-primary);
+            text-align: left;
+            padding: 2.5rem;
+        }
+
+        .practical-example-box h3 {
+            font-size: 1.6rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* ─── ARCHITECTURE GRAPHIC MAPPINGS ─── */
+        .system-block-node {
+            border: 2px solid #EAECEF;
+            border-radius: 12px;
+            padding: 1.25rem;
+            background: #FFFFFF;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .system-block-node.active-hypervisor {
+            border: 3px solid var(--green-primary);
+            box-shadow: 0 8px 24px rgba(96, 166, 48, 0.15);
+        }
+
+        .flow-connector-arrow {
+            font-size: 1.75rem;
+            color: var(--text-dark);
+            line-height: 1;
+            margin: 0.5rem 0;
+        }
+
+        /* ─── KEY AREAS CARD OVERRIDES ─── */
+        .area-card-spec {
+            background: #FFFFFF;
+            border: 1px solid #EAECEF;
+            border-radius: 16px;
+            border-top: 4px solid var(--green-primary);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+            height: 100%;
+        }
+
+        .icon-circle-container {
+            width: 70px;
+            height: 70px;
+            border: 1px solid #EAECEF;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            color: #888888;
+            background-color: #FFFFFF;
+        }
+
+        /* ─── ANIMATION SETUP INITIAL LAYER STATES ─── */
+        .gsap-text-animate,
+        .gsap-element-animate,
+        .staggered-grid .col,
+        .gsap-init {
+            opacity: 0;
+            will-change: transform, opacity;
+        }
+
+        .word-line {
+            overflow: hidden;
+            display: inline-block;
+            vertical-align: top;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="blue-pill"></div>
+
+    <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 15l-6-6-6 6" />
+        </svg>
+    </button>
+
+    <header class="site-header sticky-top">
+        <div class="container">
+            <nav class="navbar navbar-expand-lg py-3">
+                <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+                <div class="collapse navbar-collapse" id="mainNav">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                        <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="products.html">Product</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="howitworks.html">How it Works</a></li>
+                        <li class="nav-item"><a class="nav-link" href="pricing.html">Pricing</a></li>
+                        <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+                        <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+                        <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
+                        <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
+                        <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+
+        <section class="hero-section text-center py-5">
+            <div class="hero-hex-bg"></div>
+            <div class="container py-4">
+                <h1 class="hero-h1 hero-h1-huge mb-5" id="heroHeading">
+                    <span class="word-line">
+                        <span class="reveal-word green" data-delay="0">Virtualization</span>
+                    </span>
+                    <span class="word-line">
+                        <span class="reveal-word" data-delay="0.25">Made</span>
+                    </span>
+                    <br>
+                    <span class="word-line">
+                        <span class="reveal-word" data-delay="0.45">Simple</span>
+                    </span>
+                </h1>
+
+
+            </div>
+        </section>
+
+        <section class="section py-5">
+            <div class="container">
+                <div class="p-4 p-md-5 bg-white rounded-4 shadow-sm border border-light-subtle">
+
+                    <div class="intro-info-box p-4 mb-4 rounded-4"
+                        style="background-color: #F1F4F9; color: #6C7A93; font-size: 1.05rem; line-height: 1.6;">
+                        If you're active in today's business world, chances are you've heard the word "virtualization"
+                        thrown around every now and then. But what exactly does this word mean, and why does it seem to
+                        be becoming a trend in the business world?
+                    </div>
+
+                    <div class="p-4 p-md-5 text-white mb-4 rounded-4 gsap-init" style="background-color: #74B83E;">
+                        <h2 class="h1 fw-bold mb-4 text-white" style="font-family: 'Red Hat Display', sans-serif;">What
+                            is Virtualization?</h2>
+                        <p class="mb-0 opacity-95" style="line-height: 1.7; font-weight: 400; font-size: 1.05rem;">
+                            Virtualization is a computing technology that allows for the creation of virtual
+                            (non-physical) versions of computing resources like servers, storage devices, networks, and
+                            operating systems. Each of these virtual environments, collectively known as virtual
+                            machines (VMs), exists independently of the underlying physical hardware on which they are
+                            built, thereby functioning as their own self-contained systems. By creating virtual
+                            machines, users can compartmentalize computing hardware, converting one computing resource
+                            into multiple different ones.
+                        </p>
+                    </div>
+
+                    <div class="p-4 p-md-5 rounded-4 gsap-init border-start"
+                        style="background-color: #E6F3D6; border-left: 6px solid #60A630 !important;">
+                        <h3 class="h3 fw-bold text-black mb-3 d-flex align-items-center gap-2"
+                            style="font-family: 'Red Hat Display', sans-serif;">
+                            <span
+                                class="d-inline-flex align-items-center justify-content-center rounded-circle text-white bg-success"
+                                style="width: 36px; height: 36px; background-color: #8CC63F !important; font-size: 1.1rem;">💡</span>
+                            A Practical Example
+                        </h3>
+                        <p class="text-dark mb-0"
+                            style="line-height: 1.7; font-size: 1.05rem; color: #222222 !important;">
+                            Consider a start-up writing firm looking to expand its team of content writers. The new
+                            writers would need their own computers. Traditionally, the company would have to invest in
+                            purchasing and maintaining these new computers; with virtualization, however, virtual
+                            desktops for different writers can simply be created on existing hardware, saving the
+                            company on hardware costs.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-5">
+            <div class="container py-4">
+                <div class="row align-items-center g-5">
+
+                    <div class="col-lg-5" id="upgradeImg">
+                        <img width="500px" src="images/vmx/VMX-01.webp" alt="">
+                    </div>
+
+                    <div class="col-lg-7" id="upgradeText">
+                        <h2 class="section-h mb-3 fs-1">How Virtualization Works</h2>
+                        <p class="text-muted mb-4 fs-6">How Virtualization Works Virtualization is quite an advanced
+                            technology, but the idea behind it is straightforward: Divide the resources of a physical
+                            computing system into separate parts and convert these parts into virtual machines which run
+                            their own operating systems and apps.</p>
+
+                        <div class="architecture-layers d-flex flex-column text-center max-w-500 mt-4 gsap-init">
+                            <div class="system-block-node shadow-sm">
+                                <div class="text-dark fw-bold mb-1">Virtual Machines</div>
+                                <div class="small text-success" style="font-size: 0.8rem;">Independent virtual systems
+                                </div>
+                            </div>
+
+                            <div class="flow-connector-arrow">↑</div>
+
+                            <div class="system-block-node active-hypervisor shadow-sm">
+                                <div class="text-dark fw-bold mb-1">Hypervisor</div>
+                                <div class="small text-success" style="font-size: 0.8rem;">Specialized software layer
+                                </div>
+                            </div>
+
+                            <div class="flow-connector-arrow">↑</div>
+
+                            <div class="system-block-node shadow-sm">
+                                <div class="text-dark fw-bold mb-1">Physical Hardware</div>
+                                <div class="small text-success" style="font-size: 0.8rem;">Your actual computer/server
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-muted mt-4 small" style="line-height: 1.6;">This division is achieved by the use
+                            of a hypervisor, a specialized software layer that sits between your physical hardware and
+                            the virtual machines.</p>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-5" style="background-color: #FAFAFA;">
+            <div class="container py-4">
+                <div class="text-center mx-auto mb-5" style="max-width: 700px;">
+                    <h2 class="section-h mb-3 fs-1 fw-bold"
+                        style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.02em; color: #1A1A1A;">Key
+                        Areas of Virtualization</h2>
+                </div>
+
+                <div class="row g-4 row-cols-1 row-cols-md-2 justify-content-center">
+
+                    <div class="col gsap-init">
+                        <div class="shadow-sm border"
+                            style="background: #FFFFFF; border-radius: 20px; border-top: 5px solid #60A630 !important; padding: 3rem 2rem; text-align: center; height: 100%;">
+                            <div class="d-flex align-items-center justify-content-center rounded-circle border mx-auto mb-4"
+                                style="width: 80px; height: 80px; background-color: #FFFFFF; color: #888888;">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <rect x="2" y="3" width="20" height="8" rx="2" />
+                                    <rect x="2" y="13" width="20" height="8" rx="2" />
+                                    <circle cx="6" cy="7" r="1" />
+                                    <circle cx="6" cy="17" r="1" />
+                                </svg>
+                            </div>
+                            <h3 class="h4 fw-bold mb-3"
+                                style="font-family: 'Red Hat Display', sans-serif; color: #1A1A1A;">Server
+                                Virtualization</h3>
+                            <p class="text-muted small mb-0 px-xl-4" style="line-height: 1.6; font-size: 0.95rem;">
+                                Dividing single physical servers into virtual servers. Each virtual server acts as a
+                                standalone server, enabling users to run multiple tasks on a single server.</p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="shadow-sm border"
+                            style="background: #FFFFFF; border-radius: 20px; border-top: 5px solid #60A630 !important; padding: 3rem 2rem; text-align: center; height: 100%;">
+                            <div class="d-flex align-items-center justify-content-center rounded-circle border mx-auto mb-4"
+                                style="width: 80px; height: 80px; background-color: #FFFFFF; color: #888888;">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </div>
+                            <h3 class="h4 fw-bold mb-3"
+                                style="font-family: 'Red Hat Display', sans-serif; color: #1A1A1A;">Desktop
+                                Virtualization</h3>
+                            <p class="text-muted small mb-0 px-xl-4" style="line-height: 1.6; font-size: 0.95rem;">
+                                Creating virtual desktop environments delivered to a central server and accessible from
+                                any device, anywhere.</p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="shadow-sm border"
+                            style="background: #FFFFFF; border-radius: 20px; border-top: 5px solid #60A630 !important; padding: 3rem 2rem; text-align: center; height: 100%;">
+                            <div class="d-flex align-items-center justify-content-center rounded-circle border mx-auto mb-4"
+                                style="width: 80px; height: 80px; background-color: #FFFFFF; color: #888888;">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                                    <path d="M2 17l10 5 10-5" />
+                                    <path d="M2 12l10 5 10-5" />
+                                </svg>
+                            </div>
+                            <h3 class="h4 fw-bold mb-3"
+                                style="font-family: 'Red Hat Display', sans-serif; color: #1A1A1A;">Storage
+                                Virtualization</h3>
+                            <p class="text-muted small mb-0 px-xl-4" style="line-height: 1.6; font-size: 0.95rem;">
+                                Combining multiple physical storage devices into a single, unified virtual storage
+                                accessible from anywhere.</p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="shadow-sm border"
+                            style="background: #FFFFFF; border-radius: 20px; border-top: 5px solid #60A630 !important; padding: 3rem 2rem; text-align: center; height: 100%;">
+                            <div class="d-flex align-items-center justify-content-center rounded-circle border mx-auto mb-4"
+                                style="width: 80px; height: 80px; background-color: #FFFFFF; color: #888888;">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                    <path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z" />
+                                </svg>
+                            </div>
+                            <h3 class="h4 fw-bold mb-3"
+                                style="font-family: 'Red Hat Display', sans-serif; color: #1A1A1A;">Network
+                                Virtualization</h3>
+                            <p class="text-muted small mb-0 px-xl-4" style="line-height: 1.6; font-size: 0.95rem;">
+                                Combining network hardware with software to create flexible virtual networks that are
+                                easier to manage, scale, and secure.</p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="row mt-4 justify-content-center">
+                    <div class="col-md-6 gsap-init">
+                        <div class="shadow-sm border"
+                            style="background: #FFFFFF; border-radius: 20px; border-top: 5px solid #60A630 !important; padding: 3rem 2rem; text-align: center; height: 100%;">
+                            <div class="d-flex align-items-center justify-content-center rounded-circle border mx-auto mb-4"
+                                style="width: 80px; height: 80px; background-color: #FFFFFF; color: #888888;">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5">
+                                    <rect x="3" y="3" width="7" height="7" />
+                                    <rect x="14" y="3" width="7" height="7" />
+                                    <rect x="14" y="14" width="7" height="7" />
+                                    <rect x="3" y="14" width="7" height="7" />
+                                </svg>
+                            </div>
+                            <h3 class="h4 fw-bold mb-3"
+                                style="font-family: 'Red Hat Display', sans-serif; color: #60A630;">Application
+                                Virtualization</h3>
+                            <p class="text-muted small mb-0 px-xl-4" style="line-height: 1.6; font-size: 0.95rem;">
+                                Running software applications in isolated virtual environments instead of installing
+                                them directly on user devices.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section class="section py-5" style="background-color: #FAFAFA;">
+            <div class="container py-4">
+                <div class="text-center mx-auto mb-5" style="max-width: 800px;">
+                    <h2 class="mb-3 fw-bold"
+                        style="font-family: 'Red Hat Display', sans-serif; font-size: 4rem; letter-spacing: -0.02em; color: #60A630;">
+                        Why Should You <span style="color: #1A1A1A;">Care?</span>
+                    </h2>
+                </div>
+
+                <div class="row g-4 row-cols-1 row-cols-md-2">
+
+                    <div class="col gsap-init">
+                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                            style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
+                            <h3 class="h4 fw-bold mb-3 text-dark"
+                                style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">
+                                Cost-Effective</h3>
+                            <p class="text-muted mb-0" style="line-height: 1.6; font-size: 0.95rem;">Reduce hardware
+                                costs by maximizing existing resources and eliminating the need for additional physical
+                                machines.</p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                            style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
+                            <h3 class="h4 fw-bold mb-3 text-dark"
+                                style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Highly
+                                Efficient</h3>
+                            <p class="text-muted mb-0" style="line-height: 1.6; font-size: 0.95rem;">Make computing more
+                                efficient by optimizing resource usage and improving overall system performance.</p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                            style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
+                            <h3 class="h4 fw-bold mb-3 text-dark"
+                                style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Ultimate
+                                Flexibility</h3>
+                            <p class="text-muted mb-0" style="line-height: 1.6; font-size: 0.95rem;">Scale operations
+                                seamlessly without purchasing new hardware, adapting quickly to changing business needs.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="col gsap-init">
+                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                            style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
+                            <h3 class="h4 fw-bold mb-3 text-dark"
+                                style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Infinitely
+                                Scalable</h3>
+                            <p class="text-muted mb-0" style="line-height: 1.6; font-size: 0.95rem;">Run multiple
+                                operating systems on one computer and expand your capabilities without physical
+                                limitations.</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <section class="section py-4">
+            <div class="container">
+                <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
+                    style="background-color: var(--green-banner-bg); border-radius: 20px;">
+                    <h2 class="text-white h1 fw-bold mb-3">Getting Started with Virtualization</h2>
+                    <p class="mx-auto mb-5 text-white-50" style="max-width: 780px; font-size: 1rem; line-height: 1.7;">
+                        VMX offers enterprise-grade virtualization for businesses and business professionals. From
+                        storage and network virtualization to desktop and server virtualization, our virtualization
+                        solution has been designed to optimize resources, reduce costs, and enhance flexibility.
+                    </p>
+                    <a href="contact.html" class="btn btn-light px-5 py-3 fw-bold text-dark rounded border shadow-sm"
+                        style="background-color: #FFFFFF; font-size: 0.95rem;">Get Started Today</a>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white text-secondary py-5 border-top mt-5">
+        <div class="container py-4">
+            <div class="row g-5 border-bottom pb-5 mb-4">
+                <div class="col-lg-4">
+                    <div class="mb-5">
+                        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;"
+                            alt="VMX Logo">
+                    </div>
+                    <div class="d-flex gap-3 fs-5 mb-4">
+                        <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+                        <a href="#" class="text-secondary text-decoration-none">in</a>
+                    </div>
+                    <div class="mt-4 d-flex gap-2">
+                        <input type="email" placeholder="Subscribe to our newsletter"
+                            class="form-control form-control-sm"
+                            style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+                        <button class="btn btn-sm btn-dark px-4 fw-semibold"
+                            style="background: #0F1115;">Subscribe</button>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+                        <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+                        <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+                        <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+                        <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+                        <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+                    </ul>
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+                    <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+                        <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL
+                            33020, USA</li>
+                        <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+                        <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+                        <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="text-center text-muted" style="font-size:0.8rem">
+                <span>&copy; 2025 , All Rights Reserved</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        // --- Dynamic Character Word-Line Engine Splitter ---
+        function buildScrollReveal() {
+            document.querySelectorAll('.scroll-reveal').forEach(line => {
+                const words = line.dataset.words.split(',');
+                const delays = (line.dataset.delays || '').split(',').map(Number);
+                const colors = (line.dataset.colors || '').split(',');
+                line.innerHTML = '';
+                words.forEach((word, i) => {
+                    const span = document.createElement('span');
+                    span.className = 'reveal-word';
+                    if (colors[i] === 'green') span.classList.add('green');
+                    if (colors[i] === 'dim') span.classList.add('dim');
+                    span.textContent = word + ' ';
+                    span.dataset.delay = delays[i] || 0;
+                    line.appendChild(span);
+                });
+            });
+        }
+        buildScrollReveal();
+
+        // --- Giant Header Fluid Stagger Reveal Sequence ---
+        const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
+        gsap.set(heroWords, { opacity: 0, y: '110%' });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const tl = gsap.timeline({ delay: 0.15 });
+            heroWords.forEach(w => {
+                tl.to(w, {
+                    opacity: 1, y: '0%',
+                    duration: 0.8,
+                    ease: 'power4.out'
+                }, parseFloat(w.dataset.delay));
+            });
+            tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.4);
+            tl.to('#heroCtas', { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 0.55);
+            gsap.set(['#heroLead', '#heroCtas'], { y: 30 });
+        });
+
+        // --- Dynamic Section Scroll Observers ---
+        function registerWordReveal(headingEl) {
+            if (!headingEl) return;
+            const words = headingEl.querySelectorAll('.reveal-word');
+            if (!words.length) return;
+            ScrollTrigger.create({
+                trigger: headingEl,
+                start: 'top 85%',
+                onEnter: () => {
+                    words.forEach(w => {
+                        gsap.to(w, {
+                            opacity: 1, y: '0%',
+                            duration: 0.8,
+                            delay: parseFloat(w.dataset.delay) || 0,
+                            ease: 'power3.out'
+                        });
+                    });
+                }
+            });
+        }
+
+        document.querySelectorAll('.section-h, h2').forEach(el => {
+            registerWordReveal(el);
+        });
+
+        // Stagger loop for general lists and visual content nodes
+        gsap.utils.toArray('.gsap-init, .area-card-spec, .feat-card, .system-block-node').forEach((el, i) => {
+            gsap.set(el, { opacity: 0, y: 35 });
+            ScrollTrigger.create({
+                trigger: el,
+                start: 'top 88%',
+                onEnter: () => {
+                    gsap.to(el, {
+                        opacity: 1,
+                        y: 0,
+                        duration: 0.6,
+                        delay: (i % 3) * 0.1,
+                        ease: 'power2.out'
+                    });
+                }
+            });
+        });
+
+        // Content fade element transitions tracking variables
+        gsap.utils.toArray(".gsap-text-animate, .gsap-element-animate, .practical-example-box").forEach(el => {
+            gsap.fromTo(el, { opacity: 0, y: 25 }, {
+                opacity: 1, y: 0, duration: 0.7, ease: "power2.out",
+                scrollTrigger: { trigger: el, start: "top 90%" }
+            });
+        });
+
+        // Left-to-right visual frame coordinate shift tracking rules
+        gsap.set('#upgradeImg', { opacity: 0, x: -40 });
+        ScrollTrigger.create({
+            trigger: '#upgradeText',
+            start: 'top 78%',
+            onEnter: () => {
+                gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.85, ease: 'power3.out' });
+            }
+        });
+
+        const scrollBtn = document.getElementById('scrollTopBtn');
+        window.addEventListener('scroll', () => {
+            scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+    </script>
+</body>
+
+</html>

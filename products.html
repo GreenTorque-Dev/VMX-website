@@ -1,435 +1,737 @@
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en">
+
 <head>
-	<title>VMX</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VMX — Transforming Infrastructure. Driving Results.</title>
+  <meta name="description" content="Enterprise-grade virtualization without the complexity or cost barriers." />
 
-	<meta charset="utf-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-
-  <link rel="stylesheet" type="text/css" href="css/font-awesome.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.fancybox-1.3.4.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/style.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.bxslider.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/fullwidth.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/revslider.css" media="screen">
-  <link rel="stylesheet" href="css/dr-framework.css" type="text/css" media="screen">
-
-  <link href='https://fonts.googleapis.com/css?family=Roboto:400,300,100,500,400italic,300italic,100italic,500italic,700,700italic,900,900italic' rel='stylesheet' type='text/css'>
-  <link href='https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800' rel='stylesheet' type='text/css'>
-  <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
-  <link rel="icon" href="images/favicon.ico" type="image/x-icon">
- 
-
-  
-	
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
+    rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css">
 </head>
-<!-- <style>
-/* Tabs Navigation */
-.tab-links {
-  display: flex;
-  border-bottom: 2px solid #ccc;
-  padding: 5px;
-  margin-bottom: 20px;
-}
 
-.tab-links li {
-  list-style: none;
-  margin-right: 15px;
-}
-
-.tab-links a {
-  display: block;
-  padding: 10px 20px;
-  font-weight: bold;
-  color: #333;
-  border-radius: 5px 5px 0 0;
-  background-color: #f5f5f5;
-  text-decoration: none;
-  transition: all 0.3s ease;
-}
-
-.tab-links .active a {
-  background-color: #6d747d;
-  color: #fff;
-  border-bottom: 2px solid #939ba3;
-} -->
-
-<!-- /* Tab Content */ -->
-<!-- .tabs-widget ul {
-  list-style: none;
-  padding: 0;
-}
-
-.tabs-widget li {
-  background: #fff;
-  padding: 25px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-  animation: fadeIn 0.4s ease-in-out;
-  margin-bottom: 10px;
-}
-
-.tabs-widget p {
-  font-size: 16px;
-  line-height: 1.6;
-  color: #444;
-}
-
-/* Animation */
-@keyframes fadeIn {
-  from {opacity: 0; transform: translateY(10px);}
-  to {opacity: 1; transform: translateY(0);}
-}
-</style> -->
-<style>
-  .view-first img {
-  width: 100px;
-  height: auto;
-}
-
- .card-container {
-  display: flex;
-  justify-content: center;        /* center all cards horizontally */
-  gap: 30px;                      /* space between cards */
-  flex-wrap: wrap;                /* wrap on smaller screens */
-  padding: 20px 40px;             /* left and right margin inside the container */
-  box-sizing: border-box;
-}
-
-.slide {
-  background: #f9f9f9;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  padding: 20px;
-  max-width: 320px;
-  flex: 1 1 300px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  transition: transform 0.3s ease;
-}
-
-.slide:hover {
-  transform: translateY(-5px);
-}
-
-.view img {
-  max-width: 100%;
-  height: auto;
-}
-
-.get-trial-btn {
-  background-color: #6ea535;
-  color: #fff;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 5px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 15px;
-  transition: background 0.3s;
-}
-
-.get-trial-btn:hover {
-  background-color: #7a7a7b;
-}
-
-</style>
 <body>
 
-<div id="container">
-	<header>
-	<div class="sub-header clearfix">
-		<div class="wrapper">
-			<ul>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="#">terms & conditions</a>
-				</li>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="about.html">about us</a>
-				</li>
-				<li>
-				<i class="fa fa-caret-square-o-right"></i><a href="#">login</a>
-				</li>
-			</ul>
-			<div class="socials">
-				<a href="#"><i class="fa fa-google-plus"></i></a>
-				<a href="#"><i class="fa fa-twitter"></i></a>
-				<a href="#"><i class="fa fa-pinterest"></i></a>
-				<a href="#"><i class="fa fa-dribbble"></i></a>
-				<a href="#"><i class="fa fa-linkedin"></i></a>
-				<a href="#"><i class="fa fa-facebook"></i></a>
-			</div>
-		</div>
-	</div>
-      <div class="upper-header wrapper">
+  <div class="blue-pill"></div>
 
-         <div class="logo">
-             <a href="index.html"><img src="images/vmx.png"></a>
-         </div>
+  <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M18 15l-6-6-6 6" />
+    </svg>
+  </button>
 
-        <!-- Navigation -->
-        <div id="nav">
-          <ul id="navlist" class="sf-menu clearfix">
-            <li><a href="index.html"><div class="main-a"> Home </div> <div class="nav-border"></div> <div class="span">start here</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="home-boxed.html"><span>--</span>Home Boxed</a></li>
-                <li><a href="home-blog.html"><span>--</span>Home Blog</a></li>
-                <li><a href="home-portfolio.html"><span>--</span>Home Portfolio</a></li>
-                <li><a href="home-fullportfolio.html"><span>--</span>Home Portfolio Full Screen</a></li>
-                <li><a href="home-dark.html"><span>--</span>Home Dark</a></li>
-              </ul> -->
-            </li>
-           
-            <li><a href="products.html"><div class="main-a"> Products </div> <div class="nav-border"></div> <div class="span">Our Products</div></a></li>
-            <li class="current"><a href="resources.html"><div class="main-a"> Resources </div> <div class="nav-border"></div> <div class="span">what we offer</div></a>
-              <!-- <ul class="sub-menu">
-                <li><a href="shop.html"><span>--</span>Shop</a></li>
-                <li><a href="shop-list.html"><span>--</span>Shop List View</a></li>
-              </ul> -->
-           </li>
-             <li><a href="about.html"><div class="main-a"> About </div> <div class="nav-border"></div> <div class="span">who we are</div></a></li>
-            <li><a href="contact.html"><div class="main-a"> Contact </div> <div class="nav-border"></div> <div class="span">get in touch</div></a></li>
+  <header class="site-header sticky-top">
+    <div class="container">
+      <nav class="navbar navbar-expand-lg py-3">
+        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+        <div class="collapse navbar-collapse" id="mainNav">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+            <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
+            <li class="nav-item"><a class="nav-link active" href="products.html">Product</a></li>
+            <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
+            <li class="nav-item"><a class="nav-link" href="pricing.html">Pricing</a></li>
+            <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
+            <li class="nav-item"><a class="nav-link" href="customerpresence.html">Customer Presence</a></li>
+            <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
+            <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
+            <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
           </ul>
         </div>
-        <!-- Navigation -->
-        <div class="clear"></div>
-      </div>
+      </nav>
+    </div>
   </header>
-  <!--end header-->
-    <div class="head-banner clearfix">
-      <div class="wrapper">
-        <h4>Products</h4>
-        <div class="site_map">
-          <a href="index.html">Home</a> Products
+
+  <main>
+
+    <section class="hero-section text-center">
+      <div class="hero-hex-bg"></div>
+      <div class="container py-5">
+        <h1 class="hero-h1 mb-4" id="heroHeading">
+          <span class="word-line">
+            <span class="reveal-word" data-delay="0">One Solution. All the</span>
+          </span>
+          <span class="word-line">
+            <span class="reveal-word green" data-delay="0.22">Features You Need</span>
+          </span>
+        </h1>
+        <p class="hero-lead mx-auto mb-5 gsap-init" id="heroLead">
+          No unnecessary tools. No bloated stacks. Just one clean, powerful platform with everything you need to deploy,
+          manage, and scale virtual environments with confidence.
+        </p>
+        <div class="d-flex justify-content-center align-items-center gap-4 gsap-init" id="heroCtas">
+          <a href="#" class="btn btn-primary px-4 py-3"
+            style="background-color: var(--green-primary); border-color: var(--green-primary);">Start free trial</a>
+          <a href="#" class="text-decoration-none fw-semibold d-flex align-items-center gap-1 text-dark">
+            Learn more
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </a>
         </div>
-        <div class="clear"></div>
+
+        <div class="row g-4 justify-content-center align-items-center mt-5 pt-4 gsap-init" style="opacity: 0.6;">
+          <div class="col-6 col-sm-4 col-md-2 text-center"><span class="fw-bold text-muted">nBalance</span></div>
+          <div class="col-6 col-sm-4 col-md-2 text-center"><span class="fw-bold text-muted">NaviG</span></div>
+          <div class="col-6 col-sm-4 col-md-2 text-center"><span class="fw-bold text-muted">G-Immute</span></div>
+          <div class="col-6 col-sm-4 col-md-2 text-center"><span class="fw-bold text-muted">Cloudgrid</span></div>
+          <div class="col-6 col-sm-4 col-md-2 text-center"><span class="fw-bold text-muted">VMX Matrix</span></div>
+        </div>
       </div>
-    </div>
+    </section>
 
-      <!-- <div class="wrapper"> 
-  <div class="service-welcome">
-
-    <h3 class="main-title">VMX Virtual Environment</h3>
-
-    <div class="content-with-image">
-      <p>
-        Virtual Environment is a comprehensive, open-source server management platform designed for enterprise virtualization. 
-        It seamlessly combines the KVM hypervisor and Linux Containers (LXC) with software-defined storage and networking, 
-        all within a unified platform. Its integrated web-based interface allows for easy management of virtual machines and 
-        containers, cluster high availability, and built-in disaster recovery tools.
-      </p>
-      <img src="images/img2.png" alt="Virtual Environment" class="content-img">
-    </div>
-
-    <h4 class="main-title">Compute, network, and storage in one integrated solution</h4>
-
-    <div class="content-with-image">
-      <p>
-        VMX offers enterprise-grade capabilities with a fully software-based approach, making it an ideal choice for 
-        virtualizing your IT infrastructure. It helps you optimize existing resources, boost efficiency, and reduce costs. 
-        With VMX, you can effortlessly virtualize even the most demanding Linux and Windows workloads, while dynamically 
-        scaling compute and storage to meet growing demands—ensuring your data center is ready for future expansion.
-      </p>
-      <img src="images/img5.jpg" alt="Compute Network Storage" class="content-img">
-    </div>
-
-    <a href="#get-started" class="get-started-btn">Get Started</a>
-  </div>
-</div>
-
-       -->
-      
-         <!-- Tabs -->
-<!-- <div class="tabs service-tabs clearfix mb30">  
-  <div class="tabs-widget clearfix">
-    <ul class="tab-links clearfix">
-      <li class="active"><a href="#support">	 Features</a></li>
-      <li><a href="#visual">Enterprise Support</a></li>
-      <li><a href="#econom">System Requirements</a></li>
-    </ul>
-
-    <div id="support" style="display: block;">
-      <ul>
-        <li>
-          <p>By integrating two virtualization technologies into one platform, <strong>VMX</strong> offers maximum flexibility for your production environment. Utilize <strong>KVM</strong> for full virtualization of Windows and Linux systems, and run lightweight containers to deploy isolated, conflict-free Linux applications.</p>
-        </li>
-      </ul>
-    </div>
-
-    <div id="visual" style="display: none;">
-      <ul>
-        <li>
-          <p><strong>VMX</strong> is an ideal solution for enterprise environments, offering a production-ready feature set that's easy to manage. It enhances efficiency and reduces complexity in your data center operations. With robust commercial support and training services, you can ensure smooth and continuous business operations.</p>
-        </li>
-      </ul>
-    </div>
-
-    <div id="econom" style="display: none;">
-      <ul>
-        <li>
-          <p>For production environments, high-quality server hardware is essential. <strong>VMX</strong> supports clustering, enabling centralized management of multiple installations through its integrated cluster functionality. It is compatible with various storage types, including <strong>DAS</strong>, <strong>SAN</strong>, <strong>NAS</strong>, and distributed storage like <strong>Ceph</strong>.</p>
-        </li>
-      </ul>
-    </div>
-  </div>
-</div>
-    </div> -->
-  <div class="recent-posts">
-  <h3 class="main-title">Enterprise Solutions</h3>
-  <span class="main-subtitle">Choose the solution that fits your environment</span>
-
-  <!-- Flex wrapper -->
-  <div class="card-container">
-    
-    <!-- Card 1 -->
-    <div class="slide">
-      <div class="view view-first">
-        <img src="images/vmx/1.png" alt="EnterprisePrime Logo" />
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4" id="featGrid">
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+              </div>
+              <h3>Virtual Environment Creation</h3>
+              <p>Build, configure, and control isolated virtual environments with ease and speed.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1" />
+                  <path d="M18 8l4 4-4 4M22 12H8" />
+                </svg>
+              </div>
+              <h3>Live VM &amp; Storage Migration</h3>
+              <p>Move virtual machines and storage in real time—zero downtime, zero disruptions.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <h3>Built-in Security Framework</h3>
+              <p>Enjoy top-of-the-line protection across every layer of your virtual infrastructure.</p>
+            </div>
+          </div>
+          <div class="col">
+            <div class="feat-card gsap-init">
+              <div class="feat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" />
+                </svg>
+              </div>
+              <h3>Nested Virtualization Ready</h3>
+              <p>Run virtual machines inside virtual machines—for more complex workloads.</p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="repost-text">
-        <h4>Standard</h4>
-        <p style="font-weight: bold; color: #e74c3c;">Up to 4Gbps — $6,690</p>
-        <p>A fully featured, high-performance ADC solution suitable for growing environments.</p>
-        <button class="get-trial-btn">Get Trial</button>
-      </div>
-    </div>
+    </section>
 
-    <!-- Card 2 -->
-    <div class="slide">
-      <div class="view view-first">
-        <img src="images/vmx/2.png" alt="EnterpriseFlex Logo" />
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-7" id="upgradeText">
+            <h2 class="section-h mb-4" style="font-size: 3.5rem;">
+              <span class="word-line scroll-reveal" data-words="100+ Ways to" data-delays="0,0.1"></span>
+              <span class="word-line scroll-reveal" data-words="Go Virtual" data-delays="0.2"></span>
+            </h2>
+            <p class="text-muted mb-4">What kind of virtual environment do you need—virtual storage, applications,
+              networks, or desktops? With VMX, you get everything in one powerful, easy-to-use solution designed to
+              handle all your virtualization needs.</p>
+            <a href="#" class="btn btn-outline-secondary px-4 py-3 gsap-init">Get started</a>
+          </div>
+          <div class="col-lg-5 text-center text-lg-end" id="upgradeImg">
+            <svg class="scatter-bg-rings inline-hex-dec" width="200" height="200" viewBox="0 0 100 100" opacity="0.15">
+              <polygon points="50,1 93,25 93,75 50,99 7,75 7,25" fill="none" stroke="currentColor" stroke-width="1" />
+            </svg>
+          </div>
+        </div>
       </div>
-      <div class="repost-text">
-        <h4>Enterprise<span style="color: #6ea535; font-size: 14px;"> &nbsp;(Recommended)</span></h4>
-        <p style="font-weight: bold; color: #e74c3c;">Up to 48Gbps — $13,380</p>
-        <p>Our most popular hardware ADC offering performance, flexibility, and future proofing.</p>
-        <button class="get-trial-btn">Get Trial</button>
+    </section>
+
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="text-center mx-auto mb-5" id="wayHead">
+          <h2 class="section-h mb-3">
+            <span class="word-line scroll-reveal" data-words="Select a Virtualization" data-delays="0"></span>
+            <span class="word-line scroll-reveal" data-words="Tier" data-colors="green" data-delays="0.2"></span>
+          </h2>
+        </div>
+
+        <div class="table-responsive rounded border shadow-sm bg-white gsap-init">
+          <table class="table table-striped align-middle mb-0 text-center text-nowrap table-hover"
+            style="font-size: 0.9rem;">
+            <thead class="table-light">
+              <tr style="font-family: 'Red Hat Display', sans-serif;">
+                <th class="text-start py-3 px-4" style="color: var(--green-primary);">Features</th>
+                <th style="color: var(--green-primary);">Community</th>
+                <th style="color: var(--green-primary);">Core</th>
+                <th style="color: var(--green-primary);">Business</th>
+                <th style="color: var(--green-primary);">Enterprise</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">VM Management</td>
+                <td>Limited GUI+ CLI</td>
+                <td>Limited GUI+ CLI</td>
+                <td>GUI+ CLI</td>
+                <td>GUI+Automation Tools</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Number of VMs Supported</td>
+                <td>2 VMs</td>
+                <td>4 VMs</td>
+                <td>8 VMs</td>
+                <td>Unlimited VMs</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">CPUs – Sockets</td>
+                <td>1</td>
+                <td>2</td>
+                <td>Unlimited</td>
+                <td>Unlimited</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">RAM Supported</td>
+                <td>16 GB/VM</td>
+                <td>32GB/VM</td>
+                <td class="text-muted">Unlimited</td>
+                <td class="text-muted">Unlimited</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Snapshots</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td>Automated + Scheduled</td>
+                <td>Automated + Scheduled</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">VM Replication (on-demand)</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td>Available</td>
+                <td>Available</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Networking</td>
+                <td>NAT Only</td>
+                <td>Bridge, Teaming</td>
+                <td>Bridge, Teaming, VLAN</td>
+                <td>Bridge, Teaming, VLAN</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Passthrough (CPU/USB/PCI)</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">Not available</td>
+                <td>Available</td>
+                <td>Full support</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Monitoring &amp; Logging</td>
+                <td class="text-muted">Not available</td>
+                <td>Basic logs</td>
+                <td>System-level logging, VM Monitoring</td>
+                <td>Real-time analytics, System-level logging, VM Monitoring</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Security Features</td>
+                <td class="text-muted">Not available</td>
+                <td>Basic Config</td>
+                <td>Advanced Config</td>
+                <td>Advanced Config</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Integration &amp; Automation</td>
+                <td class="text-muted">Not available</td>
+                <td class="text-muted">None</td>
+                <td>Basic, nBalance WAF &amp; LB</td>
+                <td>Basic, nBalance WAF &amp; LB, G-Immute</td>
+              </tr>
+              <tr>
+                <td class="text-start fw-semibold py-3 px-4">Support</td>
+                <td class="text-muted">Not available</td>
+                <td>Community Support</td>
+                <td>Email, Remote</td>
+                <td>Priority Support</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Card 3 -->
-    <div class="slide">
-      <div class="view view-first">
-        <img src="images/vmx/31.png" alt="EnterpriseMax Logo" />
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row align-items-center mb-5" id="limitlessHead">
+          <div class="col-lg-6">
+            <h4 class="section-h mb-3" style="font-size: 48px;">
+              <span class="word-line scroll-reveal" data-words="Enterprise-Grade Security," data-colors="green"></span>
+              <span class="word-line scroll-reveal" data-words="Built in from Day One" data-delays="0.2"></span>
+            </h4>
+          </div>
+          <div class="col-lg-6">
+            <p class="text-muted mb-0">Your virtual infrastructure is only as strong as its defences. VMX is engineered
+              with layered, built-in enterprise-grade security features that protect your workloads, data, and users.
+            </p>
+          </div>
+        </div>
+
+        <div class="row row-cols-1 row-cols-md-3 g-4" id="wayCards">
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">🌐</span></div>
+                <h3 class="h5 mb-2">SECURE BOOT &amp; TPM SUPPORTS</h3>
+                <p class="text-muted small mb-4">Hardware-enforced integrity powered by Secure Boot and TPM support.</p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">🛡️</span></div>
+                <h3 class="h5 mb-2">GRANULAR FIREWALL CONTROLS</h3>
+                <p class="text-muted small mb-4">Control traffic at every level by configuring firewall rules per VM.
+                </p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">⚙️</span></div>
+                <h3 class="h5 mb-2">CUSTOM SECURITY POLICIES</h3>
+                <p class="text-muted small mb-4">Tailor access, isolation, and usage policies to fit your team
+                  structure.</p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">⚖️</span></div>
+                <h3 class="h5 mb-2">LOAD BALANCER &amp; WAF SUPPORT</h3>
+                <p class="text-muted small mb-4">Integrate with nBalance Load balancer and WAF.</p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">📝</span></div>
+                <h3 class="h5 mb-2">AUDIT LOGS &amp; TRACKING</h3>
+                <p class="text-muted small mb-4">Track system changes, user actions, and VM events in real-time.</p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+          <div class="col">
+            <div class="way-card gsap-init h-100 d-flex flex-column justify-content-between">
+              <div>
+                <div class="card-icon mb-3"><span style="color: var(--green-primary);">🔒</span></div>
+                <h3 class="h5 mb-2">IMMUTABLE BACKUP SUPPORT</h3>
+                <p class="text-muted small mb-4">Immutable backup Support. Create tamper-proof backups with G-Immute
+                  technology.</p>
+              </div>
+              <a href="#"
+                class="btn btn-sm btn-light text-start border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill mt-auto w-fit"
+                style="background:#f4f6f8;">Learn more <span class="ms-2">→</span></a>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="repost-text">
-        <h4>Enterprise Plus</h4>
-        <p style="font-weight: bold; color: #e74c3c;">Up to 88Gbps — $28,090</p>
-        <p>Unparalleled raw performance for complex environments such as large object storage deployments and healthcare networks.</p>
-        <button class="get-trial-btn">Contact</button>
+    </section>
+
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-6" id="supportHead">
+            <div class="p-4 text-center" style="background: #fdfdfd;">
+              <img src="images/vmx/sp112.webp" alt=""
+                style="width:70%; height:300px; object-fit:cover; border-radius:12px">
+            </div>
+          </div>
+          <div class="col-lg-6" id="hotplugText">
+            <h2 class="section-h mb-4">
+              <span class="word-line scroll-reveal" data-words="No Reboots." data-colors="green" data-delays="0"></span>
+              <span class="word-line scroll-reveal" data-words="No Downtime" data-colors="green"
+                data-delays="0.2"></span>
+            </h2>
+            <p class="text-muted mb-4">Your infrastructure should move as fast as your business. VMX ensures that it
+              moves as fast as it needs to move. Keep your workloads fluid, flexible, and always available to perform at
+              their optimum with HotPlug support and Live VM &amp; Storage Migration.</p>
+            <a href="#"
+              class="btn btn-sm btn-light border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill w-fit"
+              style="background:#60A630; color: #fff;">Learn more <span class="ms-2">→</span></a>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
 
-  </div>
-</div>
+    <section class="py-5">
+      <div class="container">
+        <div class="bg-white rounded-5 p-5 position-relative overflow-hidden">
 
-		
+          <div class="row">
+            <div class="col-lg-9">
 
-    <div class="info-box">
-      <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
-      <div class="info-content">
-        <ul>
-          <li><i class="fa fa-phone"></i>9930 1234 5679</li>
-          <li><i class="fa fa-envelope"></i><a href="#">contact@domain.com</a></li>
-          <li><i class="fa fa-home"></i>street address example</li>
-        </ul>
-      </div>
-    </div>
-      <footer>
+              <h2 class="display-1 fw-normal mb-5" style="line-height:0.95; letter-spacing:-3px;">
+                No Advanced <br>
+                Infrastructure? No Problem!
+              </h2>
 
-    <div class="inner-footer">
-      <div class="wrapper clearfix">
-        <div class="dark">
-          <div class="column3 message-form">
-            <img src="images/vmx/footerlogo.png" alt="">
-            <p>Green Cloud Services CO LLC
-2719 Hollywood Blvd.Hollywood, FL 33020, USA
-</p>
-      
+              <p class="text-secondary fs-5 mb-5" style="max-width:500px;">
+                Designed to deploy seamlessly on everything from the most
+                basic local machines to the most complex systems, VMX is
+                equipped to take you from zero to full-stack virtualization
+                without the usual heavy setup.
+              </p>
+
+              <a href="#" class="btn btn-secondary px-4 py-3 rounded-4">
+                Get started
+              </a>
+
+            </div>
           </div>
 
-          <div class="column3 contact">
-           
+          <!-- Hexagon Decoration -->
+          <div class="position-absolute bottom-0 end-0 p-5 opacity-50">
+            <svg width="120" height="100" viewBox="0 0 120 100" fill="none">
+              <g stroke="#9CA3AF" stroke-width="1.5">
+                <polygon points="20,10 30,4 40,10 40,22 30,28 20,22" />
+                <polygon points="40,10 50,4 60,10 60,22 50,28 40,22" />
+                <polygon points="30,28 40,22 50,28 50,40 40,46 30,40" />
 
-            <h4>Contact info</h4>
-            <p class="f-phone"><i class="fa fa-phone"></i><span> (844)2202204 (Toll free)</span></p>
-            <a  href="#" class="f-mail"><i class="fa fa-envelope"></i><span>support@greencloud.live</span></a>
+                <polygon points="10,28 20,22 30,28 30,40 20,46 10,40" />
+                <polygon points="50,28 60,22 70,28 70,40 60,46 50,40" />
+
+                <polygon points="0,46 10,40 20,46 20,58 10,64 0,58" />
+                <polygon points="20,46 30,40 40,46 40,58 30,64 20,58" />
+                <polygon points="40,46 50,40 60,46 60,58 50,64 40,58" />
+                <polygon points="60,46 70,40 80,46 80,58 70,64 60,58" />
+
+                <polygon points="10,64 20,58 30,64 30,76 20,82 10,76" />
+                <polygon points="30,64 40,58 50,64 50,76 40,82 30,76" />
+                <polygon points="50,64 60,58 70,64 70,76 60,82 50,76" />
+                <polygon points="70,64 80,58 90,64 90,76 80,82 70,76" />
+              </g>
+            </svg>
           </div>
-   
-          <div class="container footer-links">
-            <div class="column3 contact">
-              <h4>Useful Links</h4>
-              <ul>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Home</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Products</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Resources</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> About</a></li>
-              <li><a href="#"><i class="fa fa-arrow-circle-right"></i> Contact</a></li>
-              </ul>
+
+        </div>
+      </div>
+    </section>
+
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+
+          <!-- Left Image -->
+          <div class="col-lg-7">
+            <img src="images/vmx/svgviewer-png.webp" alt="Engineered for Simplicity" class="img-fluid simplicity-img">
+          </div>
+
+          <!-- Right Content Card -->
+          <div class="col-lg-5">
+            <div class="simplicity-card">
+
+              <h2 class="simplicity-title">
+                Engineered for <br>
+                Simplicity
+              </h2>
+
+              <div class="feature-item">
+                <h5>Intuitive Dashboard</h5>
+                <p>All your essential controls in one sleek, centralized interface.</p>
+              </div>
+
+              <div class="feature-item">
+                <h5>Minimal Learning Curve</h5>
+                <p>Designed for fast onboarding and quick team upskilling.</p>
+              </div>
+
+              <div class="feature-item">
+                <h5>Clean System Architecture</h5>
+                <p>Designed for easier updates, scaling, and troubleshooting.</p>
+              </div>
+
+              <div class="feature-item">
+                <h5>Ready-to-Use Templates</h5>
+                <p>Launch VMs instantly with preconfigured OS and resource profiles.</p>
+              </div>
+
+              <a href="#" class="btn btn-outline-success px-4 py-2 mt-3">
+                About us
+              </a>
+
             </div>
           </div>
 
         </div>
-        <!-- End Dark -->
-
-  
       </div>
-    </div>
-    <!-- End Inner Footer -->
+    </section>
 
-    <div class="last-div clearfix">
-      <div class="wrapper">
-        <div class="copyright">
-          © 2025 VMX,  All Rights Reserved
-        </div>
+    <section class="section py-5 text-center">
+      <div class="container py-4" id="supportHead">
+        <h2 class="section-h mb-3">Seamless Integration with Third-Party Tools</h2>
+        <p class="text-muted mx-auto max-w-700 mb-5">Whether you are using external monitoring, WAFs, or backup
+          platforms, VMX fits right into your existing ecosystems, empowering your infrastructure with greater
+          flexibility, compatibility, and control.</p>
 
-        <div id="back-to-top">
-          <a href="#top">Back to Top</a>
-        </div>
-
-         <div class="f-socials">
-          <a href="#"><i class="fa fa-google-plus"></i> </a>
-          <a href="#"><i class="fa fa-twitter"></i> </a>
-          <a href="#"><i class="fa fa-pinterest"></i> </a>
-          <a href="#"><i class="fa fa-dribbble"></i> </a>
-          <a href="#"><i class="fa fa-linkedin"></i> </a>
-          <a href="#"><i class="fa fa-facebook"></i> </a>
+        <div
+          class="d-flex flex-wrap justify-content-center align-items-center gap-5 pt-2 grayscale opacity-75 gsap-init">
+          <span class="fw-bold fs-4 text-muted">VMX</span>
+          <span class="fw-bold fs-4 text-muted">nBalance</span>
+          <span class="fw-bold fs-4 text-muted">NaviG</span>
+          <span class="fw-bold fs-4 text-muted">G-Immute</span>
+          <span class="fw-bold fs-4 text-muted">ATLASSIAN</span>
         </div>
       </div>
-    </div>
-    <!-- End Last Div -->
+    </section>
 
+    <section class="section-soft py-5">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-5">
+            <img src="images/vmx/hwo-it-work.webp" alt="" class="img-fluid w-90">
+          </div>
+          <div class="col-lg-7" id="howHead">
+            <h2 class="section-h mb-3">How <span style="color: var(--green-primary);">VMX</span> Works</h2>
+            <p class="text-muted mb-5">Built on the Linux kernel, our virtualization solution works by launching and
+              managing virtual environments on dedicated virtual hardware. It takes just four simple steps:</p>
+
+            <div class="row g-4">
+              <div class="col-6 col-md-3">
+                <div class="border-start border-2 ps-3 py-2">
+                  <div class="h3 fw-bold mb-1" style="color: var(--green-primary);">1</div>
+                  <div class="small fw-semibold text-dark">Install</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="border-start border-2 ps-3 py-2">
+                  <div class="h3 fw-bold mb-1" style="color: var(--green-primary);">2</div>
+                  <div class="small fw-semibold text-dark">Configure Solution</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="border-start border-2 ps-3 py-2">
+                  <div class="h3 fw-bold mb-1" style="color: var(--green-primary);">3</div>
+                  <div class="small fw-semibold text-dark">Set up Environment</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="border-start border-2 ps-3 py-2">
+                  <div class="h3 fw-bold mb-1" style="color: var(--green-primary);">4</div>
+                  <div class="small fw-semibold text-dark">Launch Virtual</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section py-5">
+      <div class="container py-4">
+        <div class="row g-5 align-items-start" id="supportContent">
+          <div class="col-lg-5" id="pricingHead">
+            <h2 class="section-h mb-3">Why choose VMX?</h2>
+            <p class="text-muted mb-4">VMX is all about performance, security, scalability, and cost efficiency. With
+              this virtualization solution, we offer our customers virtual machines of the future.</p>
+            <a href="#" class="btn btn-primary px-4 py-3" style="background: #000; border-color: #000;">Get Started
+              ↗</a>
+          </div>
+          <div class="col-lg-7">
+            <div class="support-list-item active border mb-3 p-4 rounded bg-white" id="si1">
+              <span class="s-num fw-bold fs-5 text-muted d-block mb-2">01</span>
+              <p class="mb-0 text-dark fw-medium">Near-native speeds thanks to integrated hardware acceleration and
+                security technology nBalance.</p>
+            </div>
+            <div class="support-list-item border mb-3 p-4 rounded bg-white" id="si2">
+              <span class="s-num fw-bold fs-5 text-muted d-block mb-2">02</span>
+              <p class="mb-0 text-dark fw-medium">A virtualization solution that supports automation, live migrations,
+                and multiple-platform compatibility.</p>
+            </div>
+            <div class="support-list-item border mb-3 p-4 rounded bg-white" id="si3">
+              <span class="s-num fw-bold fs-5 text-muted d-block mb-2">03</span>
+              <p class="mb-0 text-dark fw-medium">Immutable, sandboxed backups that guarantee data safety with
+                proprietary technology G-Immute.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="bg-white text-secondary py-5 border-top mt-5">
+    <div class="container py-4">
+      <div class="row g-5 border-bottom pb-5 mb-4">
+        <div class="col-lg-4">
+          <div class="mb-5">
+            <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo">
+          </div>
+          <div class="d-flex gap-3 fs-5 mb-4">
+            <a href="#" class="text-secondary text-decoration-none">𝕏</a>
+            <a href="#" class="text-secondary text-decoration-none">in</a>
+          </div>
+          <div class="mt-4 d-flex gap-2">
+            <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
+              style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
+            <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-2">
+          <h4 class="h6 text-dark fw-bold mb-3">Quick Links</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 footer-links small">
+            <li><a href="index.html" class="text-secondary text-decoration-none">Home</a></li>
+            <li><a href="products.html" class="text-secondary text-decoration-none">Products</a></li>
+            <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
+            <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
+            <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+          </ul>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
+          <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
+            <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL 33020, USA
+            </li>
+            <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
+            <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
+            <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="text-center text-muted" style="font-size:0.8rem">
+        <span>&copy; 2025 , All Rights Reserved</span>
+      </div>
+    </div>
   </footer>
-  <!--end footer -->
 
-</div>
-<!-- End Id Container -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 
-  <div class="preloader">
-    <img alt="" src="images/preloader.gif">
-  </div>
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
 
+    function buildScrollReveal() {
+      document.querySelectorAll('.scroll-reveal').forEach(line => {
+        const words = line.dataset.words.split(',');
+        const delays = (line.dataset.delays || '').split(',').map(Number);
+        const colors = (line.dataset.colors || '').split(',');
+        line.innerHTML = '';
+        words.forEach((word, i) => {
+          const span = document.createElement('span');
+          span.className = 'reveal-word';
+          if (colors[i] === 'green') span.classList.add('green');
+          if (colors[i] === 'dim') span.classList.add('dim');
+          span.textContent = word + ' ';
+          span.dataset.delay = delays[i] || 0;
+          line.appendChild(span);
+        });
+      });
+    }
+    buildScrollReveal();
 
-  <!-- include jQuery -->
-  <script src="js/jquery.min.js"></script>
-  <script type="text/javascript" src="js/jquery.imagesloaded.min.js"></script>
-  <script type="text/javascript" src="js/jquery.isotope.min.js"></script>
-  <script type="text/javascript" src="js/jquery.fancybox-1.3.4.pack.js"></script>
-  <script type="text/javascript" src="js/jquery.superfish.js"></script>
-  <script type="text/javascript" src="js/jquery.flexslider.js"></script>
-  <script src="js/jquery.bxslider.js"></script>
-   <script type="text/javascript" src="js/script.js"></script>
-  <script src="js/twitter.js"></script>
+    const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
+    gsap.set(heroWords, { opacity: 0, y: '110%' });
 
-    <!-- include jQuery + carouFredSel plugin -->
-    <script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const tl = gsap.timeline({ delay: 0.2 });
+      heroWords.forEach(w => {
+        tl.to(w, {
+          opacity: 1, y: '0%',
+          duration: 0.75,
+          ease: 'power3.out'
+        }, parseFloat(w.dataset.delay));
+      });
+      tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.55);
+      tl.to('#heroCtas', { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 0.7);
+      gsap.set(['#heroLead', '#heroCtas'], { y: 24 });
+    });
 
-    <!-- optionally include helper plugins -->
-    <script type="text/javascript" language="javascript" src="js/jquery.mousewheel.min.js"></script>
-    <script type="text/javascript" language="javascript" src="js/jquery.touchSwipe.min.js"></script>
+    function registerWordReveal(headingEl) {
+      if (!headingEl) return;
+      const words = headingEl.querySelectorAll('.reveal-word');
+      if (!words.length) return;
+      ScrollTrigger.create({
+        trigger: headingEl,
+        start: 'top 82%',
+        onEnter: () => {
+          words.forEach(w => {
+            gsap.to(w, {
+              opacity: 1, y: '0%',
+              duration: 0.8,
+              delay: parseFloat(w.dataset.delay) || 0,
+              ease: 'power3.out'
+            });
+          });
+        }
+      });
+    }
 
+    document.querySelectorAll('[id$="Head"], [id$="Text"]').forEach(el => {
+      registerWordReveal(el.querySelector('h2') || el);
+    });
 
+    gsap.utils.toArray('.gsap-init').forEach((el, i) => {
+      gsap.set(el, { opacity: 0, y: 36 });
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 88%',
+        onEnter: () => {
+          gsap.to(el, {
+            opacity: 1, y: 0,
+            duration: 0.65,
+            delay: (i % 4) * 0.08,
+            ease: 'power2.out'
+          });
+        }
+      });
+    });
 
+    gsap.set('#upgradeImg', { opacity: 0, x: 50 });
+    ScrollTrigger.create({
+      trigger: '#upgradeText',
+      start: 'top 75%',
+      onEnter: () => {
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 1, ease: 'power3.out' });
+      }
+    });
 
+    const scrollBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+      scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
+  </script>
 </body>
+
 </html>
