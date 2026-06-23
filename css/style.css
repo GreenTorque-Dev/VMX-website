@@ -734,3 +734,84 @@ h1 {
 	opacity: 0;
 	visibility: hidden;
 }
+
+/* Grayscale and opacity hover transitions for partner images */
+.grayscale img {
+	filter: grayscale(100%);
+	opacity: 0.65;
+	transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.grayscale img:hover {
+	filter: grayscale(0%);
+	opacity: 1;
+}
+
+/* Logo Marquee / Slider Styles */
+.logo-slider {
+	overflow: hidden;
+	width: 100%;
+	position: relative;
+	padding: 1.5rem 0;
+	background: transparent;
+}
+
+/* Elegant edge fades using linear gradients */
+.logo-slider::before,
+.logo-slider::after {
+	content: "";
+	height: 100%;
+	position: absolute;
+	width: 150px;
+	z-index: 2;
+	pointer-events: none;
+}
+
+.logo-slider::before {
+	left: 0;
+	top: 0;
+	background: linear-gradient(to right, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.logo-slider::after {
+	right: 0;
+	top: 0;
+	background: linear-gradient(to left, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 100%);
+}
+
+.logo-slider-track {
+	display: flex;
+	align-items: center;
+	gap: 6rem;
+	width: max-content;
+	animation: scroll-marquee 25s linear infinite;
+}
+
+.logo-slider-track:hover {
+	animation-play-state: paused;
+}
+
+.logo-slider img {
+	height: 42px;
+	width: auto;
+	object-fit: contain;
+	filter: grayscale(100%);
+	opacity: 0.65;
+	transition: filter 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
+.logo-slider img:hover {
+	filter: grayscale(0%);
+	opacity: 1;
+	transform: scale(1.08);
+}
+
+@keyframes scroll-marquee {
+	0% {
+		transform: translate3d(0, 0, 0);
+	}
+
+	100% {
+		transform: translate3d(-33.3333%, 0, 0);
+	}
+}

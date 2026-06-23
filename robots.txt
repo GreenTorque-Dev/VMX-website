@@ -1,2 +1,5 @@
 User-agent: *
-Disallow: /
+Allow: /
+
+Sitemap: https://vmx.greencloud.live/sitemap.xml
+Sitemap: https://vmx.greencloud.live/sitemaps.xml
