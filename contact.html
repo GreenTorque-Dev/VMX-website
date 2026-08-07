@@ -230,7 +230,7 @@
   <header class="site-header sticky-top">
     <div class="container">
       <nav class="navbar navbar-expand-lg py-3">
-        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+        <a href="index.html"><img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo"></a>
         <div class="collapse navbar-collapse" id="mainNav">
           <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
@@ -343,37 +343,36 @@
                 <p class="text-muted small mb-4 pb-2">Fill in your deployment targets details and we'll get back to you
                   within one business day.</p>
 
-                <form
-                  onsubmit="event.preventDefault(); alert('Submission validated. VMX Systems Engineers will review your cluster architecture parameters.');">
+                <form id="contactForm">
 
                   <div class="row g-3">
                     <div class="col-sm-6">
                       <div class="app-input-group">
                         <label for="firstName">First Name *</label>
-                        <input required type="text" id="firstName" class="app-form-control" placeholder="Jane">
+                        <input required type="text" id="firstName" name="first_name" class="app-form-control" placeholder="Jane">
                       </div>
                     </div>
                     <div class="col-sm-6">
                       <div class="app-input-group">
                         <label for="lastName">Last Name *</label>
-                        <input required type="text" id="lastName" class="app-form-control" placeholder="Doe">
+                        <input required type="text" id="lastName" name="last_name" class="app-form-control" placeholder="Doe">
                       </div>
                     </div>
                   </div>
 
                   <div class="app-input-group">
                     <label for="formEmail">Email *</label>
-                    <input required type="email" id="formEmail" class="app-form-control" placeholder="jane@company.com">
+                    <input required type="email" id="formEmail" name="email" class="app-form-control" placeholder="jane@company.com">
                   </div>
 
                   <div class="app-input-group">
                     <label for="formCompany">Company</label>
-                    <input type="text" id="formCompany" class="app-form-control" placeholder="Your Company">
+                    <input type="text" id="formCompany" name="company" class="app-form-control" placeholder="Your Company">
                   </div>
 
                   <div class="app-input-group mb-4">
                     <label for="formMessage">Message *</label>
-                    <textarea required id="formMessage" class="app-form-control"
+                    <textarea required id="formMessage" name="message" class="app-form-control"
                       placeholder="Tell us about your virtualization goals..."></textarea>
                   </div>
 
@@ -382,6 +381,8 @@
                       class="btn btn-dark w-100 py-3 font-semibold rounded-3 shadow-sm border-0 transition-all"
                       style="background-color: #0F1115; font-size: 0.95rem;">Send Message →</button>
                   </div>
+
+                  <div id="formStatus" class="alert d-none" role="alert"></div>
 
                 </form>
               </div>
@@ -400,7 +401,7 @@
       <div class="row g-5 border-bottom pb-5 mb-4">
         <div class="col-lg-4">
           <div class="mb-5">
-            <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo">
+            <a href="index.html"><img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo"></a>
           </div>
           <div class="d-flex gap-3 fs-5 mb-4">
             <a href="#" class="text-secondary text-decoration-none">𝕏</a>
@@ -420,6 +421,7 @@
             <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
             <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
             <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+            <li><a href="resources.html" class="text-secondary text-decoration-none">Resources</a></li>
           </ul>
         </div>
         <div class="col-sm-6 col-lg-4">
@@ -509,6 +511,57 @@
     const scrollBtn = document.getElementById('scrollTopBtn');
     window.addEventListener('scroll', () => {
       scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
+
+    // Contact Form AJAX Submission
+    const contactForm = document.getElementById('contactForm');
+    const formStatus = document.getElementById('formStatus');
+    const submitBtn = contactForm.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn.innerHTML;
+
+    contactForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      // Clear previous status
+      formStatus.className = 'alert d-none';
+      formStatus.innerHTML = '';
+
+      // Disable button and show sending state
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = 'Sending... <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+      const formData = new FormData(contactForm);
+
+      fetch('contact.php', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.info === 'success') {
+          formStatus.className = 'alert alert-success mt-3';
+          formStatus.innerHTML = data.msg;
+          contactForm.reset();
+        } else {
+          formStatus.className = 'alert alert-danger mt-3';
+          formStatus.innerHTML = data.msg;
+        }
+      })
+      .catch(error => {
+        console.error('Error submitting form:', error);
+        formStatus.className = 'alert alert-danger mt-3';
+        formStatus.innerHTML = 'An error occurred while sending your message. Please try again later.';
+      })
+      .finally(() => {
+        // Re-enable button and restore text
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnText;
+      });
     });
   </script>
 </body>

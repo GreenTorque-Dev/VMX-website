@@ -44,117 +44,118 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Red+Hat+Display:ital,wght@0,700;0,800;0,900;1,700;1,800&display=swap"
     rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" type="text/css" href="css/font-awesome.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.fancybox-1.3.4.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/style.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/jquery.bxslider.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/fullwidth.css" media="screen">
-  <link rel="stylesheet" type="text/css" href="css/revslider.css" media="screen">
-  <link rel="stylesheet" href="css/dr-framework.css" type="text/css" media="screen">
+  <link rel="stylesheet" href="css/style.css">
 
+  <style>
+    /* ─── COHESIVE GLOBAL VAR FOOTPRINTS ─── */
+    :root {
+      --green-primary: #60A630;
+      --green-banner-bg: #74B83E;
+      --green-soft-bg: #E6F3D6;
+      --text-dark: #1A1A1A;
+    }
 
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #4A4A4A;
+      background-color: #FAFAFA;
+    }
 
+    h1,
+    h2,
+    h3,
+    h4,
+    .section-h {
+      font-family: 'Red Hat Display', sans-serif;
+      font-weight: 700;
+      color: var(--text-dark);
+    }
 
+    .hero-h1-huge {
+      font-size: 4.8rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    @media (max-width: 768px) {
+      .hero-h1-huge {
+        font-size: 3rem;
+      }
+    }
+
+    /* ─── MODULAR CARDS STYLING ─── */
+    .support-card-panel {
+      background: #FFFFFF;
+      border: 1px solid #EAECEF;
+      border-radius: 20px;
+      padding: 3rem 2rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+    }
+
+    .support-card-panel:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
+    }
+
+    .card-index-pill {
+      font-family: 'Red Hat Display', sans-serif;
+      font-size: 3.5rem;
+      font-weight: 800;
+      color: #E2E5E9;
+      position: absolute;
+      top: 1.5rem;
+      right: 2rem;
+      line-height: 1;
+    }
+
+    .icon-wrapper-container {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background-color: #FFFFFF;
+      border: 1px solid #EAECEF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--green-primary);
+      margin-bottom: 2rem;
+    }
+
+    /* ─── GSAP LOAD COORDINATE HANDLERS ─── */
+    .gsap-init,
+    .reveal-word,
+    .hero-sub {
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+
+    .word-line {
+      overflow: hidden;
+      display: inline-block;
+      vertical-align: top;
+    }
+  </style>
 </head>
-<style>
-  /* Uniform heading styles */
-  .main-title {
-    font-size: 26px;
-    color: #333;
-    margin-bottom: 20px;
-    text-align: left;
-  }
-
-  /* Section layout consistency */
-  .course-section,
-  .course-outcomes {
-    background: #f8f9f9;
-    padding: 40px 30px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-  }
-
-  .course-content {
-    max-width: 1150px;
-    margin: 0 auto;
-  }
-
-  /* Shared layout: text + image */
-  .content-with-image {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 25px;
-    margin-bottom: 40px;
-    flex-wrap: wrap;
-  }
-
-  .content-with-image p,
-  .content-with-image ul {
-    flex: 1;
-    font-size: 16px;
-    line-height: 1.9;
-    margin: 0;
-    color: #444;
-  }
-
-  .content-img {
-    width: 320px;
-    max-width: 100%;
-    height: auto;
-    border-radius: 10px;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
-    object-fit: cover;
-  }
-
-  /* Benefits list */
-  .benefits-list {
-    list-style-type: disc;
-    padding-left: 20px;
-    margin: 0;
-  }
-
-  .benefits-list li {
-    margin-bottom: 10px;
-    font-size: 15px;
-  }
-
-  /* CTA Button */
-  .get-started-btn {
-    display: inline-block;
-    margin-top: 20px;
-    padding: 12px 24px;
-    background-color: #6ea535;
-    color: #fff;
-    border-radius: 6px;
-    font-weight: bold;
-    text-decoration: none;
-    transition: background 0.3s ease;
-  }
-
-  .get-started-btn:hover {
-    background-color: #5d912d;
-  }
-
-  /* Responsive layout */
-  @media (max-width: 768px) {
-    .content-with-image {
-      flex-direction: column;
-    }
-
-    .content-img {
-      width: 100%;
-      margin-top: 20px;
-    }
-  }
-</style>
 
 <body>
+
+  <!-- Blue pill decoration -->
+  <div class="blue-pill"></div>
+
+  <!-- Scroll to top -->
+  <button class="scroll-top-btn" id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M18 15l-6-6-6 6" />
+    </svg>
+  </button>
 
   <header class="site-header sticky-top">
     <div class="container">
       <nav class="navbar navbar-expand-lg py-3">
-        <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo">
+        <a href="index.html"><img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo w-12" alt="VMX Logo"></a>
         <div class="collapse navbar-collapse" id="mainNav">
           <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
@@ -171,108 +172,169 @@
       </nav>
     </div>
   </header>
-  <!--end header-->
-  <div class="head-banner clearfix">
-    <div class="wrapper">
-      <h1 class="h4" style="float: left; font-size: 20px; font-weight: bold; margin: 0; line-height: 1;">Resources</h1>
-      <div class="site_map">
-        <a href="index.html">Home</a> Resources
-      </div>
-      <div class="clear"></div>
-    </div>
-  </div>
-  <!--courses-->
-  <!-- Training Course Section -->
-  <div class="aboutus wrapper mb30 course-section">
-    <div class="dark">
-      <div class="column12 biograph course-content">
 
-        <h2 class="main-title">VMX Training Courses</h2>
+  <main>
 
-        <div class="content-with-image">
-          <p class="">
-            Our instructor-led training—available virtually or in the classroom—empowers you to master the VMX server
-            virtualization platform with confidence. Designed for IT professionals and teams, this structured program
-            boosts productivity, lowers operational costs, advances your career, and establishes you as a recognized
-            expert among employers and clients.
-
-            <br><br>
-            Certified instructors from VMX Server Solutions or Authorized VMX Training Partners guide you through VMX
-            concepts and features, from single-node setups to complex clusters, all within a few days.
-          </p>
-          <img src="images/vmx/7.jpg" alt="VMX Training" class="content-img">
-        </div>
-
-        <!-- <h4 class="main-title">Benefits of VMX  Training:</h4>
-
-      <div class="content-with-image">
-        <ul class="benefits-list ">
-          <li>Master all key concepts and features of VMX VE</li>
-          <li>Gain deep virtualization expertise from certified instructors</li>
-          <li>Experience hands-on labs with real-world scenarios</li>
-          <li>Improve your troubleshooting and problem-solving skills</li>
-          <li>Earn recognition from supervisors, colleagues, and clients</li>
-          <li>Receive an official VMX Certificate of Completion</li>
-          <li>Enjoy “Training Plus” promotion—20% off your subscriptions</li>
-        </ul>
-        <img src="images/vmx/8.jpg" alt="Training Benefits" class="content-img">
-      </div> -->
-
-        <a href="#get-started" class="get-started-btn">Get Started</a>
-        <br><br>
-      </div>
-    </div>
-  </div>
-
-  <!-- Outcomes Section -->
-  <div class="fun-facts mb30 course-outcomes">
-    <div class="course-content">
-      <h3 style="font-size: 20px;">OUTCOMES</h3><br>
-
-      <div class="content-with-image">
-        <p style="color: #8b8b8b;font-family: Roboto;">
-          By the end of the course, participants will be fully equipped to confidently deploy and manage a VMX cluster
-          following industry best practices. They will develop a solid understanding of how a VMX cluster operates and
-          how strategic planning can minimize downtime. The course also covers key differences between virtual machines
-          (VMs) and LXC containers, particularly in the context of live guest migration.
-
-          <br><br>
-          Participants will explore built-in shared storage options within a cluster, assessing their strengths and
-          limitations. They will learn to configure VMX and Ceph as a hyper-converged infrastructure (HCI), gaining
-          clarity on how the various components of Ceph interact.
-
-          <br><br>
-          Additionally, attendees will understand how high availability (HA) works for guest systems and how to
-          configure it effectively. The training also introduces the Software Defined Networking (SDN) feature in a
-          clustered environment, enabling centralized management of VLANs and other networking components.
+    <!-- ── HERO SECTION ──────────────────────── -->
+    <section class="hero-section text-center py-5">
+      <div class="hero-hex-bg"></div>
+      <div class="container py-4">
+        <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">Resources &amp; Training</span>
+        <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
+          <span class="word-line">
+            <span class="reveal-word" data-delay="0">Master the VMX</span>
+          </span>
+          <br>
+          <span class="word-line">
+            <span class="reveal-word green" data-delay="0.25">Virtualization Platform</span>
+          </span>
+        </h1>
+        <p class="hero-sub text-muted mx-auto fs-5 mb-5 max-w-700" id="heroLead" style="line-height: 1.6;">
+          Elevate your IT expertise with our structured training programs. Learn to build, scale, and optimize enterprise-grade virtual infrastructures.
         </p>
-        <!-- <img src="images/vmx/8.jpg" alt="Training Outcomes" class="content-img"> -->
+        <div class="d-flex justify-content-center gsap-init">
+          <a href="#training-courses" class="btn btn-primary px-5 py-3 fw-bold rounded-3 shadow-sm border-0"
+            style="background-color: var(--green-primary); font-size: 0.95rem;">Explore Courses</a>
+        </div>
       </div>
-    </div>
-  </div>
+    </section>
 
+    <!-- ── TRAINING COURSES SECTION ───────────── -->
+    <section id="training-courses" class="section py-5 bg-white border-top border-bottom">
+      <div class="container py-4">
+        <div class="row align-items-center g-5">
+          <div class="col-lg-6 gsap-init" id="upgradeText">
+            <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">Certification Programs</span>
+            <h2 class="section-h mb-4 fs-1 fw-bold" style="line-height: 1.2;">VMX Training Courses</h2>
+            <p class="text-muted fs-5 mb-4" style="line-height: 1.7;">
+              Our instructor-led training—available virtually or in the classroom—empowers you to master the VMX server virtualization platform with confidence. Designed for IT professionals and teams, this structured program boosts productivity, lowers operational costs, advances your career, and establishes you as a recognized expert.
+            </p>
+            <p class="text-muted fs-5 mb-4" style="line-height: 1.7;">
+              Certified instructors from VMX Server Solutions or Authorized VMX Training Partners guide you through VMX concepts and features, from single-node setups to complex clusters, all within a few days.
+            </p>
+            <div class="mt-4">
+              <a href="contact.html" class="btn btn-primary px-4 py-3 fw-bold rounded-3 shadow-sm border-0"
+                style="background-color: var(--green-primary); font-size: 0.95rem;">Get Started</a>
+            </div>
+          </div>
+          <div class="col-lg-6 text-center gsap-init">
+            <div class="position-relative d-inline-block" id="upgradeImg">
+              <img src="images/vmx/7.jpg" alt="VMX Training" class="img-fluid rounded-4 shadow-lg" style="max-width: 100%; border: 1px solid var(--border-color);">
+              <div class="position-absolute" style="background: rgba(96,166,48,0.06); width: 100%; height: 100%; top: 15px; left: 15px; border-radius: 20px; z-index: -1;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
+    <!-- ── COURSE OUTCOMES SECTION ────────────── -->
+    <section class="section py-5" style="background-color: #FAFAFA;">
+      <div class="container py-4">
+        <div class="row mb-5 text-center" id="wayHead">
+          <div class="col-12">
+            <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">What You'll Achieve</span>
+            <h2 class="section-h mb-0 fs-1 fw-bold">Training Course Outcomes</h2>
+          </div>
+        </div>
+        
+        <div class="row g-4 row-cols-1 row-cols-md-2 row-cols-lg-3 mt-2">
+          <!-- Outcome 1 -->
+          <div class="col gsap-init">
+            <div class="support-card-panel h-100">
+              <span class="card-index-pill">01</span>
+              <div class="icon-wrapper-container">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" />
+                </svg>
+              </div>
+              <h3 class="h5 fw-bold mb-3 text-dark">Deploy &amp; Manage Clusters</h3>
+              <p class="text-muted mb-0 small" style="line-height: 1.6; font-size: 0.95rem;">
+                Confidently deploy and manage a VMX cluster following industry best practices. Develop a solid understanding of how a VMX cluster operates and plan strategically to minimize downtime.
+              </p>
+            </div>
+          </div>
+          
+          <!-- Outcome 2 -->
+          <div class="col gsap-init">
+            <div class="support-card-panel h-100">
+              <span class="card-index-pill">02</span>
+              <div class="icon-wrapper-container">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+              </div>
+              <h3 class="h5 fw-bold mb-3 text-dark">VMs &amp; LXC Containers</h3>
+              <p class="text-muted mb-0 small" style="line-height: 1.6; font-size: 0.95rem;">
+                Master the key architectural differences between virtual machines (VMs) and LXC containers, and learn to execute seamless live guest migrations.
+              </p>
+            </div>
+          </div>
+          
+          <!-- Outcome 3 -->
+          <div class="col gsap-init">
+            <div class="support-card-panel h-100">
+              <span class="card-index-pill">03</span>
+              <div class="icon-wrapper-container">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                  <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                  <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+                </svg>
+              </div>
+              <h3 class="h5 fw-bold mb-3 text-dark">Hyper-Converged Storage</h3>
+              <p class="text-muted mb-0 small" style="line-height: 1.6; font-size: 0.95rem;">
+                Explore built-in shared storage options within a cluster. Configure VMX and Ceph as a hyper-converged infrastructure (HCI) with optimized Ceph component interactions.
+              </p>
+            </div>
+          </div>
+          
+          <!-- Outcome 4 -->
+          <div class="col gsap-init">
+            <div class="support-card-panel h-100">
+              <span class="card-index-pill">04</span>
+              <div class="icon-wrapper-container">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </div>
+              <h3 class="h5 fw-bold mb-3 text-dark">High Availability (HA)</h3>
+              <p class="text-muted mb-0 small" style="line-height: 1.6; font-size: 0.95rem;">
+                Understand how high availability (HA) works for guest systems and learn how to configure it effectively to safeguard business-critical services.
+              </p>
+            </div>
+          </div>
+          
+          <!-- Outcome 5 -->
+          <div class="col gsap-init">
+            <div class="support-card-panel h-100">
+              <span class="card-index-pill">05</span>
+              <div class="icon-wrapper-container">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="16" y="16" width="6" height="6" rx="1" />
+                  <rect x="2" y="16" width="6" height="6" rx="1" />
+                  <rect x="9" y="2" width="6" height="6" rx="1" />
+                  <path d="M12 8v8M5 16v-4a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4" />
+                </svg>
+              </div>
+              <h3 class="h5 fw-bold mb-3 text-dark">Software Defined Networking</h3>
+              <p class="text-muted mb-0 small" style="line-height: 1.6; font-size: 0.95rem;">
+                Implement Software Defined Networking (SDN) in a clustered environment, enabling centralized management of VLANs, subnets, and security zoning.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-
-
-
-  <div class="info-box">
-    <a class="info-toggle" href="#"><i class="fa fa-info-circle"></i></a>
-    <div class="info-content">
-      <ul>
-        <li><i class="fa fa-phone"></i>(844) 220-2204</li>
-        <li><i class="fa fa-envelope"></i><a href="mailto:support@greencloud.live">support@greencloud.live</a></li>
-        <li><i class="fa fa-home"></i>2719 Hollywood Blvd, FL 33020, USA</li>
-      </ul>
-    </div>
-  </div>
+  </main>
 
   <footer class="bg-white text-secondary py-5 border-top mt-5">
     <div class="container py-4">
       <div class="row g-5 border-bottom pb-5 mb-4">
         <div class="col-lg-4">
           <div class="mb-5">
-            <img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo">
+            <a href="index.html"><img src="images/vmx/vmx-removebg-preview.webp" class="brand-logo" style="width: 90px;" alt="VMX Logo"></a>
           </div>
           <div class="d-flex gap-3 fs-5 mb-4">
             <a href="#" class="text-secondary text-decoration-none">𝕏</a>
@@ -292,13 +354,13 @@
             <li><a href="support.html" class="text-secondary text-decoration-none">Support</a></li>
             <li><a href="contact.html" class="text-secondary text-decoration-none">Contact</a></li>
             <li><a href="about.html" class="text-secondary text-decoration-none">About</a></li>
+            <li><a href="resources.html" class="text-secondary text-decoration-none">Resources</a></li>
           </ul>
         </div>
         <div class="col-sm-6 col-lg-4">
           <h4 class="h6 text-dark fw-bold mb-3">Contact</h4>
           <ul class="list-unstyled d-flex flex-column gap-2 small text-muted">
-            <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL 33020, USA
-            </li>
+            <li><strong class="text-dark">Address:</strong> Green Cloud Services LLC 2719 Hollywood Blvd, FL 33020, USA</li>
             <li><strong class="text-dark">Email:</strong> support@greencloud.live</li>
             <li><strong class="text-dark">Phone:</strong> Toll-Free: (844)220-2204</li>
             <li><strong class="text-dark">Work Hour:</strong> 07:00 – 14:00 EST (Mon–Sat)</li>
@@ -310,34 +372,117 @@
       </div>
     </div>
   </footer>
-  <!--end footer-->
 
   <div class="preloader">
     <img alt="VMX Server Solutions Page Preloader Loading Animation" src="images/preloader.gif">
   </div>
 
-
-  <!-- include jQuery -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="js/jquery.min.js"></script>
-  <script type="text/javascript" src="js/jquery.imagesloaded.min.js"></script>
-  <script type="text/javascript" src="js/jquery.isotope.min.js"></script>
-  <script type="text/javascript" src="js/jquery.fancybox-1.3.4.pack.js"></script>
-  <script type="text/javascript" src="js/jquery.superfish.js"></script>
-  <script type="text/javascript" src="js/jquery.flexslider.js"></script>
-  <script src="js/jquery.bxslider.js"></script>
-  <script src="js/twitter.js"></script>
-  <script type="text/javascript" src="js/script.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 
-  <!-- include jQuery + carouFredSel plugin -->
-  <script type="text/javascript" language="javascript" src="js/jquery.carouFredSel-6.2.1-packed.js"></script>
+  <script>
+    gsap.registerPlugin(ScrollTrigger);
 
-  <!-- optionally include helper plugins -->
-  <script type="text/javascript" language="javascript" src="js/jquery.mousewheel.min.js"></script>
-  <script type="text/javascript" language="javascript" src="js/jquery.touchSwipe.min.js"></script>
+    function buildScrollReveal() {
+      document.querySelectorAll('.scroll-reveal').forEach(line => {
+        const words = line.dataset.words.split(',');
+        const delays = (line.dataset.delays || '').split(',').map(Number);
+        const colors = (line.dataset.colors || '').split(',');
+        line.innerHTML = '';
+        words.forEach((word, i) => {
+          const span = document.createElement('span');
+          span.className = 'reveal-word';
+          if (colors[i] === 'green') span.classList.add('green');
+          if (colors[i] === 'dim') span.classList.add('dim');
+          span.textContent = word + ' ';
+          span.dataset.delay = delays[i] || 0;
+          line.appendChild(span);
+        });
+      });
+    }
+    buildScrollReveal();
 
+    const heroWords = document.querySelectorAll('.hero-h1 .reveal-word');
+    gsap.set(heroWords, { opacity: 0, y: '110%' });
 
+    window.addEventListener('DOMContentLoaded', () => {
+      const tl = gsap.timeline({ delay: 0.15 });
+      heroWords.forEach(w => {
+        tl.to(w, {
+          opacity: 1, y: '0%',
+          duration: 0.8,
+          ease: 'power4.out'
+        }, parseFloat(w.dataset.delay));
+      });
+      tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
+      gsap.set('#heroLead', { y: 30 });
+    });
 
+    function registerWordReveal(headingEl) {
+      if (!headingEl) return;
+      const words = headingEl.querySelectorAll('.reveal-word');
+      if (!words.length) return;
+      ScrollTrigger.create({
+        trigger: headingEl,
+        start: 'top 85%',
+        onEnter: () => {
+          words.forEach(w => {
+            gsap.to(w, {
+              opacity: 1, y: '0%',
+              duration: 0.8,
+              delay: parseFloat(w.dataset.delay) || 0,
+              ease: 'power3.out'
+            });
+          });
+        }
+      });
+    }
+
+    document.querySelectorAll('.section-h, h2').forEach(el => {
+      registerWordReveal(el);
+    });
+
+    gsap.utils.toArray('.gsap-init, .support-card-panel, .col').forEach((el, i) => {
+      gsap.set(el, { opacity: 0, y: 35 });
+      ScrollTrigger.create({
+        trigger: el,
+        start: 'top 88%',
+        onEnter: () => {
+          gsap.to(el, {
+            opacity: 1, y: 0,
+            duration: 0.6,
+            delay: (i % 4) * 0.08,
+            ease: 'power2.out'
+          });
+        }
+      });
+    });
+
+    gsap.set('#upgradeImg', { opacity: 0, x: 50 });
+    ScrollTrigger.create({
+      trigger: '#upgradeText',
+      start: 'top 75%',
+      onEnter: () => {
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.85, ease: 'power3.out' });
+      }
+    });
+
+    const scrollBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+      scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
+    
+    // Preloader fadeout
+    window.addEventListener('load', () => {
+      const preloader = document.querySelector('.preloader');
+      if (preloader) {
+        preloader.style.transition = 'opacity 0.5s ease';
+        preloader.style.opacity = '0';
+        setTimeout(() => preloader.style.display = 'none', 500);
+      }
+    });
+  </script>
 </body>
 
 </html>
