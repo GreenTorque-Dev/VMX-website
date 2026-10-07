@@ -6,7 +6,7 @@
 	define("__TO__", "support@greencloud.live");
 
 	#Message subject
-	define("__SUBJECT__", "VMX Website Contact Form:");
+	define("__SUBJECT__", "VMeX Website Contact Form:");
 
 	#Success message
 	define('__SUCCESS_MESSAGE__', "Your message has been sent. Thank you!");
