@@ -264,13 +264,22 @@
 
         @media (max-width: 768px) {
             .presence-hero-title {
-                font-size: 2.2rem;
+                font-size: clamp(1.9rem, 7vw, 2.75rem);
             }
             .presence-card {
-                padding: 2.5rem 1.5rem;
+                padding: 2.25rem 1.25rem;
             }
             #leaflet-map {
-                height: 420px;
+                height: 400px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            #leaflet-map {
+                height: 320px;
+            }
+            .presence-map-topbar {
+                padding: 10px 14px;
             }
         }
     </style>
@@ -288,21 +297,31 @@
 
     <header class="site-header sticky-top">
         <div class="container">
-            <nav class="navbar navbar-expand-lg py-3">
-                <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+            <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+                <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+                    <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+                </a>
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="mainNav">
-                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
                         <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                         <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
                         <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
                         <li class="nav-item"><a class="nav-link" href="pricing.html">Products</a></li>
                         <li class="nav-item"><a class="nav-link" href="support.html">Support</a></li>
-                        <li class="nav-item"><a class="nav-link active" href="customerpresence.html">Customer
-                                Presence</a></li>
+                        <li class="nav-item"><a class="nav-link active" href="customerpresence.html">Customer Presence</a></li>
                         <li class="nav-item"><a class="nav-link" href="partners.html">Partners</a></li>
                         <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
                         <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
                     </ul>
+                    <div class="d-lg-none nav-mobile-cta">
+                        <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -417,16 +436,16 @@
 
         <section class="section py-5">
             <div class="container">
-                <div class="cta-banner p-5 text-center text-white shadow" id="ctaBanner"
+                <div class="cta-banner p-4 p-md-5 text-center text-white shadow" id="ctaBanner"
                     style="background-color: var(--green-banner-bg); border-radius: 24px;">
-                    <h2 class="text-white h1 fw-bold mb-3" style="font-family: 'Red Hat Display', sans-serif;">Ready to
+                    <h2 class="text-white h1 fw-bold mb-3" style="font-family: 'Red Hat Display', sans-serif; font-size: clamp(1.85rem, 5.5vw, 3rem);">Ready to
                         Connect?</h2>
                     <p class="mx-auto mb-4 text-white-50 fs-6" style="max-width: 650px; line-height: 1.6;">
                         Whether you have a question, need an architecture configuration layout quote, or want a
                         personalized live deployment engine demo—we are here.
                     </p>
                     <a href="contact.html"
-                        class="btn btn-light px-5 py-3 fw-bold text-dark rounded-3 border-0 shadow-sm"
+                        class="btn btn-light px-4 px-md-5 py-3 fw-bold text-dark rounded-3 border-0 shadow-sm"
                         style="background-color: #FFFFFF; font-size: 0.95rem;">Contact Us</a>
                 </div>
             </div>
@@ -446,9 +465,9 @@
                         <a href="#" class="text-secondary text-decoration-none">𝕏</a>
                         <a href="#" class="text-secondary text-decoration-none">in</a>
                     </div>
-                    <div class="mt-4 d-flex gap-2">
+                    <div class="mt-4 d-flex flex-column flex-sm-row gap-2">
                         <input type="email" placeholder="Subscribe to our newsletter"
-                            class="form-control form-control-sm"
+                            class="form-control form-control-sm w-100"
                             style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
                         <button class="btn btn-sm btn-dark px-4 fw-semibold"
                             style="background: #0F1115;">Subscribe</button>
@@ -634,6 +653,28 @@
         const scrollBtn = document.getElementById('scrollTopBtn');
         window.addEventListener('scroll', () => {
             scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+
+        // Auto-close navbar on mobile link click
+        document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+            link.addEventListener('click', () => {
+                const navCollapse = document.getElementById('mainNav');
+                if (navCollapse && navCollapse.classList.contains('show')) {
+                    bootstrap.Collapse.getInstance(navCollapse)?.hide();
+                }
+            });
+        });
+
+        // Invalidate map size on window resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (typeof map !== 'undefined') {
+                    map.invalidateSize();
+                }
+                ScrollTrigger.refresh();
+            }, 250);
         });
     </script>
 </body>

@@ -117,7 +117,7 @@
         }
 
         .hero-h1-huge {
-            font-size: 4.5rem;
+            font-size: clamp(2.1rem, 7.5vw, 4.5rem);
             font-weight: 800;
             line-height: 1.15;
             letter-spacing: -0.02em;
@@ -128,7 +128,7 @@
             background: #FFFFFF;
             border: 1px solid #EAECEF;
             border-radius: 20px;
-            padding: 3.5rem 2.5rem;
+            padding: clamp(2rem, 5vw, 3.5rem) clamp(1.25rem, 3.5vw, 2.5rem);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
             transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
@@ -223,10 +223,18 @@
 
     <header class="site-header sticky-top">
         <div class="container">
-            <nav class="navbar navbar-expand-lg py-3">
-                <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+            <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+                <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+                    <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+                </a>
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="mainNav">
-                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
                         <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                         <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
                         <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -237,6 +245,9 @@
                         <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
                         <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
                     </ul>
+                    <div class="d-lg-none nav-mobile-cta">
+                        <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -249,16 +260,13 @@
             <div class="container py-4">
                 <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">Products</span>
                 <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
-                    <span class="word-line">
-                        <span class="reveal-word green" data-delay="0">Virtualization</span>
-                    </span>
-                    <span class="word-line">
-                        <span class="reveal-word" data-delay="0.22">Solution That</span>
-                    </span>
-                    <br>
-                    <span class="word-line">
-                        <span class="reveal-word" data-delay="0.4">Grows With You</span>
-                    </span>
+                    <span class="word-line"><span class="reveal-word green" data-delay="0">Virtualization</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.12">Solution</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.22">That</span></span>
+                    <br class="d-none d-sm-inline">
+                    <span class="word-line"><span class="reveal-word" data-delay="0.32">Grows</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.42">With</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.52">You</span></span>
                 </h1>
                 <p class="hero-sub text-muted mx-auto fs-5 mb-4 max-w-700" id="heroLead" style="line-height: 1.6;">
                     Whether you are just starting with virtualization or are looking to manage complex,
@@ -471,20 +479,20 @@
 
         <section class="section py-5">
             <div class="container py-4">
-                <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
+                <div class="cta-banner p-4 p-md-5 text-center text-white" id="ctaBanner"
                     style="background-color: #0F1115; border-radius: 24px; position: relative;">
                     <svg class="position-absolute end-0 bottom-0 mb-4 me-4 opacity-10 d-none d-md-block" width="120"
                         height="120" viewBox="0 0 100 100">
                         <polygon points="50,1 93,25 93,75 50,99 7,75 7,25" fill="none" stroke="#FFF" stroke-width="2" />
                     </svg>
                     <h2 class="text-white h1 hero-h1-huge mb-3"
-                        style="font-family: 'Red Hat Display', sans-serif; font-size: 3.8rem;">Realize Your Business’s
+                        style="font-family: 'Red Hat Display', sans-serif; font-size: clamp(1.85rem, 5.5vw, 3.5rem); line-height: 1.15;">Realize Your Business’s
                         Full Potential</h2>
-                    <p class="mx-auto mb-5 text-white-50 fs-6" style="max-width: 680px; line-height: 1.6;">
+                    <p class="mx-auto mb-4 mb-md-5 text-white-50 fs-6" style="max-width: 680px; line-height: 1.6;">
                         Want an inside look at how our solution works before committing to a paid subscription? We’ve
                         got a demo with your name on it!
                     </p>
-                    <a href="contact.html" class="btn btn-light px-5 py-3 fw-bold text-dark rounded-3 border-0"
+                    <a href="contact.html" class="btn btn-light px-4 px-md-5 py-3 fw-bold text-dark rounded-3 border-0"
                         style="background-color: #EAECEF; font-size: 0.95rem;">Book a Free Demo</a>
                 </div>
             </div>
@@ -504,9 +512,9 @@
                         <a href="#" class="text-secondary text-decoration-none">𝕏</a>
                         <a href="#" class="text-secondary text-decoration-none">in</a>
                     </div>
-                    <div class="mt-4 d-flex gap-2">
+                    <div class="mt-4 d-flex flex-column flex-sm-row gap-2">
                         <input type="email" placeholder="Subscribe to our newsletter"
-                            class="form-control form-control-sm"
+                            class="form-control form-control-sm w-100"
                             style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
                         <button class="btn btn-sm btn-dark px-4 fw-semibold"
                             style="background: #0F1115;">Subscribe</button>
@@ -549,9 +557,12 @@
 
         function buildScrollReveal() {
             document.querySelectorAll('.scroll-reveal').forEach(line => {
-                const words = line.dataset.words.split(',');
-                const delays = (line.dataset.delays || '').split(',').map(Number);
-                const colors = (line.dataset.colors || '').split(',');
+                const rawWords = line.dataset.words || '';
+                const words = rawWords.includes(',') ? rawWords.split(',') : rawWords.trim().split(/\s+/);
+                const rawDelays = line.dataset.delays || '';
+                const delays = rawDelays.includes(',') ? rawDelays.split(',').map(Number) : rawDelays.trim().split(/\s+/).map(Number);
+                const rawColors = line.dataset.colors || '';
+                const colors = rawColors.includes(',') ? rawColors.split(',') : rawColors.trim().split(/\s+/);
                 line.innerHTML = '';
                 words.forEach((word, i) => {
                     const span = document.createElement('span');
@@ -559,7 +570,7 @@
                     if (colors[i] === 'green') span.classList.add('green');
                     if (colors[i] === 'dim') span.classList.add('dim');
                     span.textContent = word + ' ';
-                    span.dataset.delay = delays[i] || 0;
+                    span.dataset.delay = delays[i] || (i * 0.08);
                     line.appendChild(span);
                 });
             });
@@ -576,7 +587,7 @@
                     opacity: 1, y: '0%',
                     duration: 0.8,
                     ease: 'power4.out'
-                }, parseFloat(w.dataset.delay));
+                }, parseFloat(w.dataset.delay) || 0);
             });
             tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
             gsap.set('#heroLead', { y: 30 });
@@ -625,6 +636,25 @@
         const scrollBtn = document.getElementById('scrollTopBtn');
         window.addEventListener('scroll', () => {
             scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+
+        // Auto-close navbar on mobile link click
+        document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+            link.addEventListener('click', () => {
+                const navCollapse = document.getElementById('mainNav');
+                if (navCollapse && navCollapse.classList.contains('show')) {
+                    bootstrap.Collapse.getInstance(navCollapse)?.hide();
+                }
+            });
+        });
+
+        // Trigger ScrollTrigger refresh on window resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                ScrollTrigger.refresh();
+            }, 250);
         });
     </script>
 </body>

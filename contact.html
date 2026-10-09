@@ -97,23 +97,17 @@
     }
 
     .hero-h1-huge {
-      font-size: 5rem;
+      font-size: clamp(2.2rem, 8vw, 5rem);
       font-weight: 800;
       line-height: 1.1;
       letter-spacing: -0.03em;
-    }
-
-    @media (max-width: 768px) {
-      .hero-h1-huge {
-        font-size: 3.2rem;
-      }
     }
 
     /* ─── BRAND DASHBOARD & FORM PANELS ─── */
     .brand-contact-card {
       background-color: var(--green-banner-bg);
       border-radius: 24px;
-      padding: 3.5rem;
+      padding: clamp(1.75rem, 5vw, 3.5rem);
       color: #FFFFFF !important;
       box-shadow: 0 15px 35px rgba(96, 166, 48, 0.12);
     }
@@ -229,10 +223,18 @@
 
   <header class="site-header sticky-top">
     <div class="container">
-      <nav class="navbar navbar-expand-lg py-3">
-        <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+      <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+        <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+          <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+        </a>
+        <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+          aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+        </button>
         <div class="collapse navbar-collapse" id="mainNav">
-          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
             <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
             <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -243,6 +245,9 @@
             <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
             <li class="nav-item"><a class="nav-link active" href="contact.html">Contact</a></li>
           </ul>
+          <div class="d-lg-none nav-mobile-cta">
+            <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+          </div>
         </div>
       </nav>
     </div>
@@ -254,13 +259,10 @@
       <div class="hero-hex-bg"></div>
       <div class="container py-4">
         <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
-          <span class="word-line">
-            <span class="reveal-word" data-delay="0">Let's Talk</span>
-          </span>
-          <br>
-          <span class="word-line">
-            <span class="reveal-word green" data-delay="0.25">Virtualization</span>
-          </span>
+          <span class="word-line"><span class="reveal-word" data-delay="0">Let's</span></span>
+          <span class="word-line"><span class="reveal-word" data-delay="0.12">Talk</span></span>
+          <br class="d-none d-sm-inline">
+          <span class="word-line"><span class="reveal-word green" data-delay="0.25">Virtualization</span></span>
         </h1>
         <p class="hero-sub text-muted mx-auto fs-5 mb-0 max-w-700" id="heroLead" style="line-height: 1.6;">
           Have questions, feedback, or an environment deployment project to discuss? Our engineering team is here to map
@@ -272,7 +274,7 @@
     <section class="section py-5">
       <div class="container py-4">
 
-        <div class="p-4 p-md-5 bg-white border border-light-subtle rounded-4 shadow-sm">
+        <div class="p-3 p-sm-4 p-md-5 bg-white border border-light-subtle rounded-4 shadow-sm">
           <div class="row g-5">
 
             <div class="col-lg-5" id="upgradeImg">
@@ -407,8 +409,8 @@
             <a href="#" class="text-secondary text-decoration-none">𝕏</a>
             <a href="#" class="text-secondary text-decoration-none">in</a>
           </div>
-          <div class="mt-4 d-flex gap-2">
-            <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
+          <div class="mt-4 d-flex flex-column flex-sm-row gap-2">
+            <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm w-100"
               style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
             <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
           </div>
@@ -450,9 +452,12 @@
 
     function buildScrollReveal() {
       document.querySelectorAll('.scroll-reveal').forEach(line => {
-        const words = line.dataset.words.split(',');
-        const delays = (line.dataset.delays || '').split(',').map(Number);
-        const colors = (line.dataset.colors || '').split(',');
+        const rawWords = line.dataset.words || '';
+        const words = rawWords.includes(',') ? rawWords.split(',') : rawWords.trim().split(/\s+/);
+        const rawDelays = line.dataset.delays || '';
+        const delays = rawDelays.includes(',') ? rawDelays.split(',').map(Number) : rawDelays.trim().split(/\s+/).map(Number);
+        const rawColors = line.dataset.colors || '';
+        const colors = rawColors.includes(',') ? rawColors.split(',') : rawColors.trim().split(/\s+/);
         line.innerHTML = '';
         words.forEach((word, i) => {
           const span = document.createElement('span');
@@ -460,7 +465,7 @@
           if (colors[i] === 'green') span.classList.add('green');
           if (colors[i] === 'dim') span.classList.add('dim');
           span.textContent = word + ' ';
-          span.dataset.delay = delays[i] || 0;
+          span.dataset.delay = delays[i] || (i * 0.08);
           line.appendChild(span);
         });
       });
@@ -477,7 +482,7 @@
           opacity: 1, y: '0%',
           duration: 0.8,
           ease: 'power4.out'
-        }, parseFloat(w.dataset.delay));
+        }, parseFloat(w.dataset.delay) || 0);
       });
       tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
       gsap.set('#heroLead', { y: 30 });
@@ -511,6 +516,25 @@
     const scrollBtn = document.getElementById('scrollTopBtn');
     window.addEventListener('scroll', () => {
       scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    });
+
+    // Auto-close navbar on mobile link click
+    document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+      link.addEventListener('click', () => {
+        const navCollapse = document.getElementById('mainNav');
+        if (navCollapse && navCollapse.classList.contains('show')) {
+          bootstrap.Collapse.getInstance(navCollapse)?.hide();
+        }
+      });
+    });
+
+    // Trigger ScrollTrigger refresh on window resize
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        ScrollTrigger.refresh();
+      }, 250);
     });
 
     // Contact Form AJAX Submission

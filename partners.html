@@ -113,7 +113,7 @@
             background: #FFFFFF;
             border: 1px solid #EAECEF;
             border-radius: 24px;
-            padding: 3.5rem;
+            padding: clamp(1.75rem, 5vw, 3.5rem) clamp(1.25rem, 4vw, 3rem);
             box-shadow: 0 15px 40px rgba(0, 0, 0, 0.02);
         }
 
@@ -188,10 +188,18 @@
 
     <header class="site-header sticky-top">
         <div class="container">
-            <nav class="navbar navbar-expand-lg py-3">
-                <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+            <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+                <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+                    <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+                </a>
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="mainNav">
-                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
                         <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                         <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
                         <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -202,6 +210,9 @@
                         <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
                         <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
                     </ul>
+                    <div class="d-lg-none nav-mobile-cta">
+                        <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -275,7 +286,7 @@
                                 <path d="M125 120c15-10 30-10 45 0" stroke="#D1D5DB" stroke-width="1.5"
                                     stroke-dasharray="3 3" />
                             </svg> -->
-                            <img src="images/vmx/partner-1.webp" width="590px"
+                            <img src="images/vmx/partner-1.webp" class="img-fluid" style="max-width: 590px; height: auto;"
                                 alt="VMeX Technology Partner Network and Ecosystem">
                         </div>
                     </div>
@@ -286,7 +297,7 @@
 
         <section class="section-soft py-5 bg-white border-top border-bottom">
             <div class="container py-3 text-center">
-                <h2 class="section-h mb-5 fs-2 font-black" style="font-size: 2.2rem; letter-spacing: -0.01em;">Our
+                <h2 class="section-h mb-5 fs-2 font-black" style="font-size: clamp(1.6rem, 5vw, 2.2rem); letter-spacing: -0.01em;">Our
                     Partner Brands, Big and Small</h2>
                 <div class="logo-slider gsap-init">
                     <div class="logo-slider-track">
@@ -355,7 +366,7 @@
                         </div>
 
                         <div class="pt-2 text-start">
-                            <button type="submit" class="btn btn-submit-form shadow-sm fs-6 px-4 py-2-5">Submit</button>
+                            <button type="submit" class="btn btn-submit-form shadow-sm fs-6 px-4 py-2-5 w-100 w-sm-auto">Submit</button>
                         </div>
 
                     </form>
@@ -378,9 +389,9 @@
                         <a href="#" class="text-secondary text-decoration-none">𝕏</a>
                         <a href="#" class="text-secondary text-decoration-none">in</a>
                     </div>
-                    <div class="mt-4 d-flex gap-2">
+                    <div class="mt-4 d-flex flex-column flex-sm-row gap-2">
                         <input type="email" placeholder="Subscribe to our newsletter"
-                            class="form-control form-control-sm"
+                            class="form-control form-control-sm w-100"
                             style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
                         <button class="btn btn-sm btn-dark px-4 fw-semibold"
                             style="background: #0F1115;">Subscribe</button>
@@ -423,9 +434,12 @@
 
         function buildScrollReveal() {
             document.querySelectorAll('.scroll-reveal').forEach(line => {
-                const words = line.dataset.words.split(',');
-                const delays = (line.dataset.delays || '').split(',').map(Number);
-                const colors = (line.dataset.colors || '').split(',');
+                const rawWords = line.dataset.words || '';
+                const words = rawWords.includes(',') ? rawWords.split(',') : rawWords.trim().split(/\s+/);
+                const rawDelays = line.dataset.delays || '';
+                const delays = rawDelays.includes(',') ? rawDelays.split(',').map(Number) : rawDelays.trim().split(/\s+/).map(Number);
+                const rawColors = line.dataset.colors || '';
+                const colors = rawColors.includes(',') ? rawColors.split(',') : rawColors.trim().split(/\s+/);
                 line.innerHTML = '';
                 words.forEach((word, i) => {
                     const span = document.createElement('span');
@@ -433,7 +447,7 @@
                     if (colors[i] === 'green') span.classList.add('green');
                     if (colors[i] === 'dim') span.classList.add('dim');
                     span.textContent = word + ' ';
-                    span.dataset.delay = delays[i] || 0;
+                    span.dataset.delay = delays[i] || (i * 0.08);
                     line.appendChild(span);
                 });
             });
@@ -450,7 +464,7 @@
                     opacity: 1, y: '0%',
                     duration: 0.8,
                     ease: 'power4.out'
-                }, parseFloat(w.dataset.delay));
+                }, parseFloat(w.dataset.delay) || 0);
             });
             tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
             gsap.set('#heroLead', { y: 30 });
@@ -508,6 +522,25 @@
         const scrollBtn = document.getElementById('scrollTopBtn');
         window.addEventListener('scroll', () => {
             scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+
+        // Auto-close navbar on mobile link click
+        document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+            link.addEventListener('click', () => {
+                const navCollapse = document.getElementById('mainNav');
+                if (navCollapse && navCollapse.classList.contains('show')) {
+                    bootstrap.Collapse.getInstance(navCollapse)?.hide();
+                }
+            });
+        });
+
+        // Trigger ScrollTrigger refresh on window resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                ScrollTrigger.refresh();
+            }, 250);
         });
     </script>
 </body>

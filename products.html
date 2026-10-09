@@ -59,10 +59,18 @@
 
   <header class="site-header sticky-top">
     <div class="container">
-      <nav class="navbar navbar-expand-lg py-3">
-        <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+      <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+        <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+          <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+        </a>
+        <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+          aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+        </button>
         <div class="collapse navbar-collapse" id="mainNav">
-          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
             <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
             <li class="nav-item"><a class="nav-link active" href="products.html">Features</a></li>
             <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -73,6 +81,9 @@
             <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
             <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
           </ul>
+          <div class="d-lg-none nav-mobile-cta">
+            <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+          </div>
         </div>
       </nav>
     </div>
@@ -82,23 +93,27 @@
 
     <section class="hero-section text-center">
       <div class="hero-hex-bg"></div>
-      <div class="container py-5">
-        <h1 class="hero-h1 mb-4" id="heroHeading">
+      <div class="container py-4 py-md-5">
+        <h1 class="hero-h1 mb-3 mb-md-4" id="heroHeading">
           <span class="word-line">
-            <span class="reveal-word" data-delay="0">One Solution. All the</span>
+            <span class="reveal-word" data-delay="0">One</span>
+            <span class="reveal-word" data-delay="0.08">Solution.</span>
+            <span class="reveal-word" data-delay="0.16">All</span>
+            <span class="reveal-word" data-delay="0.22">the</span>
           </span>
           <span class="word-line">
-            <span class="reveal-word green" data-delay="0.22">Features You Need</span>
+            <span class="reveal-word green" data-delay="0.30">Features</span>
+            <span class="reveal-word green" data-delay="0.38">You</span>
+            <span class="reveal-word green" data-delay="0.46">Need</span>
           </span>
         </h1>
-        <p class="hero-lead mx-auto mb-5 gsap-init" id="heroLead">
+        <p class="hero-lead mx-auto mb-4 mb-md-5 gsap-init" id="heroLead">
           No unnecessary tools. No bloated stacks. Just one clean, powerful platform with everything you need to deploy,
           manage, and scale virtual environments with confidence.
         </p>
-        <div class="d-flex justify-content-center align-items-center gap-4 gsap-init" id="heroCtas">
-          <a href="#" class="btn btn-primary px-4 py-3"
-            style="background-color: var(--green-primary); border-color: var(--green-primary);">Start free trial</a>
-          <a href="#" class="text-decoration-none fw-semibold d-flex align-items-center gap-1 text-dark">
+        <div class="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-3 gap-sm-4 gsap-init" id="heroCtas">
+          <a href="contact.html" class="btn btn-primary px-4 py-3">Start free trial</a>
+          <a href="#featGrid" class="text-decoration-none fw-semibold d-flex align-items-center gap-1 text-dark py-2">
             Learn more
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <path d="M5 12h14M12 5l7 7-7 7" />
@@ -170,18 +185,18 @@
       </div>
     </section>
 
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="row align-items-center g-5">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="row align-items-center g-4 g-lg-5">
           <div class="col-lg-7" id="upgradeText">
-            <h2 class="section-h mb-4" style="font-size: 3.5rem;">
+            <h2 class="section-h mb-3 mb-md-4">
               <span class="word-line scroll-reveal" data-words="100+ Ways to" data-delays="0,0.1"></span>
               <span class="word-line scroll-reveal" data-words="Go Virtual" data-delays="0.2"></span>
             </h2>
             <p class="text-muted mb-4">What kind of virtual environment do you need—virtual storage, applications,
               networks, or desktops? With VMeX, you get everything in one powerful, easy-to-use solution designed to
               handle all your virtualization needs.</p>
-            <a href="#" class="btn btn-outline-secondary px-4 py-3 gsap-init">Get started</a>
+            <a href="contact.html" class="btn btn-outline-secondary px-4 py-3 gsap-init">Get started</a>
           </div>
           <div class="col-lg-5 text-center text-lg-end" id="upgradeImg">
             <svg class="scatter-bg-rings inline-hex-dec" width="200" height="200" viewBox="0 0 100 100" opacity="0.15">
@@ -311,11 +326,11 @@
       </div>
     </section>
 
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="row align-items-center mb-5" id="limitlessHead">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="row align-items-center mb-4 mb-md-5" id="limitlessHead">
           <div class="col-lg-6">
-            <h4 class="section-h mb-3" style="font-size: 48px;">
+            <h4 class="section-h mb-3">
               <span class="word-line scroll-reveal" data-words="Enterprise-Grade Security," data-colors="green"></span>
               <span class="word-line scroll-reveal" data-words="Built in from Day One" data-delays="0.2"></span>
             </h4>
@@ -407,25 +422,25 @@
       </div>
     </section>
 
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="row align-items-center g-5">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="row align-items-center g-4 g-lg-5">
           <div class="col-lg-6" id="supportHead">
-            <div class="p-4 text-center" style="background: #fdfdfd;">
+            <div class="p-2 p-md-3 text-center upgrade-img">
               <img src="images/vmx/sp112.webp" alt="VMeX Server Virtualization Console Dashboard"
-                style="width:70%; height:300px; object-fit:cover; border-radius:12px">
+                class="img-fluid rounded" style="max-height:300px; width:100%; object-fit:contain;">
             </div>
           </div>
           <div class="col-lg-6" id="hotplugText">
-            <h2 class="section-h mb-4">
-              <span class="word-line scroll-reveal" data-words="No Reboots." data-colors="green" data-delays="0"></span>
-              <span class="word-line scroll-reveal" data-words="No Downtime" data-colors="green"
+            <h2 class="section-h mb-3 mb-md-4">
+              <span class="word-line scroll-reveal" data-words="No,Reboots." data-colors="green" data-delays="0"></span>
+              <span class="word-line scroll-reveal" data-words="No,Downtime" data-colors="green"
                 data-delays="0.2"></span>
             </h2>
             <p class="text-muted mb-4">Your infrastructure should move as fast as your business. VMeX ensures that it
               moves as fast as it needs to move. Keep your workloads fluid, flexible, and always available to perform at
               their optimum with HotPlug support and Live VM &amp; Storage Migration.</p>
-            <a href="#"
+            <a href="contact.html"
               class="btn btn-sm btn-light border d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-pill w-fit"
               style="background:#60A630; color: #fff;">Learn more <span class="ms-2">→</span></a>
           </div>
@@ -433,26 +448,26 @@
       </div>
     </section>
 
-    <section class="py-5">
-      <div class="container">
-        <div class="bg-white rounded-5 p-5 position-relative overflow-hidden">
+    <section class="py-4 py-md-5">
+      <div class="container py-2">
+        <div class="bg-white rounded-4 rounded-md-5 p-4 p-md-5 position-relative overflow-hidden shadow-sm">
 
           <div class="row">
             <div class="col-lg-9">
 
-              <h2 class="display-1 fw-normal mb-5" style="line-height:0.95; letter-spacing:-3px;">
-                No Advanced <br>
+              <h2 class="section-h mb-3 mb-md-4">
+                No Advanced <br class="d-none d-sm-inline">
                 Infrastructure? No Problem!
               </h2>
 
-              <p class="text-secondary fs-5 mb-5" style="max-width:500px;">
+              <p class="text-secondary fs-5 mb-4 mb-md-5" style="max-width:500px;">
                 Designed to deploy seamlessly on everything from the most
                 basic local machines to the most complex systems, VMeX is
                 equipped to take you from zero to full-stack virtualization
                 without the usual heavy setup.
               </p>
 
-              <a href="#" class="btn btn-secondary px-4 py-3 rounded-4">
+              <a href="contact.html" class="btn btn-primary px-4 py-3 rounded-3">
                 Get started
               </a>
 
@@ -643,18 +658,18 @@
 
   </main>
 
-  <footer class="bg-white text-secondary py-5 border-top mt-5">
-    <div class="container py-4">
-      <div class="row g-5 border-bottom pb-5 mb-4">
+  <footer class="bg-white text-secondary py-4 py-md-5 border-top mt-4 mt-md-5">
+    <div class="container py-2 py-md-4">
+      <div class="row g-4 g-md-5 border-bottom pb-4 pb-md-5 mb-4">
         <div class="col-lg-4">
-          <div class="mb-5">
+          <div class="mb-4">
             <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" class="brand-logo" style="width: 120px;" alt="VMeX Logo"></a>
           </div>
           <div class="d-flex gap-3 fs-5 mb-4">
             <a href="#" class="text-secondary text-decoration-none">𝕏</a>
             <a href="#" class="text-secondary text-decoration-none">in</a>
           </div>
-          <div class="mt-4 d-flex gap-2">
+          <div class="mt-4 d-flex flex-column flex-sm-row gap-2 footer-newsletter-wrap">
             <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
               style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
             <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
@@ -697,7 +712,8 @@
 
     function buildScrollReveal() {
       document.querySelectorAll('.scroll-reveal').forEach(line => {
-        const words = line.dataset.words.split(',');
+        const raw = line.dataset.words || '';
+        const words = raw.includes(',') ? raw.split(',') : raw.split(/\s+/).filter(Boolean);
         const delays = (line.dataset.delays || '').split(',').map(Number);
         const colors = (line.dataset.colors || '').split(',');
         line.innerHTML = '';
@@ -707,12 +723,25 @@
           if (colors[i] === 'green') span.classList.add('green');
           if (colors[i] === 'dim') span.classList.add('dim');
           span.textContent = word + ' ';
-          span.dataset.delay = delays[i] || 0;
+          span.dataset.delay = (delays[i] !== undefined && !isNaN(delays[i])) ? delays[i] : (i * 0.08);
           line.appendChild(span);
         });
       });
     }
     buildScrollReveal();
+
+    /* ─── MOBILE NAVBAR CLOSE ON LINK CLICK ─── */
+    const mainNav = document.getElementById('mainNav');
+    if (mainNav) {
+      mainNav.querySelectorAll('.nav-link, .btn').forEach(link => {
+        link.addEventListener('click', () => {
+          if (window.innerWidth < 992 && mainNav.classList.contains('show')) {
+            const bsCollapse = bootstrap.Collapse.getInstance(mainNav);
+            if (bsCollapse) bsCollapse.hide();
+          }
+        });
+      });
+    }
 
     const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
     gsap.set(heroWords, { opacity: 0, y: '110%' });
@@ -724,7 +753,7 @@
           opacity: 1, y: '0%',
           duration: 0.75,
           ease: 'power3.out'
-        }, parseFloat(w.dataset.delay));
+        }, parseFloat(w.dataset.delay) || 0);
       });
       tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.55);
       tl.to('#heroCtas', { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 0.7);
@@ -737,7 +766,7 @@
       if (!words.length) return;
       ScrollTrigger.create({
         trigger: headingEl,
-        start: 'top 82%',
+        start: 'top 85%',
         onEnter: () => {
           words.forEach(w => {
             gsap.to(w, {
@@ -756,10 +785,10 @@
     });
 
     gsap.utils.toArray('.gsap-init').forEach((el, i) => {
-      gsap.set(el, { opacity: 0, y: 36 });
+      gsap.set(el, { opacity: 0, y: 28 });
       ScrollTrigger.create({
         trigger: el,
-        start: 'top 88%',
+        start: 'top 90%',
         onEnter: () => {
           gsap.to(el, {
             opacity: 1, y: 0,
@@ -771,18 +800,38 @@
       });
     });
 
-    gsap.set('#upgradeImg', { opacity: 0, x: 50 });
+    gsap.set('#upgradeImg', { opacity: 0, x: 30 });
     ScrollTrigger.create({
       trigger: '#upgradeText',
-      start: 'top 75%',
+      start: 'top 80%',
       onEnter: () => {
-        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 1, ease: 'power3.out' });
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.9, ease: 'power3.out' });
       }
     });
 
     const scrollBtn = document.getElementById('scrollTopBtn');
-    window.addEventListener('scroll', () => {
-      scrollBtn.classList.toggle('visible', window.scrollY > 400);
+    if (scrollBtn) {
+      window.addEventListener('scroll', () => {
+        scrollBtn.classList.toggle('visible', window.scrollY > 400);
+      });
+    }
+
+    // Auto-close navbar on mobile link click
+    document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+      link.addEventListener('click', () => {
+        const navCollapse = document.getElementById('mainNav');
+        if (navCollapse && navCollapse.classList.contains('show')) {
+          bootstrap.Collapse.getInstance(navCollapse)?.hide();
+        }
+      });
+    });
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        ScrollTrigger.refresh();
+      }, 250);
     });
   </script>
 </body>

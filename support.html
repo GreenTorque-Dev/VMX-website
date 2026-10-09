@@ -90,16 +90,10 @@
         }
 
         .hero-h1-huge {
-            font-size: 4.8rem;
+            font-size: clamp(2.1rem, 7.5vw, 4.8rem);
             font-weight: 800;
             line-height: 1.15;
             letter-spacing: -0.02em;
-        }
-
-        @media (max-width: 768px) {
-            .hero-h1-huge {
-                font-size: 3rem;
-            }
         }
 
         /* ─── MODULAR CARDS STYLING ─── */
@@ -107,7 +101,7 @@
             background: #FFFFFF;
             border: 1px solid #EAECEF;
             border-radius: 20px;
-            padding: 3rem 2rem;
+            padding: clamp(2rem, 4vw, 3rem) clamp(1.25rem, 3vw, 2rem);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
             transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
@@ -146,7 +140,7 @@
         .metric-asymmetric-box {
             border: 1px solid #EAECEF;
             border-radius: 24px;
-            padding: 4rem 2rem;
+            padding: clamp(2.5rem, 6vw, 4rem) clamp(1.5rem, 4vw, 2rem);
             background: linear-gradient(135deg, #11141A 0%, #1C2029 100%);
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
             position: relative;
@@ -181,10 +175,18 @@
 
     <header class="site-header sticky-top">
         <div class="container">
-            <nav class="navbar navbar-expand-lg py-3">
-                <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+            <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+                <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+                    <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+                </a>
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="mainNav">
-                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
                         <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                         <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
                         <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -195,6 +197,9 @@
                         <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
                         <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
                     </ul>
+                    <div class="d-lg-none nav-mobile-cta">
+                        <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -208,17 +213,17 @@
                 <span class="eyebrow d-block mb-2 text-uppercase fw-semibold tracking-wider text-muted">Support
                     Options</span>
                 <h1 class="hero-h1 hero-h1-huge mb-4" id="heroHeading">
-                    <span class="word-line">
-                        <span class="reveal-word" data-delay="0">We Don't Just</span>
-                    </span>
-                    <br>
-                    <span class="word-line">
-                        <span class="reveal-word" data-delay="0.2">Power Infrastructure</span>
-                    </span>
-                    <br>
-                    <span class="word-line">
-                        <span class="reveal-word green" data-delay="0.45">—We Stand Behind It</span>
-                    </span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0">We</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.08">Don't</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.16">Just</span></span>
+                    <br class="d-none d-sm-inline">
+                    <span class="word-line"><span class="reveal-word" data-delay="0.24">Power</span></span>
+                    <span class="word-line"><span class="reveal-word" data-delay="0.32">Infrastructure</span></span>
+                    <br class="d-none d-sm-inline">
+                    <span class="word-line"><span class="reveal-word green" data-delay="0.40">—We</span></span>
+                    <span class="word-line"><span class="reveal-word green" data-delay="0.48">Stand</span></span>
+                    <span class="word-line"><span class="reveal-word green" data-delay="0.56">Behind</span></span>
+                    <span class="word-line"><span class="reveal-word green" data-delay="0.64">It</span></span>
                 </h1>
                 <p class="hero-sub text-muted mx-auto fs-5 mb-5 max-w-700" id="heroLead" style="line-height: 1.6;">
                     Need help monitoring, maintaining, and maximizing your virtual infrastructure? Our virtualization
@@ -341,7 +346,7 @@
                         <div class="metric-asymmetric-box text-center text-white">
                             <div style="position: relative; z-index: 2;">
                                 <div class="display-1 fw-black tracking-tighter text-white mb-2"
-                                    style="font-size: 6.5rem; font-family: 'Red Hat Display', sans-serif; font-weight: 900;">
+                                    style="font-size: clamp(3.5rem, 12vw, 6.5rem); font-family: 'Red Hat Display', sans-serif; font-weight: 900;">
                                     24/7</div>
                                 <h4 class="h5 text-white-50 uppercase tracking-wide mb-1" style="font-weight: 500;">
                                     Round-the-clock priority support</h4>
@@ -415,16 +420,16 @@
 
         <section class="section py-5">
             <div class="container py-4">
-                <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
+                <div class="cta-banner p-4 p-md-5 text-center text-white" id="ctaBanner"
                     style="background-color: var(--green-banner-bg); border-radius: 24px;">
-                    <h2 class="text-white h1 fw-bold mb-3" style="font-family: 'Red Hat Display', sans-serif;">Talk to a
+                    <h2 class="text-white h1 fw-bold mb-3" style="font-family: 'Red Hat Display', sans-serif; font-size: clamp(1.85rem, 5.5vw, 3rem);">Talk to a
                         Virtualization Expert</h2>
-                    <p class="mx-auto mb-5 text-white-50"
+                    <p class="mx-auto mb-4 mb-md-5 text-white-50"
                         style="max-width: 650px; font-size: 1.05rem; line-height: 1.7;">
                         Get answers, advice, or hands-on help from our infrastructure engineering team.
                     </p>
                     <a href="contact.html"
-                        class="btn btn-light px-5 py-3 fw-bold text-dark rounded-3 border-0 shadow-sm"
+                        class="btn btn-light px-4 px-md-5 py-3 fw-bold text-dark rounded-3 border-0 shadow-sm"
                         style="background-color: #FFFFFF; font-size: 0.95rem;">Contact Support</a>
                 </div>
             </div>
@@ -444,9 +449,9 @@
                         <a href="#" class="text-secondary text-decoration-none">𝕏</a>
                         <a href="#" class="text-secondary text-decoration-none">in</a>
                     </div>
-                    <div class="mt-4 d-flex gap-2">
+                    <div class="mt-4 d-flex flex-column flex-sm-row gap-2">
                         <input type="email" placeholder="Subscribe to our newsletter"
-                            class="form-control form-control-sm"
+                            class="form-control form-control-sm w-100"
                             style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
                         <button class="btn btn-sm btn-dark px-4 fw-semibold"
                             style="background: #0F1115;">Subscribe</button>
@@ -489,9 +494,12 @@
 
         function buildScrollReveal() {
             document.querySelectorAll('.scroll-reveal').forEach(line => {
-                const words = line.dataset.words.split(',');
-                const delays = (line.dataset.delays || '').split(',').map(Number);
-                const colors = (line.dataset.colors || '').split(',');
+                const rawWords = line.dataset.words || '';
+                const words = rawWords.includes(',') ? rawWords.split(',') : rawWords.trim().split(/\s+/);
+                const rawDelays = line.dataset.delays || '';
+                const delays = rawDelays.includes(',') ? rawDelays.split(',').map(Number) : rawDelays.trim().split(/\s+/).map(Number);
+                const rawColors = line.dataset.colors || '';
+                const colors = rawColors.includes(',') ? rawColors.split(',') : rawColors.trim().split(/\s+/);
                 line.innerHTML = '';
                 words.forEach((word, i) => {
                     const span = document.createElement('span');
@@ -499,7 +507,7 @@
                     if (colors[i] === 'green') span.classList.add('green');
                     if (colors[i] === 'dim') span.classList.add('dim');
                     span.textContent = word + ' ';
-                    span.dataset.delay = delays[i] || 0;
+                    span.dataset.delay = delays[i] || (i * 0.08);
                     line.appendChild(span);
                 });
             });
@@ -516,7 +524,7 @@
                     opacity: 1, y: '0%',
                     duration: 0.8,
                     ease: 'power4.out'
-                }, parseFloat(w.dataset.delay));
+                }, parseFloat(w.dataset.delay) || 0);
             });
             tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.45);
             gsap.set('#heroLead', { y: 30 });
@@ -574,6 +582,25 @@
         const scrollBtn = document.getElementById('scrollTopBtn');
         window.addEventListener('scroll', () => {
             scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        });
+
+        // Auto-close navbar on mobile link click
+        document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+            link.addEventListener('click', () => {
+                const navCollapse = document.getElementById('mainNav');
+                if (navCollapse && navCollapse.classList.contains('show')) {
+                    bootstrap.Collapse.getInstance(navCollapse)?.hide();
+                }
+            });
+        });
+
+        // Trigger ScrollTrigger refresh on window resize
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                ScrollTrigger.refresh();
+            }, 250);
         });
     </script>
 </body>

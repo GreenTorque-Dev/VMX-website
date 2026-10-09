@@ -97,10 +97,18 @@
   <!-- ── HEADER ─────────────────────────── -->
   <header class="site-header sticky-top">
     <div class="container">
-      <nav class="navbar navbar-expand-lg py-3">
-        <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+      <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+        <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+          <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+        </a>
+        <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+          aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+          <span class="toggler-icon-bar"></span>
+        </button>
         <div class="collapse navbar-collapse" id="mainNav">
-          <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+          <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
             <li class="nav-item"><a class="nav-link active" href="index.html">Home</a></li>
             <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
             <li class="nav-item"><a class="nav-link" href="howitworks.html">How it Works</a></li>
@@ -111,6 +119,9 @@
             <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
             <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
           </ul>
+          <div class="d-lg-none nav-mobile-cta">
+            <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+          </div>
         </div>
       </nav>
     </div>
@@ -121,22 +132,22 @@
     <!-- ── HERO ─────────────────────────────── -->
     <section class="hero-section">
       <div class="hero-hex-bg"></div>
-      <div class="container text-center py-5">
-        <h1 class="hero-h1 mb-4 " id="heroHeading">
+      <div class="container text-center py-4 py-md-5">
+        <h1 class="hero-h1 mb-3 mb-md-4" id="heroHeading">
           <span class="word-line">
-            <span class="reveal-word" data-delay="0">Transforming Infrastructure.</span>
-
+            <span class="reveal-word" data-delay="0">Transforming</span>
+            <span class="reveal-word" data-delay="0.12">Infrastructure.</span>
           </span>
           <span class="word-line">
-            <span class="reveal-word green" data-delay="0.22">Driving results.</span>
-
+            <span class="reveal-word green" data-delay="0.24">Driving</span>
+            <span class="reveal-word green" data-delay="0.34">results.</span>
           </span>
         </h1>
-        <p class="hero-lead mx-auto mb-5 gsap-init" id="heroLead">
+        <p class="hero-lead mx-auto mb-4 mb-md-5 gsap-init" id="heroLead">
           All the power, control, and scalability of enterprise virtualization with none of the complexities or cost
           barriers.
         </p>
-        <div class="d-flex justify-content-center gap-3 gsap-init" id="heroCtas">
+        <div class="d-flex flex-column flex-sm-row justify-content-center gap-3 gsap-init" id="heroCtas">
           <a href="contact.html" class="btn btn-primary px-4 py-3">Request a Demo</a>
           <a href="products.html" class="btn btn-outline-secondary px-4 py-3">Explore Features</a>
         </div>
@@ -146,12 +157,12 @@
     <!-- ── UPGRADE ───────────────────────────── -->
     <section class="section py-5">
       <div class="container py-4">
-        <div class="row align-items-center g-5">
+        <div class="row align-items-center g-4 g-lg-5">
           <div class="col-lg-6" id="upgradeText">
-            <h2 class="section-h mb-4">
-              <span class="word-line scroll-reveal" data-words="Give Your" data-delays="0,0.08"></span>
+            <h2 class="section-h mb-3 mb-md-4">
+              <span class="word-line scroll-reveal" data-words="Give,Your" data-delays="0,0.08"></span>
               <span class="word-line scroll-reveal" data-words="Infrastructure" data-delays="0.18"></span>
-              <span class="word-line scroll-reveal" data-words="an Upgrade" data-delays="0.28,0.36"></span>
+              <span class="word-line scroll-reveal" data-words="an,Upgrade" data-delays="0.28,0.36"></span>
             </h2>
             <p class="text-muted mb-3">Modernize your IT environment to deliver greater performance, tighter security,
               and lower operational costs with the VMeX enterprise virtualization solution.</p>
@@ -160,32 +171,29 @@
               building new systems from scratch.</p>
           </div>
           <div class="col-lg-6" id="upgradeImg">
-
-            <div class="upgrade-img" style="border:2px solid #ddd; border-radius:18px">
-              <img src="images/vmx/index-1.jpeg" alt="Infrastructure upgrade"
-                style="width:100%; height:280px; object-fit:cover; border-radius:16px">
+            <div class="upgrade-img">
+              <img src="images/vmx/index-1.jpeg" alt="Infrastructure upgrade">
             </div>
-
           </div>
         </div>
       </div>
     </section>
 
     <!-- ── GREEN CLOUD WAY ───────────────────── -->
-    <section class="section-soft py-5">
-      <div class="container py-4">
-        <div class="text-center mx-auto mb-5 max-w-700" id="wayHead">
+    <section class="section-soft py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mx-auto mb-4 mb-md-5 max-w-700" id="wayHead">
           <h2 class="section-h mb-3">
-            <span class="word-line scroll-reveal" data-words="Enterprise Virtualization," data-delays="0,0.09"></span>
-            <span class="word-line scroll-reveal" data-words="the Green Cloud Way."
+            <span class="word-line scroll-reveal" data-words="Enterprise,Virtualization," data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="the,Green,Cloud,Way."
               data-delays="0.2,0.28,0.36,0.44"></span>
           </h2>
           <p class="text-muted mt-3">Comprehensive, user-friendly design. Clean architecture. Powerful
             infrastructure—engineered for simplicity, built to scale, and designed to meet the evolving needs of the
             modern IT environment.</p>
         </div>
-        <div class="row g-4" id="wayCards">
-          <div class="col-md-6 col-lg-3">
+        <div class="row g-3 g-md-4" id="wayCards">
+          <div class="col-sm-6 col-lg-3">
             <div class="way-card gsap-init">
               <div class="card-icon mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -200,7 +208,7 @@
                 you need.</p>
             </div>
           </div>
-          <div class="col-md-6 col-lg-3">
+          <div class="col-sm-6 col-lg-3">
             <div class="way-card gsap-init">
               <div class="card-icon mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -214,7 +222,7 @@
                 reliability.</p>
             </div>
           </div>
-          <div class="col-md-6 col-lg-3">
+          <div class="col-sm-6 col-lg-3">
             <div class="way-card gsap-init">
               <div class="card-icon mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -227,7 +235,7 @@
                 business.</p>
             </div>
           </div>
-          <div class="col-md-6 col-lg-3">
+          <div class="col-sm-6 col-lg-3">
             <div class="way-card gsap-init">
               <div class="card-icon mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -247,12 +255,12 @@
     </section>
 
     <!-- ── ONE SOLUTION ──────────────────────── -->
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="text-center mx-auto mb-5" style="max-width:820px" id="limitlessHead">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mx-auto mb-4 mb-md-5" style="max-width:820px" id="limitlessHead">
           <h2 class="section-h mb-3">
-            <span class="word-line scroll-reveal" data-words="One Solution." data-delays="0,0.09"></span>
-            <span class="word-line scroll-reveal" data-words="Limitless Application." data-delays="0.2,0.29"></span>
+            <span class="word-line scroll-reveal" data-words="One,Solution." data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="Limitless,Application." data-delays="0.2,0.29"></span>
           </h2>
           <p class="text-muted mt-3">There is no one-size-fits-all solution to enterprise virtualization, but somehow,
             we have been able to create one tool to meet every use case. From virtual machine cloning to
@@ -260,7 +268,7 @@
             features your business needs, neatly packaged in one clean, user-friendly system.</p>
           <p class="mt-3 fw-semibold">All the Features You Need</p>
         </div>
-        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="featGrid">
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-3 g-md-4" id="featGrid">
           <!-- Feature cards -->
           <div class="col">
             <div class="feat-card gsap-init">
@@ -395,19 +403,19 @@
     </section>
 
     <!-- ── SUPPORT ────────────────────────────── -->
-    <section class="section-soft py-5">
-      <div class="container py-4">
-        <div class="text-center mx-auto mb-5" style="max-width:820px" id="supportHead">
+    <section class="section-soft py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mx-auto mb-4 mb-md-5" style="max-width:820px" id="supportHead">
           <h2 class="section-h mb-3">
             <span class="word-line scroll-reveal" data-words="Round-the-Clock" data-delays="0,0.09,0.18"></span>
-            <span class="word-line scroll-reveal" data-words="Virtualization Support" data-delays="0.28,0.37"
+            <span class="word-line scroll-reveal" data-words="Virtualization,Support" data-delays="0.28,0.37"
               data-colors=",green"></span>
           </h2>
           <p class="text-muted mt-3">Your virtualization solution is only as good as the maintenance and support
             services that keep things running smoothly. We offer round-the-clock, enterprise-grade security, monitoring,
             and management services to ensure that your system remains optimized, secured, and running smoothly.</p>
         </div>
-        <div class="row g-5 align-items-start" id="supportContent">
+        <div class="row g-4 g-lg-5 align-items-center" id="supportContent">
           <div class="col-lg-5">
 
             <div class="support-list-item active" data-image="images/vmx/img-1.webp">
@@ -448,14 +456,10 @@
 
           </div>
           <div class="col-lg-7">
-
             <div class="text-center">
-
               <div class="support-img-wrap text-center">
                 <img id="supportImage" src="images/vmx/img-1.webp" alt="Support" class="img-fluid rounded">
               </div>
-
-
             </div>
           </div>
         </div>
@@ -463,13 +467,13 @@
     </section>
 
     <!-- ── PRICING ────────────────────────────── -->
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="text-center mx-auto mb-5" style="max-width:840px" id="pricingHead">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mx-auto mb-4 mb-md-5" style="max-width:840px" id="pricingHead">
           <h2 class="section-h mb-3">
-            <span class="word-line scroll-reveal" data-words="Flexible Plans" data-delays="0,0.09"
+            <span class="word-line scroll-reveal" data-words="Flexible,Plans" data-delays="0,0.09"
               data-colors=",green"></span>
-            <span class="word-line scroll-reveal" data-words="for Every Team" data-delays="0.2,0.29,0.38"
+            <span class="word-line scroll-reveal" data-words="for,Every,Team" data-delays="0.2,0.29,0.38"
               data-colors=",,dim"></span>
           </h2>
           <p class="text-muted mt-3">VMeX is enterprise virtualization made affordable. Whether you're just getting
@@ -514,13 +518,13 @@
     </section>
 
     <!-- ── STATS (SCATTERED) ──────────────────── -->
-    <section class="section-soft stats-scatter-section py-5">
-      <div class="container py-4">
-        <div class="text-center mb-2" id="statsHead">
+    <section class="section-soft stats-scatter-section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mb-3 mb-md-4" id="statsHead">
           <h2 class="section-h">
-            <span class="word-line scroll-reveal" data-words="A journey of innovation"
+            <span class="word-line scroll-reveal" data-words="A,journey,of,innovation"
               data-delays="0,0.07,0.14,0.21"></span>
-            <span class="word-line scroll-reveal" data-words="and success" data-delays="0.3,0.37"></span>
+            <span class="word-line scroll-reveal" data-words="and,success" data-delays="0.3,0.37"></span>
           </h2>
         </div>
         <div class="scatter-wrap" id="scatterWrap">
@@ -577,17 +581,17 @@
     </section>
 
     <!-- ── TESTIMONIALS ───────────────────────── -->
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="text-center mb-5" id="testiHead">
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mb-4 mb-md-5" id="testiHead">
           <h2 class="section-h">
-            <span class="word-line scroll-reveal" data-words="Loved by developers" data-delays="0,0.08,0.16"></span>
-            <span class="word-line scroll-reveal" data-words="like you" data-delays="0.26,0.33"></span>
+            <span class="word-line scroll-reveal" data-words="Loved,by,developers" data-delays="0,0.08,0.16"></span>
+            <span class="word-line scroll-reveal" data-words="like,you" data-delays="0.26,0.33"></span>
           </h2>
         </div>
-        <div class="row g-4" id="testiGrid">
+        <div class="row g-4 align-items-stretch" id="testiGrid">
           <!-- Left col: 2 stacked testimonials -->
-          <div class="col-lg-5 d-flex flex-column gap-4">
+          <div class="col-lg-5 d-flex flex-column gap-3 gap-md-4 order-1">
             <div class="testi-card gsap-init">
               <p class="quote">"Deploying VMeX felt like the first time I booted a computer with an SSD. It is so much
                 faster, more lightweight, and simpler that it completely changed how we manage our core cluster
@@ -614,7 +618,7 @@
             </div>
           </div>
           <!-- Middle: Clutch badge -->
-          <div class="col-lg-2 d-flex">
+          <div class="col-lg-2 d-flex order-3 order-lg-2">
             <div class="clutch-card w-100 gsap-init">
               <div class="clutch-logo">Clutch</div>
               <div class="clutch-ring">4.9</div>
@@ -623,7 +627,7 @@
             </div>
           </div>
           <!-- Right col: 2 stacked testimonials -->
-          <div class="col-lg-5 d-flex flex-column gap-4">
+          <div class="col-lg-5 d-flex flex-column gap-3 gap-md-4 order-2 order-lg-3">
             <div class="testi-card gsap-init">
               <p class="quote">"We tried them all, and no other hypervisor solution beats VMeX. We redesigned our
                 orchestration loop to spin up virtual infrastructure in no time with the autopilot provisioner. It's a
@@ -654,11 +658,11 @@
     </section>
 
     <!-- ── FAQ ───────────────────────────────── -->
-    <section class="section-soft py-5">
-      <div class="container py-4">
-        <div class="text-center mx-auto mb-5" style="max-width:640px" id="faqHead">
+    <section class="section-soft py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="text-center mx-auto mb-4 mb-md-5" style="max-width:640px" id="faqHead">
           <h2 class="section-h">
-            <span class="word-line scroll-reveal" data-words="Frequently asked" data-delays="0,0.09"></span>
+            <span class="word-line scroll-reveal" data-words="Frequently,asked" data-delays="0,0.09"></span>
             <span class="word-line scroll-reveal" data-words="questions" data-delays="0.2"></span>
           </h2>
         </div>
@@ -667,37 +671,37 @@
             <div class="accordion accordion-flush" id="faqAccordion">
               <div class="accordion-item">
                 <h3 class="accordion-header">
-                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                  <button class="accordion-button collapsed py-3 px-3 px-md-4 fw-semibold" type="button"
                     data-bs-toggle="collapse" data-bs-target="#collapseOne">
                     How experienced is your team?
                   </button>
                 </h3>
                 <div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                  <div class="accordion-body p-4 pt-0 text-muted small">Our team is highly experienced, with each member
+                  <div class="accordion-body p-3 p-md-4 pt-0 text-muted small">Our team is highly experienced, with each member
                     bringing a diverse range of skills and knowledge acquired through years of dedicated work.</div>
                 </div>
               </div>
               <div class="accordion-item">
                 <h3 class="accordion-header">
-                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                  <button class="accordion-button collapsed py-3 px-3 px-md-4 fw-semibold" type="button"
                     data-bs-toggle="collapse" data-bs-target="#collapseTwo">
                     What sets VMeX apart from others?
                   </button>
                 </h3>
                 <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                  <div class="accordion-body p-4 pt-0 text-muted small">VMeX combines enterprise-grade capability with a
+                  <div class="accordion-body p-3 p-md-4 pt-0 text-muted small">VMeX combines enterprise-grade capability with a
                     clean, simple architecture. No bloated stacks—just one powerful platform.</div>
                 </div>
               </div>
               <div class="accordion-item">
                 <h3 class="accordion-header">
-                  <button class="accordion-button collapsed py-3 px-4 fw-semibold" type="button"
+                  <button class="accordion-button collapsed py-3 px-3 px-md-4 fw-semibold" type="button"
                     data-bs-toggle="collapse" data-bs-target="#collapseThree">
                     How do you handle project timelines and deadlines?
                   </button>
                 </h3>
                 <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                  <div class="accordion-body p-4 pt-0 text-muted small">We follow structured milestone management plans
+                  <div class="accordion-body p-3 p-md-4 pt-0 text-muted small">We follow structured milestone management plans
                     tracking targets smoothly step-by-step.</div>
                 </div>
               </div>
@@ -708,11 +712,11 @@
     </section>
 
     <!-- ── CTA ───────────────────────────────── -->
-    <section class="section py-5">
-      <div class="container py-4">
-        <div class="cta-banner p-5 text-center text-white" id="ctaBanner">
-          <h2 class="text-white mb-3">Experience the Future <br>of Virtual Infrastructure</h2>
-          <p style="color:rgba(255,255,255,0.6);max-width:540px;margin:0 auto 2rem">See firsthand how our virtualization
+    <section class="section py-4 py-md-5">
+      <div class="container py-2 py-md-4">
+        <div class="cta-banner p-4 p-md-5 text-center text-white" id="ctaBanner">
+          <h2 class="text-white mb-3">Experience the Future <br class="d-none d-sm-inline">of Virtual Infrastructure</h2>
+          <p style="color:rgba(255,255,255,0.7);max-width:540px;margin:0 auto 2rem">See firsthand how our virtualization
             solution can transform your business. Book a free demo today.</p>
           <a href="contact.html" class="btn btn-light text-dark px-4 py-3 fw-semibold">Book a Demo</a>
         </div>
@@ -722,11 +726,11 @@
   </main>
 
   <!-- ── FOOTER ────────────────────────────── -->
-  <footer class="bg-white text-secondary py-5 border-top mt-5">
-    <div class="container py-4">
-      <div class="row g-5 border-bottom pb-5 mb-4">
+  <footer class="bg-white text-secondary py-4 py-md-5 border-top mt-4 mt-md-5">
+    <div class="container py-2 py-md-4">
+      <div class="row g-4 g-md-5 border-bottom pb-4 pb-md-5 mb-4">
         <div class="col-lg-4">
-          <div class="mb-5">
+          <div class="mb-4">
             <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" class="brand-logo" style="width: 120px;"
                 alt="VMeX Logo"></a>
           </div>
@@ -734,7 +738,7 @@
             <a href="#" class="text-secondary text-decoration-none">𝕏</a>
             <a href="#" class="text-secondary text-decoration-none">in</a>
           </div>
-          <div class="mt-4 d-flex gap-2">
+          <div class="mt-4 d-flex flex-column flex-sm-row gap-2 footer-newsletter-wrap">
             <input type="email" placeholder="Subscribe to our newsletter" class="form-control form-control-sm"
               style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
             <button class="btn btn-sm btn-dark px-4 fw-semibold" style="background: #0F1115;">Subscribe</button>
@@ -778,7 +782,8 @@
     /* ─── UTILITY: build word spans inside .scroll-reveal elements ─── */
     function buildScrollReveal() {
       document.querySelectorAll('.scroll-reveal').forEach(line => {
-        const words = line.dataset.words.split(',');
+        const raw = line.dataset.words || '';
+        const words = raw.includes(',') ? raw.split(',') : raw.split(/\s+/).filter(Boolean);
         const delays = (line.dataset.delays || '').split(',').map(Number);
         const colors = (line.dataset.colors || '').split(',');
         line.innerHTML = '';
@@ -788,12 +793,25 @@
           if (colors[i] === 'green') span.classList.add('green');
           if (colors[i] === 'dim') span.classList.add('dim');
           span.textContent = word + ' ';
-          span.dataset.delay = delays[i] || 0;
+          span.dataset.delay = (delays[i] !== undefined && !isNaN(delays[i])) ? delays[i] : (i * 0.08);
           line.appendChild(span);
         });
       });
     }
     buildScrollReveal();
+
+    /* ─── MOBILE NAVBAR CLOSE ON LINK CLICK ─── */
+    const mainNav = document.getElementById('mainNav');
+    if (mainNav) {
+      mainNav.querySelectorAll('.nav-link, .btn').forEach(link => {
+        link.addEventListener('click', () => {
+          if (window.innerWidth < 992 && mainNav.classList.contains('show')) {
+            const bsCollapse = bootstrap.Collapse.getInstance(mainNav);
+            if (bsCollapse) bsCollapse.hide();
+          }
+        });
+      });
+    }
 
     /* ─── HERO ANIMATION ─── */
     const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
@@ -806,7 +824,7 @@
           opacity: 1, y: '0%',
           duration: 0.75,
           ease: 'power3.out'
-        }, parseFloat(w.dataset.delay));
+        }, parseFloat(w.dataset.delay) || 0);
       });
 
       tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out' }, 0.55);
@@ -821,7 +839,7 @@
       if (!words.length) return;
       ScrollTrigger.create({
         trigger: headingEl,
-        start: 'top 82%',
+        start: 'top 85%',
         onEnter: () => {
           words.forEach(w => {
             gsap.to(w, {
@@ -842,10 +860,10 @@
 
     /* ─── GSAP-INIT FADE-UP ─── */
     gsap.utils.toArray('.gsap-init').forEach((el, i) => {
-      gsap.set(el, { opacity: 0, y: 36 });
+      gsap.set(el, { opacity: 0, y: 28 });
       ScrollTrigger.create({
         trigger: el,
-        start: 'top 88%',
+        start: 'top 90%',
         onEnter: () => {
           gsap.to(el, {
             opacity: 1, y: 0,
@@ -858,58 +876,61 @@
     });
 
     /* ─── UPGRADE SECTION ─── */
-    gsap.set('#upgradeImg', { opacity: 0, x: 50 });
+    gsap.set('#upgradeImg', { opacity: 0, x: 30 });
     ScrollTrigger.create({
       trigger: '#upgradeText',
-      start: 'top 75%',
+      start: 'top 80%',
       onEnter: () => {
-        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 1, ease: 'power3.out' });
+        gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.9, ease: 'power3.out' });
       }
     });
 
-    /* ─── SUPPORT SIDEBAR INTERACTION ─── */
-    const supportItems = document.querySelectorAll('.support-list-item');
-    supportItems.forEach(item => {
-      item.addEventListener('click', () => {
-        supportItems.forEach(s => s.classList.remove('active'));
-        item.classList.add('active');
+    /* ─── SUPPORT INTERACTION ─── */
+    const supportImage = document.getElementById('supportImage');
+    document.querySelectorAll('.support-list-item').forEach(item => {
+      item.addEventListener('click', function () {
+        document.querySelectorAll('.support-list-item').forEach(el => el.classList.remove('active'));
+        this.classList.add('active');
+        if (supportImage && this.dataset.image) {
+          supportImage.style.opacity = '0.3';
+          setTimeout(() => {
+            supportImage.src = this.dataset.image;
+            supportImage.style.opacity = '1';
+          }, 150);
+        }
       });
     });
 
     /* ─── SCATTER CARDS STAGGER ─── */
     ScrollTrigger.create({
       trigger: '#scatterWrap',
-      start: 'top 75%',
+      start: 'top 80%',
       onEnter: () => {
         gsap.to('.scard', {
           opacity: 1, y: 0, scale: 1,
-          stagger: 0.12,
-          duration: 0.7,
+          stagger: 0.1,
+          duration: 0.65,
           ease: 'back.out(1.4)'
         });
       }
     });
-    gsap.set('.scard', { opacity: 0, y: 30, scale: 0.9 });
+    gsap.set('.scard', { opacity: 0, y: 24, scale: 0.95 });
 
     /* ─── SCROLL-TO-TOP BUTTON ─── */
     const scrollBtn = document.getElementById('scrollTopBtn');
-    window.addEventListener('scroll', () => {
-      scrollBtn.classList.toggle('visible', window.scrollY > 400);
-    });
-
-
-    document.querySelectorAll(".support-list-item").forEach(item => {
-      item.addEventListener("click", function () {
-
-        document.querySelectorAll(".support-list-item").forEach(el => {
-          el.classList.remove("active");
-        });
-
-        this.classList.add("active");
-
-        document.getElementById("supportImage").src =
-          this.dataset.image;
+    if (scrollBtn) {
+      window.addEventListener('scroll', () => {
+        scrollBtn.classList.toggle('visible', window.scrollY > 400);
       });
+    }
+
+    // Refresh scroll triggers on resize / orientation change
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        ScrollTrigger.refresh();
+      }, 250);
     });
   </script>
 </body>

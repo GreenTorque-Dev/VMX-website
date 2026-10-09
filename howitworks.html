@@ -203,10 +203,18 @@
 
     <header class="site-header sticky-top">
         <div class="container">
-            <nav class="navbar navbar-expand-lg py-3">
-                <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" width="150px" class="brand-logo w-12" alt="VMeX Logo"></a>
+            <nav class="navbar navbar-expand-lg py-2 py-lg-3">
+                <a class="navbar-brand d-flex align-items-center me-0 me-lg-4 py-0" href="index.html">
+                    <img src="images/vmx/VMeX-logo-128x41.png" width="140" class="brand-logo" alt="VMeX Logo">
+                </a>
+                <button class="navbar-toggler custom-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                    <span class="toggler-icon-bar"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="mainNav">
-                    <ul class="navbar-nav ms-auto align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+                    <ul class="navbar-nav ms-auto align-items-lg-center gap-1 gap-lg-3 mt-3 mt-lg-0">
                         <li class="nav-item"><a class="nav-link" href="index.html">Home</a></li>
                         <li class="nav-item"><a class="nav-link" href="products.html">Features</a></li>
                         <li class="nav-item"><a class="nav-link active" href="howitworks.html">How it Works</a></li>
@@ -217,6 +225,9 @@
                         <li class="nav-item"><a class="nav-link" href="about.html">About Us</a></li>
                         <li class="nav-item"><a class="nav-link" href="contact.html">Contact</a></li>
                     </ul>
+                    <div class="d-lg-none nav-mobile-cta">
+                        <a href="contact.html" class="btn btn-primary w-100 py-2 fw-semibold">Request a Demo</a>
+                    </div>
                 </div>
             </nav>
         </div>
@@ -296,8 +307,8 @@
             <div class="container py-4">
                 <div class="row align-items-center g-5">
 
-                    <div class="col-lg-5" id="upgradeImg">
-                        <img width="500px" src="images/vmx/VMX-01.png"
+                    <div class="col-lg-5 text-center text-lg-start" id="upgradeImg">
+                        <img src="images/vmx/VMX-01.png" class="img-fluid" style="max-width:480px; width:100%;"
                             alt="VMeX Server Virtualization Architecture Infrastructure Layers">
                     </div>
 
@@ -464,11 +475,11 @@
             </div>
         </section>
 
-        <section class="section py-5" style="background-color: #FAFAFA;">
-            <div class="container py-4">
-                <div class="text-center mx-auto mb-5" style="max-width: 800px;">
-                    <h2 class="mb-3 fw-bold"
-                        style="font-family: 'Red Hat Display', sans-serif; font-size: 4rem; letter-spacing: -0.02em; color: #60A630;">
+        <section class="section py-4 py-md-5" style="background-color: #FAFAFA;">
+            <div class="container py-2 py-md-4">
+                <div class="text-center mx-auto mb-4 mb-md-5" style="max-width: 800px;">
+                    <h2 class="mb-3 fw-bold section-h"
+                        style="letter-spacing: -0.02em; color: #60A630;">
                         Why Should You <span style="color: #1A1A1A;">Care?</span>
                     </h2>
                 </div>
@@ -476,7 +487,7 @@
                 <div class="row g-4 row-cols-1 row-cols-md-2">
 
                     <div class="col gsap-init">
-                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                        <div class="p-4 p-md-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
                             style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
                             <h3 class="h4 fw-bold mb-3 text-dark"
                                 style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">
@@ -488,7 +499,7 @@
                     </div>
 
                     <div class="col gsap-init">
-                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                        <div class="p-4 p-md-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
                             style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
                             <h3 class="h4 fw-bold mb-3 text-dark"
                                 style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Highly
@@ -499,7 +510,7 @@
                     </div>
 
                     <div class="col gsap-init">
-                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                        <div class="p-4 p-md-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
                             style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
                             <h3 class="h4 fw-bold mb-3 text-dark"
                                 style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Ultimate
@@ -511,7 +522,7 @@
                     </div>
 
                     <div class="col gsap-init">
-                        <div class="p-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
+                        <div class="p-4 p-md-5 bg-white rounded-4 border border-light-subtle shadow-sm h-100"
                             style="border-left: 5px solid #60A630 !important; border-radius: 16px;">
                             <h3 class="h4 fw-bold mb-3 text-dark"
                                 style="font-family: 'Red Hat Display', sans-serif; letter-spacing: -0.01em;">Infinitely
@@ -526,17 +537,17 @@
             </div>
         </section>
 
-        <section class="section py-4">
-            <div class="container">
-                <div class="cta-banner p-5 text-center text-white" id="ctaBanner"
-                    style="background-color: var(--green-banner-bg); border-radius: 20px;">
+        <section class="section py-4 py-md-5">
+            <div class="container py-2">
+                <div class="cta-banner p-4 p-md-5 text-center text-white" id="ctaBanner"
+                    style="border-radius: 20px;">
                     <h2 class="text-white h1 fw-bold mb-3">Getting Started with Virtualization</h2>
-                    <p class="mx-auto mb-5 text-white-50" style="max-width: 780px; font-size: 1rem; line-height: 1.7;">
+                    <p class="mx-auto mb-4 mb-md-5 text-white-50" style="max-width: 780px; font-size: 1rem; line-height: 1.7;">
                         VMeX offers enterprise-grade virtualization for businesses and business professionals. From
                         storage and network virtualization to desktop and server virtualization, our virtualization
                         solution has been designed to optimize resources, reduce costs, and enhance flexibility.
                     </p>
-                    <a href="contact.html" class="btn btn-light px-5 py-3 fw-bold text-dark rounded border shadow-sm"
+                    <a href="contact.html" class="btn btn-light px-4 px-md-5 py-3 fw-bold text-dark rounded border shadow-sm"
                         style="background-color: #FFFFFF; font-size: 0.95rem;">Get Started Today</a>
                 </div>
             </div>
@@ -544,11 +555,11 @@
 
     </main>
 
-    <footer class="bg-white text-secondary py-5 border-top mt-5">
-        <div class="container py-4">
-            <div class="row g-5 border-bottom pb-5 mb-4">
+    <footer class="bg-white text-secondary py-4 py-md-5 border-top mt-4 mt-md-5">
+        <div class="container py-2 py-md-4">
+            <div class="row g-4 g-md-5 border-bottom pb-4 pb-md-5 mb-4">
                 <div class="col-lg-4">
-                    <div class="mb-5">
+                    <div class="mb-4">
                         <a href="index.html"><img src="images/vmx/VMeX-logo-128x41.png" class="brand-logo" style="width: 120px;"
                             alt="VMeX Logo"></a>
                     </div>
@@ -556,7 +567,7 @@
                         <a href="#" class="text-secondary text-decoration-none">𝕏</a>
                         <a href="#" class="text-secondary text-decoration-none">in</a>
                     </div>
-                    <div class="mt-4 d-flex gap-2">
+                    <div class="mt-4 d-flex flex-column flex-sm-row gap-2 footer-newsletter-wrap">
                         <input type="email" placeholder="Subscribe to our newsletter"
                             class="form-control form-control-sm"
                             style="max-width:240px; background:#F0F2F5; border-color:#E2E5E9; color:#333">
@@ -602,7 +613,8 @@
         // --- Dynamic Character Word-Line Engine Splitter ---
         function buildScrollReveal() {
             document.querySelectorAll('.scroll-reveal').forEach(line => {
-                const words = line.dataset.words.split(',');
+                const raw = line.dataset.words || '';
+                const words = raw.includes(',') ? raw.split(',') : raw.split(/\s+/).filter(Boolean);
                 const delays = (line.dataset.delays || '').split(',').map(Number);
                 const colors = (line.dataset.colors || '').split(',');
                 line.innerHTML = '';
@@ -612,12 +624,25 @@
                     if (colors[i] === 'green') span.classList.add('green');
                     if (colors[i] === 'dim') span.classList.add('dim');
                     span.textContent = word + ' ';
-                    span.dataset.delay = delays[i] || 0;
+                    span.dataset.delay = (delays[i] !== undefined && !isNaN(delays[i])) ? delays[i] : (i * 0.08);
                     line.appendChild(span);
                 });
             });
         }
         buildScrollReveal();
+
+        /* ─── MOBILE NAVBAR CLOSE ON LINK CLICK ─── */
+        const mainNav = document.getElementById('mainNav');
+        if (mainNav) {
+            mainNav.querySelectorAll('.nav-link, .btn').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth < 992 && mainNav.classList.contains('show')) {
+                        const bsCollapse = bootstrap.Collapse.getInstance(mainNav);
+                        if (bsCollapse) bsCollapse.hide();
+                    }
+                });
+            });
+        }
 
         // --- Giant Header Fluid Stagger Reveal Sequence ---
         const heroWords = document.querySelectorAll('#heroHeading .reveal-word');
@@ -630,7 +655,7 @@
                     opacity: 1, y: '0%',
                     duration: 0.8,
                     ease: 'power4.out'
-                }, parseFloat(w.dataset.delay));
+                }, parseFloat(w.dataset.delay) || 0);
             });
             tl.to('#heroLead', { opacity: 1, y: 0, duration: 0.65, ease: 'power2.out' }, 0.4);
             tl.to('#heroCtas', { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 0.55);
@@ -664,10 +689,10 @@
 
         // Stagger loop for general lists and visual content nodes
         gsap.utils.toArray('.gsap-init, .area-card-spec, .feat-card, .system-block-node').forEach((el, i) => {
-            gsap.set(el, { opacity: 0, y: 35 });
+            gsap.set(el, { opacity: 0, y: 28 });
             ScrollTrigger.create({
                 trigger: el,
-                start: 'top 88%',
+                start: 'top 90%',
                 onEnter: () => {
                     gsap.to(el, {
                         opacity: 1,
@@ -682,25 +707,45 @@
 
         // Content fade element transitions tracking variables
         gsap.utils.toArray(".gsap-text-animate, .gsap-element-animate, .practical-example-box").forEach(el => {
-            gsap.fromTo(el, { opacity: 0, y: 25 }, {
+            gsap.fromTo(el, { opacity: 0, y: 20 }, {
                 opacity: 1, y: 0, duration: 0.7, ease: "power2.out",
                 scrollTrigger: { trigger: el, start: "top 90%" }
             });
         });
 
         // Left-to-right visual frame coordinate shift tracking rules
-        gsap.set('#upgradeImg', { opacity: 0, x: -40 });
+        gsap.set('#upgradeImg', { opacity: 0, x: -30 });
         ScrollTrigger.create({
             trigger: '#upgradeText',
-            start: 'top 78%',
+            start: 'top 80%',
             onEnter: () => {
                 gsap.to('#upgradeImg', { opacity: 1, x: 0, duration: 0.85, ease: 'power3.out' });
             }
         });
 
         const scrollBtn = document.getElementById('scrollTopBtn');
-        window.addEventListener('scroll', () => {
-            scrollBtn.classList.toggle('visible', window.scrollY > 400);
+        if (scrollBtn) {
+            window.addEventListener('scroll', () => {
+                scrollBtn.classList.toggle('visible', window.scrollY > 400);
+            });
+        }
+
+        // Auto-close navbar on mobile link click
+        document.querySelectorAll('#mainNav .nav-link, #mainNav .nav-mobile-cta a').forEach(link => {
+            link.addEventListener('click', () => {
+                const navCollapse = document.getElementById('mainNav');
+                if (navCollapse && navCollapse.classList.contains('show')) {
+                    bootstrap.Collapse.getInstance(navCollapse)?.hide();
+                }
+            });
+        });
+
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                ScrollTrigger.refresh();
+            }, 250);
         });
     </script>
 </body>
