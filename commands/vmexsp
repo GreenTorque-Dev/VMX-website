@@ -1,0 +1,1971 @@
+#!/usr/bin/env bash
+# vmexsp - VMEX Storage Pool Management Tool v1.6
+#          (LV + filesystem + mount + libvirt pool in one step)
+#
+#   Every SP has a NAME chosen by the user (shown in the UI) and a fixed internal
+#   ID (storage01, storage02 ...) used for the LV and the folder:
+#       name: Finance    path: /storages/storage03    LV: /dev/storagevg/storage03
+#   Name rules: 2-24 letters and digits, starts with a letter, no spaces or
+#   special characters, unique (not case-sensitive).
+#   Wherever a command takes <name>, the internal ID works too.
+#
+#   All switches take ONE hyphen (older forms like "create" or "--force" still work).
+#
+#   vmexsp -create [name] [size]   e.g. vmexsp -create Finance 500G
+#                                  no name = name is the internal ID (storageNN)
+#                                  no size = use all free space in the VG
+#                                  (refused if the VG is on SAN disks - use -shared)
+#   vmexsp -create [name] [size] -shared
+#                                  SHARED SP on SAN/NAS (iSCSI, FC): GFS2, mounted by the
+#                                  cluster on every host (LV sharedvg/storageNN)
+#
+#   IDs: one numbering for all SPs, unique in the whole cluster. Example:
+#        storage01  local disk, every host   storagevg (local)   /storages/storage01
+#        storage02  SAN or NAS               sharedvg  (shared)  /storages/storage02
+#   vmexsp -import [id] [name]     register an existing LV (e.g. storage01 made by the
+#                                  installer) as a storage pool; no id = all such LVs
+#   vmexsp -rename <name> <new>    change the name (path, data and VMs unchanged)
+#   vmexsp -delete <name>          only if SP is empty (asks to confirm)
+#   vmexsp -delete <name> -force   also deletes data, VM disks, folder pools
+#                                  (never if a running VM uses it)
+#                                  add -yes to skip the prompt (for the UI button)
+#   vmexsp -start <name>           activate SP (activate LV, mount, start pool)
+#   vmexsp -stop <name>            deactivate SP in libvirt (data kept; refused if a VM runs on it)
+#   vmexsp -refresh <name>         rescan files in the SP
+#   vmexsp -list [-all]            SPs (-all: also extra pools and VG free space)
+#   vmexsp -vms [name]             VMs with disks on one SP (no name = every SP)
+#   vmexsp -cleanup                remove extra pools under /storages from libvirt (files kept)
+#   vmexsp -cleanup <pool>...      remove the named extra pools, wherever they point (files kept)
+#                                  (real SPs and pools a VM uses by name are always skipped)
+#   vmexsp -log [N | name]         last N log lines (default 50), or the full history of one SP
+#   vmexsp -version                show the installed version
+#   vmexsp -help                   this help
+#   vmexsp -installautocomplete    install Tab completion for vmexsp (once per server)
+#
+#   Install: cp vmexsp /usr/local/sbin/vmexsp && chmod 755 /usr/local/sbin/vmexsp
+#            vmexsp -installautocomplete
+#
+#   Shared storage (needs the VMeX cluster: Pacemaker + DLM + lvmlockd + fencing):
+#   vmexsp -shared-check           is this host ready for shared SPs?
+#   vmexsp -shared-init <disk> [node ...] [-yes] [-local]
+#                                  first shared disk - run on ONE node only: WIPE the SAN/NAS
+#                                  disk (e.g. ibmstorwize), create sharedvg on it, and join
+#                                  every other cluster node to it (or only the nodes named)
+#   vmexsp -shared-add <disk> [node ...] [-yes] [-local]
+#                                  another shared disk - run on ONE node: WIPE it, add it to
+#                                  sharedvg, join the other nodes to it
+#                                  The other nodes are reached over SSH as root (no password:
+#                                  ssh-copy-id root@<node>); -local = this node only.
+#   vmexsp -shared-join <disk>     manual join on one node (new node, or after -local)
+#   vmexsp -sync                   on a node: add shared SPs created elsewhere, apply renames
+#                                  (-create -shared already does this on reachable nodes)
+#   vmexsp -detach <name>          shared SP: remove it from THIS host only (data kept);
+#                                  delete is only allowed once no other host uses it
+#
+#   TYPE in "-list": Local = local disks | SAN = on the SAN but single-host (XFS)
+#                    Shared = GFS2 on a lock-managed VG, safe on every host | Mixed
+#
+#   Defaults: VG storagevg (local), VG sharedvg (shared), all mounted at /storages/storageNN.
+#   Servers with another layout set VG / BASE / PREFIX / SHARED_VG in /etc/vmexsp.conf
+#   ("vmexsp -version" shows them).
+#   Every change is logged to /var/log/vmex/vmexsp.log and the journal (journalctl -t vmexsp).
+#   From a UI, set VMEXSP_USER=<logged-in user> so the log shows who clicked.
+
+set -euo pipefail
+
+# ---------------------------------------------------------------- changes
+# Last change: 1.6 (2026-11-17) - one command for the whole cluster (-shared-init joins all nodes).
+#
+# 1.6    2026-11-17  One command for the whole cluster: -shared-init / -shared-add also join
+#                    every other cluster node (over SSH), -create -shared also adds the pool
+#                    on every other node (no -sync needed). Before wiping, every node is
+#                    checked: SSH login, vmexsp >= 1.5, same disk name, cluster ready.
+#                    Optional node names limit it; -local = this host only (old behaviour).
+# 1.5.1  2026-11-17  Shared disks can be given by their short name (ibmstorwize instead of
+#                    /dev/mapper/ibmstorwize) in -shared-init/-shared-add/-shared-join and at
+#                    the confirmation prompt; Tab offers the short names.
+# 1.5    2026-11-17  One numbering for all SPs: storage01 local, storage02 shared ... - local or
+#                    shared is decided by the VG (storagevg / sharedvg), not by the name.
+#                    IDs are unique in the whole cluster: every host reports its local IDs to
+#                    the cluster; -create -shared never takes an ID a host uses locally.
+#                    -shared-add <device>: add another SAN/NAS disk to sharedvg.
+#                    NAS over iSCSI accepted, also single path (no multipath).
+#                    -shared-join refuses when local IDs clash with shared ones.
+#                    -detach is remembered: -sync no longer adds a detached SP back
+#                    (-import <id> does). Hosts are named by their cluster node name.
+# 1.4.2  2026-11-11  All switches take one hyphen, like the other VMeX tools: vmexsp -create,
+#                    -delete <name> -force -yes, -list -all, -create ... -shared, -version,
+#                    -installautocomplete. Older forms (create, --force ...) still work.
+#                    -version also shows where vmexsp and its Tab completion are installed.
+# 1.4.1  2026-11-02  Install location /usr/local/sbin/vmexsp. New: vmexsp --installautocomplete
+#                    (Tab completion is built into this file and written out by that command).
+# 1.4    2026-10-31  Shared storage pools: create --shared (GFS2 on a dlm-locked
+#                    shared VG, mounted on every host by Pacemaker), shared-init,
+#                    shared-join, shared-check, sync, detach.
+#                    create refuses XFS/ext4 on a VG that sits on SAN disks.
+#                    "Shared" is shown only for GFS2 on a lock-managed VG.
+#                    delete of a shared SP refused while another host still uses it.
+# 1.3.1  -           SAN / Shared / Local labels in list; warning for XFS on SAN.
+# 1.3    -           (see earlier versions)
+
+# ---------------------------------------------------------------- version
+TOOL_NAME="VMEX Storage Pool Management Tool"
+VERSION="1.6"         # also update line 2 and "Last change" above when changing
+
+# ---------------------------------------------------------------- settings
+VG="storagevg"        # volume group that holds the SPs
+BASE="/storages"      # SPs are mounted at $BASE/<internal ID>
+PREFIX="storage"      # internal IDs: ${PREFIX}01, ${PREFIX}02, ...
+NAME_MAX=24           # longest allowed SP name
+FSTYPE="xfs"
+MOUNTOPTS="defaults,nodev,nosuid"   # same options as the kickstart
+FSTAB="/etc/fstab"
+LOGFILE="${VMEXSP_LOG:-/var/log/vmex/vmexsp.log}"
+VIRSH="virsh -c qemu:///system"
+
+# shared (cluster) storage pools
+SHARED_VG="sharedvg"          # dlm-locked shared VG on the SAN (vmexsp shared-init)
+SHARED_PREFIX="shared"        # only for SPs made by v1.4 (shared01 ...); new shared SPs use $PREFIX
+LOCKING_CLONE="locking-clone" # Pacemaker clone that runs dlm + lvmlockd on every host
+GFS2_JOURNALS=""              # empty = number of cluster hosts (minimum 2)
+SHARED_MOUNTOPTS="noatime"
+MOUNT_WAIT=120                # seconds to wait for the cluster to mount a new shared SP
+
+# Optional per-server overrides, e.g. for a server with an older layout:
+#   /etc/vmexsp.conf     VG=vmx
+#                        BASE=/vmxsps
+#                        PREFIX=vmxsp
+# Only the keys below are read; the file is parsed, never executed.
+CONF="${VMEXSP_CONF:-/etc/vmexsp.conf}"
+if [[ -r "$CONF" ]]; then
+  while IFS='=' read -r _k _v; do
+    _k="${_k//[[:space:]]/}"
+    [[ -z "$_k" || "$_k" == \#* ]] && continue
+    _v="${_v%%#*}"; _v="${_v#"${_v%%[![:space:]]*}"}"; _v="${_v%"${_v##*[![:space:]]}"}"
+    _v="${_v#\"}"; _v="${_v%\"}"; _v="${_v#\'}"; _v="${_v%\'}"
+    case "$_k" in
+      VG|PREFIX)  [[ "$_v" =~ ^[A-Za-z0-9_][A-Za-z0-9_.+-]*$ ]] && printf -v "$_k" '%s' "$_v" ;;
+      BASE)       [[ "$_v" =~ ^/[A-Za-z0-9_./-]+$ ]] && BASE="${_v%/}" ;;
+      MOUNTOPTS)  [[ "$_v" =~ ^[A-Za-z0-9_,=.-]+$ ]] && MOUNTOPTS="$_v" ;;
+      FSTYPE)     [[ "$_v" =~ ^(xfs|ext4)$ ]] && FSTYPE="$_v" ;;
+      NAME_MAX)   [[ "$_v" =~ ^[0-9]+$ ]] && (( _v >= 2 && _v <= 64 )) && NAME_MAX="$_v" ;;
+      SHARED_VG|SHARED_PREFIX) [[ "$_v" =~ ^[A-Za-z0-9_][A-Za-z0-9_.+-]*$ ]] && printf -v "$_k" '%s' "$_v" ;;
+      LOCKING_CLONE) [[ "$_v" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] && LOCKING_CLONE="$_v" ;;
+      GFS2_JOURNALS) [[ "$_v" =~ ^[0-9]+$ ]] && (( _v >= 1 && _v <= 16 )) && GFS2_JOURNALS="$_v" ;;
+      SHARED_MOUNTOPTS) [[ "$_v" =~ ^[A-Za-z0-9_,=.-]+$ ]] && SHARED_MOUNTOPTS="$_v" ;;
+      MOUNT_WAIT) [[ "$_v" =~ ^[0-9]+$ ]] && (( _v >= 10 && _v <= 900 )) && MOUNT_WAIT="$_v" ;;
+    esac
+  done < "$CONF"
+  unset _k _v
+fi
+
+PROG="${0##*/}"
+ACTOR="${VMEXSP_USER:-${SUDO_USER:-$(id -un)}}"; ACTOR="${ACTOR// /_}"
+RUN_ID="$(date +%s)-$$"
+ORIG_ARGS="$*"      # as typed, for the log
+# Switch style: "-create", "-force" ... (one hyphen). Older forms still work:
+# "create" (no hyphen) and "--create" / "--force" (two hyphens).
+CMD="${1:-}"
+case "$CMD" in --?*) CMD="-${CMD#--}" ;; esac
+case "$CMD" in
+  -create|-import|-rename|-delete|-detach|-start|-stop|-refresh|-list|-vms|-sync|-cleanup|-log|\
+  -shared-check|-shared-init|-shared-add|-shared-join|-version|-help|-installautocomplete) CMD="${CMD#-}" ;;
+esac
+if (( $# )); then
+  _args=()
+  for _a in "${@:2}"; do
+    case "$_a" in --force|--yes|--all|--shared) _args+=("-${_a#--}") ;; *) _args+=("$_a") ;; esac
+  done
+  set -- "$CMD" "${_args[@]+"${_args[@]}"}"
+  unset _args _a
+fi
+MUTATING=0          # 1 for commands that change something (they get logged)
+ACTION=""           # current high-level action, used by die()
+TARGET="-"          # SP name / pool the current step works on
+SPID="-"            # internal ID of the SP (stays the same across renames)
+UNDO=()             # rollback stack: "ACTION|command"
+TMPD=""             # temp folder (rename)
+RUNNING_VMS=""; STOPPED_VMS=""
+SP_NAME=""; SP_ID=""   # set by resolve
+CLUSTER_NAME=""; CLUSTER_NODES=0   # set by cluster_check
+SIZEOPT=(); SIZE_DESC=""           # set by compute_size
+
+# ---------------------------------------------------------------- logging
+# audit RESULT ACTION TARGET MESSAGE      RESULT = OK | FAIL | WARN | INFO
+audit() {
+  (( MUTATING )) || return 0
+  local res="$1" act="$2" tgt="$3" msg="$4" pri=info
+  msg="${msg//\"/\'}"
+  local line="run=$RUN_ID user=$ACTOR action=$act target=$tgt sp=$SPID result=$res msg=\"$msg\""
+  { printf '%s %s\n' "$(date '+%F %T %z')" "$line" >> "$LOGFILE"; } 2>/dev/null || true
+  [[ "$res" == FAIL ]] && pri=err
+  [[ "$res" == WARN ]] && pri=warning
+  logger -t vmexsp -p "user.$pri" -- "$line" 2>/dev/null || true
+}
+
+log() { echo ">> $*"; }
+
+die() {
+  audit FAIL "${ACTION:-${CMD^^}}" "$TARGET" "$*"
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+# step ACTION "message shown to user" command args...
+# runs one change, logs OK with the exact command, or FAIL with the error
+step() {
+  local act="$1" desc="$2"; shift 2
+  local out rc=0
+  out=$("$@" 2>&1 </dev/null) || rc=$?
+  if (( rc == 0 )); then
+    audit OK "$act" "$TARGET" "$*"
+    log "$desc"
+  else
+    out=$(tr '\n' ' ' <<<"$out" | sed 's/  */ /g' | cut -c1-400)
+    audit FAIL "$act" "$TARGET" "$* -> $out"
+    echo "!! $desc - FAILED: $out" >&2
+  fi
+  return $rc
+}
+
+on_exit() {
+  local rc=$?
+  [[ -n "$TMPD" ]] && rm -rf "$TMPD"
+  (( MUTATING )) || return 0
+  if (( rc == 0 )); then
+    audit OK COMMAND "$TARGET" "end: success"
+  else
+    audit FAIL COMMAND "$TARGET" "end: failed (exit $rc)"
+  fi
+}
+
+# ---------------------------------------------------------------- helpers
+# any pool name / ID typed on the command line (permissive: also extra pools like AJL-SQL-1.22)
+valid_name() {
+  [[ "$1" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,62}$ ]] || die "Invalid name '$1'"
+}
+
+# a NEW SP name chosen by the user
+# valid_label <name> [own internal ID] [current pool name]
+valid_label() {
+  local l="$1" own="${2:-}" cur="${3:-}" p
+  [[ "$l" =~ ^[A-Za-z][A-Za-z0-9]{1,$((NAME_MAX-1))}$ ]] ||
+    die "Invalid name '$l': use 2-$NAME_MAX letters and digits, starting with a letter (no spaces or special characters)"
+  if [[ "${l,,}" =~ ^(${PREFIX,,}|${SHARED_PREFIX,,})[0-9]+$ && "$l" != "$own" ]]; then
+    die "Name '$l' looks like an internal ID - choose another name"
+  fi
+  while IFS= read -r p; do
+    [[ -z "$p" || "$p" == "$cur" ]] && continue
+    [[ "${p,,}" == "${l,,}" ]] && die "A storage pool named '$p' already exists"
+  done < <(pool_names)
+  return 0
+}
+
+to_bytes() { numfmt --from=iec "${1^^}" 2>/dev/null | sed 's/B$//' || die "Invalid size '$1'"; }
+
+pool_path()   { $VIRSH pool-dumpxml "$1" 2>/dev/null | sed -n 's:.*<path>\(.*\)</path>.*:\1:p' | head -1 | sed 's:\(.\)/*$:\1:'; }
+pool_exists() { $VIRSH pool-info "$1" &>/dev/null; }
+pool_active() { $VIRSH pool-info "$1" 2>/dev/null | awk '/^State:/ && /running/ {f=1} END{exit !f}'; }
+pool_auto()   { $VIRSH pool-info "$1" 2>/dev/null | awk '/^Autostart:/ && /yes/ {f=1} END{exit !f}'; }
+fstab_has()   { awk -v m="$1" '$1 !~ /^#/ && $2 == m {f=1} END{exit !f}' "$FSTAB"; }
+
+# apply the SELinux labels for VM storage (rule: semanage fcontext ... "$BASE(/.*)?")
+selinux_label() {
+  command -v selinuxenabled &>/dev/null && selinuxenabled || return 0
+  command -v restorecon &>/dev/null || return 0
+  step SELINUX_LABEL "Applied SELinux labels on $1" restorecon -R "$1" || true
+}
+
+# LVs in $VG that are not registered as a storage pool (e.g. created by the installer)
+unregistered_ids() {
+  local paths id
+  paths=$(all_pools | cut -f2)
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    grep -qxF "$BASE/$id" <<<"$paths" || echo "$id"
+  done < <({ lvs --noheadings -o lv_name "$VG" 2>/dev/null | tr -d ' '; shared_ids; })
+  return 0
+}
+
+fstab_add() {   # fstab_add <uuid> <mountpoint>
+  cp -a "$FSTAB" "$FSTAB.bak.$(date +%s)"          || return 1
+  echo "UUID=$1 $2 $FSTYPE $MOUNTOPTS 0 0" >> "$FSTAB" || return 1
+  systemctl daemon-reload 2>/dev/null || true
+}
+
+fstab_remove() {   # fstab_remove <mountpoint>
+  fstab_has "$1" || return 0
+  cp -a "$FSTAB" "$FSTAB.bak.$(date +%s)"                        || return 1
+  awk -v m="$1" '!($1 !~ /^#/ && $2 == m)' "$FSTAB" > "$FSTAB.new" || return 1
+  cat "$FSTAB.new" > "$FSTAB" && rm -f "$FSTAB.new"               || return 1
+  systemctl daemon-reload 2>/dev/null || true
+}
+
+# names from "virsh ... --name" with padding spaces removed (virsh 11 pads them)
+pool_names() { $VIRSH pool-list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'; }
+vm_names()   { $VIRSH list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'; }
+
+# all pools as "name<TAB>path"
+all_pools() {
+  local p
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    printf "%s\t%s\n" "$p" "$(pool_path "$p")"
+  done < <(pool_names)
+  return 0
+}
+
+# path is directly $BASE/<id> (one level, no sub-folder)
+sp_path() { [[ "$1" == "$BASE/"* && "${1#$BASE/}" != */* && -n "${1#$BASE/}" ]]; }
+
+# an SP is shared when its LV is in $SHARED_VG, local when it is in $VG (the ID does not tell)
+is_shared_id() { [[ "$SHARED_VG" != "$VG" ]] && lvs "$SHARED_VG/$1" &>/dev/null; }
+vg_of()        { if is_shared_id "$1"; then echo "$SHARED_VG"; else echo "$VG"; fi; }
+lv_exists()    { lvs "$(vg_of "$1")/$1" &>/dev/null; }
+# LV names that are SP IDs (storageNN; sharedNN from v1.4)
+sp_id_re()     { echo "^(${PREFIX}|${SHARED_PREFIX})[0-9]+\$"; }
+local_ids()    { lvs --noheadings -o lv_name "$VG" 2>/dev/null | tr -d ' ' | grep -E "$(sp_id_re)" || true; }
+shared_ids()   { [[ "$SHARED_VG" != "$VG" ]] || return 0
+                 lvs --noheadings -o lv_name "$SHARED_VG" 2>/dev/null | tr -d ' ' | grep -E "$(sp_id_re)" || true; }
+
+# a real SP = pool path is $BASE/<id> AND the LV <id> exists in its VG
+is_sp() { sp_path "$2" && lv_exists "${2#$BASE/}"; }
+
+# resolve_q <name or ID> -> sets SP_NAME (pool name, may be empty) and SP_ID; 1 if not an SP
+resolve_q() {
+  local arg="$1" rows p path
+  SP_NAME=""; SP_ID=""
+  rows=$(all_pools)
+  # 1) exact pool name, then 2) same name ignoring case
+  for mode in exact nocase; do
+    while IFS=$'\t' read -r p path; do
+      [[ -z "$p" ]] && continue
+      if [[ $mode == exact ]]; then [[ "$p" == "$arg" ]] || continue
+      else [[ "${p,,}" == "${arg,,}" ]] || continue; fi
+      sp_path "$path" || return 1
+      SP_NAME="$p"; SP_ID="${path#$BASE/}"; return 0
+    done <<<"$rows"
+  done
+  # 3) internal ID (LV or folder exists)
+  if lv_exists "$arg" || [[ -d "$BASE/$arg" ]]; then
+    SP_ID="$arg"
+    SP_NAME=$(awk -F'\t' -v m="$BASE/$arg" '$2==m {print $1; exit}' <<<"$rows")
+    return 0
+  fi
+  return 1
+}
+
+resolve() {
+  valid_name "$1"
+  if ! resolve_q "$1"; then
+    pool_exists "$1" && die "'$1' is not a VMEX storage pool (path: $(pool_path "$1")) - only pools under $BASE are managed"
+    die "Storage pool '$1' does not exist"
+  fi
+  TARGET="${SP_NAME:-$SP_ID}"; SPID="$SP_ID"
+}
+
+# folder pools whose path is inside $1 (a mount point)
+child_pools() {
+  all_pools | awk -F'\t' -v m="$1/" 'index($2, m) == 1 {print $1 "\t" $2}'
+}
+
+# sets RUNNING_VMS / STOPPED_VMS for VMs with a disk under $1 (names/paths with spaces OK)
+vm_users() {
+  RUNNING_VMS=""; STOPPED_VMS=""
+  local d st
+  while IFS=$'\t' read -r d st; do
+    [[ -z "$d" ]] && continue
+    if [[ "$st" == "shut off" ]]; then
+      STOPPED_VMS+=" '$d'"
+    else
+      RUNNING_VMS+=" '$d'"
+    fi
+  done < <(all_vm_disks | awk -F'\t' -v m="$1/" 'index($6, m) == 1 && !seen[$1]++ {print $1 "\t" $2}')
+}
+
+# ---- cluster-wide ID registry --------------------------------------------------
+# Every host reports its LOCAL SP IDs as a cluster node attribute (vmexsp-local-ids).
+# A new SHARED SP is mounted on every host, so it must not take an ID that any host
+# already uses for a local SP.
+ID_ATTR="vmexsp-local-ids"
+cluster_up() { command -v crm_attribute &>/dev/null && timeout 5 crm_node -n &>/dev/null; }
+
+# report this host's local IDs to the cluster (no-op without a cluster)
+# publish_local_ids [ID being created]  - reserves that ID before its LV exists
+publish_local_ids() {
+  cluster_up || return 0
+  local ids; ids=$({ local_ids; [[ -n "${1:-}" ]] && echo "$1"; } | sort -u | paste -sd' ' - || true)
+  if timeout 10 crm_attribute --node "$(crm_node -n)" --name "$ID_ATTR" --lifetime forever \
+       --update "${ids:-none}" &>/dev/null; then
+    audit INFO PUBLISH_IDS "-" "local IDs reported to the cluster: ${ids:-none}"
+  else
+    audit WARN PUBLISH_IDS "-" "could not report local IDs to the cluster"
+    echo "!! Note: could not report this host's local storage IDs to the cluster" >&2
+  fi
+}
+
+# local IDs of EVERY cluster host, one per line; stops if a host has not reported yet
+cluster_local_ids() {
+  local node v missing=""
+  for node in $(timeout 10 crm_node -l 2>/dev/null | awk '{print $2}'); do
+    v=$(timeout 10 crm_attribute --node "$node" --name "$ID_ATTR" --lifetime forever --query --quiet 2>/dev/null || true)
+    if [[ -z "$v" ]]; then missing+=" $node"; continue; fi
+    [[ "$v" == none ]] || tr ' ' '\n' <<<"$v"
+  done
+  [[ -z "$missing" ]] || die "Host(s)$missing have not reported their local storage IDs - run '$PROG -sync' on them first (needs vmexsp 1.5 there)"
+  return 0
+}
+
+# IDs that already have cluster resources (shared SPs, also those not visible here yet)
+cluster_sp_ids() {
+  command -v crm_resource &>/dev/null || return 0
+  timeout 10 crm_resource --list-raw 2>/dev/null | sed -n 's/^vmexsp-\(.*\)-fs\(:[0-9]*\)\{0,1\}$/\1/p' | sort -u || true
+}
+
+# lowest unused internal ID (checks LVs in both VGs, libvirt pools, folders, cluster)
+# next_id ["IDs to skip"]   - shared SPs pass the local IDs of every cluster host
+next_id() {
+  local skip=" $(tr '\n' ' ' <<<"${1:-}") $(cluster_sp_ids | tr '\n' ' ') " i n
+  for (( i=1; i<=999; i++ )); do
+    n=$(printf "%s%02d" "$PREFIX" "$i")
+    if [[ "$skip" == *" $n "* ]]; then continue; fi
+    if lvs "$VG/$n" &>/dev/null; then continue; fi
+    if [[ "$SHARED_VG" != "$VG" ]] && lvs "$SHARED_VG/$n" &>/dev/null; then continue; fi
+    if all_pools | awk -F'\t' -v m="$BASE/$n" '$2==m {f=1} END{exit !f}'; then continue; fi
+    # a leftover EMPTY folder (e.g. after an LV was removed by hand) does not block the ID
+    if mountpoint -q "$BASE/$n" 2>/dev/null; then continue; fi
+    if [[ -e "$BASE/$n" && ( ! -d "$BASE/$n" || -n "$(ls -A "$BASE/$n" 2>/dev/null)" ) ]]; then continue; fi
+    if fstab_has "$BASE/$n"; then continue; fi
+    echo "$n"; return 0
+  done
+  die "No free internal ID left"
+}
+
+# is this block device on SAN storage (multipath / iSCSI / FC / FCoE)?
+is_san_dev() {
+  lsblk -snro TYPE,TRAN "$1" 2>/dev/null |
+    awk '$1=="mpath" || $2=="iscsi" || $2=="fc" || $2=="fcoe" {f=1} END{exit !f}'
+}
+
+# does the VG sit (partly) on SAN disks?   vg_on_san [vg]  (default $VG)
+vg_on_san() {
+  local vg="${1:-$VG}" pv
+  for pv in $(pvs --noheadings -o pv_name -S vg_name="$vg" 2>/dev/null | tr -d ' '); do
+    is_san_dev "$pv" && return 0
+  done
+  return 1
+}
+
+# TYPE shown by "list":
+#   Local  - on local disks
+#   SAN    - on SAN disks but NOT cluster-safe (e.g. XFS): use from ONE host only
+#   Shared - cluster-safe: lock-managed VG (sanlock/dlm) AND GFS2 filesystem
+#   Mixed  - LV spans local and SAN disks
+storage_type() {
+  local id="$1" lock fs dev loc=0 san=0 vg
+  vg=$(vg_of "$id")
+  for dev in $(lvs --noheadings -o devices "$vg/$id" 2>/dev/null | tr ',' '\n' | sed 's/(.*//' | tr -d ' '); do
+    [[ -z "$dev" ]] && continue
+    if is_san_dev "$dev"; then san=1; else loc=1; fi
+  done
+  lock=$(vgs --noheadings -o lock_type "$vg" 2>/dev/null | tr -d ' ' || true)
+  fs=$(findmnt -n -o FSTYPE "$BASE/$id" 2>/dev/null | head -1 || true)
+  if [[ ( "$lock" == sanlock || "$lock" == dlm ) && "$fs" == gfs2 ]]; then echo "Shared"; return 0; fi
+  if   (( san && loc )); then echo "Mixed"
+  elif (( san ));        then echo "SAN"
+  elif (( loc ));        then echo "Local"
+  else                        echo "-"
+  fi
+}
+
+# pools that VM disks reference BY NAME (<disk type='volume'><source pool='X' .../>)
+# output: "pool<TAB>vm" - such a pool must not be removed/renamed or the VM cannot start
+vm_pool_refs() {
+  local d
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
+    $VIRSH dumpxml --inactive "$d" 2>/dev/null |
+      grep -oE "<source [^>]*pool=['\"][^'\"]+['\"]" |
+      sed -E "s/.*pool=['\"]([^'\"]+)['\"].*/\1/" |
+      sort -u | sed "s/\$/\t$d/"
+  done < <(vm_names)
+  return 0
+}
+
+# all VM disks (no CD/DVD or ISO) as "vm<TAB>state<TAB>type<TAB>device<TAB>target<TAB>source"
+all_vm_disks() {
+  local d st
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
+    st=$($VIRSH domstate "$d" 2>/dev/null | head -1)
+    # CD/DVD drives and ISO files are ignored (not counted as VM storage)
+    $VIRSH domblklist "$d" --details 2>/dev/null |
+      awk -v d="$d" -v s="$st" 'NR>2 && NF>=4 {
+          src=$4; for (i=5; i<=NF; i++) src=src " " $i
+          if ($2 == "cdrom" || tolower(src) ~ /\.iso$/) next
+          printf "%s\t%s\t%s\t%s\t%s\t%s\n", d, s, $1, $2, $3, src }'
+  done < <(vm_names)
+  return 0
+}
+
+# ---------------------------------------------------------------- shared storage helpers
+# host name used in LV tags (vmexhost_<host>); must be unique in the cluster
+#   the cluster node name when a cluster runs (same name pcs and crm_node use), else the hostname
+host_tag() {
+  local h=""
+  command -v crm_node &>/dev/null && h=$(timeout 5 crm_node -n 2>/dev/null || true)
+  [[ -n "$h" ]] || h=$(hostname -s 2>/dev/null || hostname)
+  echo "${h//[^A-Za-z0-9_.-]/_}"
+}
+
+# LV tags of an SP, one per line
+sp_tags()       { lvs --noheadings -o lv_tags "$(vg_of "$1")/$1" 2>/dev/null | tr -d ' ' | tr ',' '\n' | sed '/^$/d' || true; }
+sp_tag_name()   { sp_tags "$1" | sed -n 's/^vmexname_//p' | head -1; }   # SP name chosen on create/rename
+sp_tag_hosts()  { sp_tags "$1" | sed -n 's/^vmexhost_//p'; }            # hosts that have the pool defined
+sp_tag_off()    { sp_tags "$1" | sed -n 's/^vmexoff_//p'; }             # hosts that detached it on purpose
+
+fstype_at() { findmnt -n -o FSTYPE --mountpoint "$1" 2>/dev/null | head -1 || true; }
+
+# wait_mount <dir> <seconds> - success once a GFS2 filesystem is mounted there
+wait_mount() {
+  local d="$1" t="${2:-120}" i
+  for (( i=0; i<t; i+=2 )); do
+    [[ "$(fstype_at "$d")" == gfs2 ]] && return 0
+    sleep 2
+  done
+  echo "not mounted after ${t}s - check: pcs status"
+  return 1
+}
+
+# lvremove on a shared VG: other hosts may need a few seconds to deactivate it
+lvremove_retry() {
+  local i
+  for (( i=0; i<15; i++ )); do
+    lvremove -fy "$1" && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# pcs clone syntax differs between pcs versions ("meta" keyword in newer ones)
+pcs_clone() { pcs resource clone "$1" meta interleave=true 2>/dev/null || pcs resource clone "$1" interleave=true; }
+
+# compute_size <vg> <size or empty> -> SIZEOPT, SIZE_DESC
+compute_size() {
+  local vg="$1" size="$2" free want
+  free=$(vgs --noheadings --units b --nosuffix -o vg_free "$vg" | tr -d ' ')
+  if [[ -z "$size" ]]; then
+    (( free >= 1073741824 )) || die "No free space in VG $vg (available $(numfmt --to=iec "$free"), minimum 1G)"
+    SIZEOPT=(-l 100%FREE)
+    SIZE_DESC="full size, $(numfmt --to=iec "$free")"
+  else
+    want=$(to_bytes "${size%B}")
+    (( want <= free )) || die "Not enough free space in VG $vg: requested $(numfmt --to=iec "$want"), available $(numfmt --to=iec "$free")"
+    SIZEOPT=(-L "$size")
+    SIZE_DESC="$size"
+  fi
+  SIZE_DESC+=" (VG $vg free $(numfmt --to=iec "$free"))"
+}
+
+# cluster_check - stop with a clear reason if shared (GFS2) storage is not safe here
+cluster_check() {
+  local q
+  [[ "$(host_tag)" != localhost* ]] ||
+    die "This host is named '$(hostname)' - give it a unique name first (hostnamectl set-hostname ...)"
+  command -v pcs &>/dev/null       || die "Cluster tools (pcs) not installed - set up the VMeX cluster first"
+  command -v mkfs.gfs2 &>/dev/null || die "GFS2 tools not installed (dnf install gfs2-utils)"
+  q=$(corosync-quorumtool -s 2>/dev/null || true)
+  grep -qE '^Quorate:[[:space:]]+Yes' <<<"$q" || die "The cluster is not running or has no quorum (check: pcs status)"
+  CLUSTER_NAME=$(corosync-cmapctl -g totem.cluster_name 2>/dev/null | sed 's/.*= *//' || true)
+  [[ -n "$CLUSTER_NAME" ]] || die "Cannot read the cluster name (corosync-cmapctl -g totem.cluster_name)"
+  CLUSTER_NODES=$(crm_node -l 2>/dev/null | grep -c . || true)
+  [[ "$(lvmconfig --typeconfig full global/use_lvmlockd 2>/dev/null | tr -d ' ')" == "use_lvmlockd=1" ]] ||
+    die "use_lvmlockd = 1 is not set in /etc/lvm/lvm.conf"
+  pcs resource config "$LOCKING_CLONE" &>/dev/null ||
+    die "Cluster resource '$LOCKING_CLONE' (dlm + lvmlockd) does not exist"
+  pgrep -x dlm_controld &>/dev/null || die "DLM is not running on this host (cluster resource '$LOCKING_CLONE')"
+  pgrep -x lvmlockd &>/dev/null     || die "lvmlockd is not running on this host (cluster resource '$LOCKING_CLONE')"
+  pcs stonith status 2>/dev/null | grep -q Started ||
+    die "No fencing (STONITH) device is running - GFS2 is not safe without fencing"
+  return 0
+}
+
+# shared VG must exist, be dlm-locked and have its lockspace started on this host
+shared_vg_check() {
+  local lt
+  lt=$(vgs --noheadings -o lock_type "$SHARED_VG" 2>/dev/null | tr -d ' ' || true)
+  [[ -n "$lt" ]] || die "Shared VG $SHARED_VG not found on this host - first host: $PROG -shared-init <SAN device>, other hosts: $PROG -shared-join <SAN device>"
+  [[ "$lt" == dlm ]] || die "VG $SHARED_VG is not a dlm-locked shared VG (lock type: ${lt:-none})"
+  vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+}
+
+# resolve a SAN/NAS disk argument to a name that is the SAME on every host; sets DEV
+#   multipath device (SAN, or NAS with several paths) -> /dev/mapper/<name>
+#   single iSCSI / FC disk (e.g. NAS with one path)   -> /dev/disk/by-id/wwn-... (or scsi-...)
+san_device() {
+  local d="$1" real type tran name l
+  # a short name is enough: ibmstorwize = /dev/mapper/ibmstorwize (also /dev/disk/by-id/<name>)
+  if [[ "$d" != /* ]]; then
+    if   [[ -b "/dev/mapper/$d" ]];       then d="/dev/mapper/$d"
+    elif [[ -b "/dev/disk/by-id/$d" ]];   then d="/dev/disk/by-id/$d"
+    elif [[ -b "/dev/$d" ]];              then d="/dev/$d"
+    fi
+  fi
+  [[ -b "$d" ]] || die "$d is not a block device - see the names with: vmexsanconnect -volumes"
+  real=$(readlink -f "$d")
+  type=$(lsblk -dno TYPE "$real" 2>/dev/null | tr -d ' ')
+  if [[ "$type" == mpath ]]; then
+    name=$(dmsetup info -c --noheadings -o name "$real" 2>/dev/null | tr -d ' ' || true)
+    [[ -n "$name" ]] || die "Cannot read the multipath name of $d"
+    DEV="/dev/mapper/$name"
+    return 0
+  fi
+  [[ "$type" == disk ]] || die "$d is a '$type', not a whole SAN/NAS disk - use the disk itself (vmexsanconnect volumes)"
+  lsblk -nro TYPE "$real" 2>/dev/null | grep -qx mpath &&
+    die "$d is one path of a multipath device - use its /dev/mapper name (vmexsanconnect volumes)"
+  tran=$(lsblk -dno TRAN "$real" 2>/dev/null | tr -d ' ')
+  [[ "$tran" =~ ^(iscsi|fc|fcoe)$ ]] ||
+    die "$d is not a SAN/NAS disk (connection: ${tran:-local}) - shared storage needs iSCSI or Fibre Channel"
+  DEV=""
+  for l in /dev/disk/by-id/wwn-* /dev/disk/by-id/scsi-3* /dev/disk/by-id/scsi-*; do
+    [[ -e "$l" && "$l" != *-part* && "$(readlink -f "$l")" == "$real" ]] && { DEV="$l"; break; }
+  done
+  [[ -n "$DEV" ]] || die "$d has no stable name in /dev/disk/by-id - cannot be used as shared storage"
+  echo "!! Note: $DEV ($tran) has a single path. Multipath is recommended for shared storage." >&2
+}
+
+# ---------------------------------------------------------------- other cluster nodes (SSH)
+# Commands for the other nodes run there as "vmexsp ..." over SSH (root key login between
+# the nodes). Each node logs its own part in its own log, under the same user name.
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new)
+OPT_LOCAL=0; OPT_NODES=()        # set by the -shared-init / -shared-add parser
+
+# the nodes to act on: the ones named, else every other cluster node
+target_nodes() {
+  local me n; me=$(host_tag)
+  if (( ${#OPT_NODES[@]} )); then
+    for n in "${OPT_NODES[@]}"; do [[ "$n" == "$me" ]] || echo "$n"; done
+  else
+    timeout 10 crm_node -l 2>/dev/null | awk '{print $2}' | grep -vxF "$me" || true
+  fi
+}
+
+# remote <node> <vmexsp args...>
+remote() {
+  local node="$1"; shift
+  local cmd a who="${ACTOR//[^A-Za-z0-9_.@-]/_}"
+  cmd="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:\$PATH VMEXSP_USER=$who vmexsp"
+  for a in "$@"; do cmd+=" $(printf '%q' "$a")"; done
+  ssh "${SSH_OPTS[@]}" "root@$node" "$cmd" </dev/null
+}
+
+# preflight_nodes <disk> <node...> - BEFORE anything is wiped: every node must be reachable,
+# run vmexsp >= 1.5, see the same disk name and pass its own cluster check
+preflight_nodes() {
+  local dev="$1"; shift
+  local node v bad=""
+  for node in "$@"; do
+    if ! ssh "${SSH_OPTS[@]}" "root@$node" true </dev/null &>/dev/null; then
+      bad+=$'\n'"   $node: no SSH login as root without a password - set it up once: ssh-copy-id root@$node"; continue
+    fi
+    v=$(remote "$node" -version 2>/dev/null | sed -n '1s/.* v\([0-9][0-9.]*\)$/\1/p' || true)
+    if [[ -z "$v" || "$(printf '%s\n' 1.5 "$v" | sort -V | head -1)" != 1.5 ]]; then
+      bad+=$'\n'"   $node: vmexsp $([[ -n "$v" ]] && echo "v$v" || echo "not installed") - install vmexsp $VERSION there"; continue
+    fi
+    if ! ssh "${SSH_OPTS[@]}" "root@$node" "test -b $(printf '%q' "$dev")" </dev/null &>/dev/null; then
+      bad+=$'\n'"   $node: does not see $dev - connect it there (vmexsanconnect) with the SAME alias"; continue
+    fi
+    remote "$node" -shared-check &>/dev/null ||
+      bad+=$'\n'"   $node: not ready for shared storage - see: vmexsp -shared-check on $node"
+  done
+  [[ -z "$bad" ]] || die "Nothing was changed - fix these node(s) first, or use -local:$bad"
+  return 0
+}
+
+# on_nodes <ACTION> <node...> -- <vmexsp args...>  - run on every node, show its output,
+# never stop half-way: the result per node is reported at the end
+on_nodes() {
+  local act="$1"; shift
+  local -a nodes=(); while [[ "$1" != -- ]]; do nodes+=("$1"); shift; done; shift
+  local node out rc failed=""
+  for node in "${nodes[@]}"; do
+    rc=0; out=$(remote "$node" "$@" 2>&1) || rc=$?
+    sed "s/^/   [$node] /" <<<"$out"
+    if (( rc == 0 )); then
+      audit OK "$act" "$node" "vmexsp $* on $node"
+    else
+      audit FAIL "$act" "$node" "vmexsp $* on $node -> exit $rc"
+      failed+=" $node"
+    fi
+  done
+  if [[ -n "$failed" ]]; then
+    echo "!! Not done on:$failed - run there: vmexsp $*" >&2
+    return 1
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------- rollback
+rollback() {
+  trap - ERR
+  echo "!! Failed - rolling back" >&2
+  audit WARN ROLLBACK "$TARGET" "undoing ${#UNDO[@]} completed step(s)"
+  local i a c out
+  for (( i=${#UNDO[@]}-1; i>=0; i-- )); do
+    a="${UNDO[i]%%|*}"; c="${UNDO[i]#*|}"
+    if out=$(eval "$c" 2>&1 </dev/null); then
+      audit OK "ROLLBACK_$a" "$TARGET" "$c"
+      log "Rolled back: $a"
+    else
+      audit FAIL "ROLLBACK_$a" "$TARGET" "$c -> $(tr '\n' ' ' <<<"$out" | cut -c1-300)"
+      echo "!! Rollback step $a failed: $out" >&2
+    fi
+  done
+}
+
+# ---------------------------------------------------------------- create
+create() {
+  local name="$1" size="$2"
+  ACTION=CREATE_SP
+  local id; id=$(next_id)
+  SPID="$id"
+  [[ -n "$name" ]] || name="$id"
+  TARGET="$name"
+  valid_label "$name" "$id"
+  local lv="/dev/$VG/$id" mnt="$BASE/$id"
+
+  # --- validation (nothing changed yet)
+  lvs "$VG/$id" &>/dev/null && die "LV $VG/$id already exists"
+  mountpoint -q "$mnt"      && die "$mnt is already a mount point"
+  fstab_has "$mnt"          && die "$FSTAB already has an entry for $mnt"
+
+  # XFS/ext4 on SAN disks is single-host only: a second host mounting it corrupts it
+  if vg_on_san "$VG"; then
+    die "VG $VG is on SAN disks - a $FSTYPE pool there is single-host only and is corrupted if another host mounts it. Use: $PROG -create $name [size] -shared"
+  fi
+  compute_size "$VG" "$size"
+  local -a sizeopt=("${SIZEOPT[@]}"); size="$SIZE_DESC"
+  audit INFO VALIDATE "$name" "checks passed, name=$name id=$id path=$mnt size=$size"
+  log "Name: $name   Path: $mnt"
+
+  # reserve the ID in the cluster first, so no host takes it for a shared SP meanwhile
+  publish_local_ids "$id"
+
+  # --- changes; any failure from here rolls back what was done
+  UNDO=()
+  trap rollback ERR
+
+  step CREATE_LV "Created LV $lv ($size)" lvcreate -y -n "$id" "${sizeopt[@]}" "$VG"
+  UNDO+=("DELETE_LV|lvremove -fy $VG/$id")
+
+  step FORMAT_FS "Formatted $lv as $FSTYPE" "mkfs.$FSTYPE" -q "$lv"
+
+  if [[ ! -d "$mnt" ]]; then
+    step CREATE_MOUNTPOINT "Created folder $mnt" mkdir -p "$mnt"
+    UNDO+=("REMOVE_MOUNTPOINT|rmdir $mnt")
+  fi
+
+  local uuid; uuid=$(blkid -s UUID -o value "$lv")
+  step ADD_FSTAB "Added $mnt to $FSTAB" fstab_add "$uuid" "$mnt"
+  UNDO+=("REMOVE_FSTAB|fstab_remove $mnt")
+
+  step MOUNT_FS "Mounted $lv on $mnt" mount "$mnt"
+  UNDO+=("UNMOUNT_FS|umount $mnt")
+
+  if [[ "$FSTYPE" == xfs ]]; then
+    step GROW_FS "Filesystem fills the whole LV" xfs_growfs "$mnt" || true
+  fi
+  selinux_label "$mnt"
+
+  step DEFINE_SP "Defined storage pool '$name'" $VIRSH pool-define-as "$name" dir --target "$mnt"
+  UNDO+=("UNDEFINE_SP|$VIRSH pool-undefine $name")
+
+  step START_SP "Activated storage pool '$name'" $VIRSH pool-start "$name"
+  UNDO+=("STOP_SP|$VIRSH pool-destroy $name")
+
+  step AUTOSTART_SP "Enabled autostart for '$name'" $VIRSH pool-autostart "$name"
+
+  trap - ERR
+  log "Done: SP '$name' -> $mnt"
+  publish_local_ids
+}
+
+# ---------------------------------------------------------------- create (shared)
+# GFS2 on an LV in the dlm-locked shared VG; Pacemaker activates the LV and mounts
+# it on every host; this host also gets the libvirt pool (others: vmexsp sync)
+create_shared() {
+  local name="$1" size="$2"
+  ACTION=CREATE_SP
+  cluster_check
+  shared_vg_check
+  publish_local_ids
+  local used; used=$(cluster_local_ids)
+  local id; id=$(next_id "$used")
+  SPID="$id"
+  [[ -n "$name" ]] || name="$id"
+  TARGET="$name"
+  valid_label "$name" "$id"
+  local lv="/dev/$SHARED_VG/$id" mnt="$BASE/$id" r="vmexsp-$id" me; me=$(host_tag)
+
+  # --- validation (nothing changed yet)
+  lv_exists "$id"      && die "LV $SHARED_VG/$id already exists"
+  mountpoint -q "$mnt" && die "$mnt is already a mount point"
+  fstab_has "$mnt"     && die "$FSTAB has an entry for $mnt - shared SPs are mounted by the cluster, not fstab"
+  compute_size "$SHARED_VG" "$size"
+  size="$SIZE_DESC"
+  local journals="${GFS2_JOURNALS:-$CLUSTER_NODES}"
+  (( journals >= 2 )) || journals=2
+  audit INFO VALIDATE "$name" "checks passed, shared name=$name id=$id path=$mnt size=$size cluster=$CLUSTER_NAME hosts=$CLUSTER_NODES journals=$journals"
+  log "Name: $name   Path: $mnt   (shared GFS2, cluster $CLUSTER_NAME, $journals journals)"
+
+  # --- changes; any failure from here rolls back what was done
+  UNDO=()
+  trap rollback ERR
+
+  step CREATE_LV "Created shared LV $lv ($size)" lvcreate -y --activate sy -n "$id" "${SIZEOPT[@]}" "$SHARED_VG"
+  UNDO+=("DELETE_LV|lvchange -an $SHARED_VG/$id; lvremove_retry $SHARED_VG/$id")
+
+  step TAG_LV "Recorded name '$name' and host $me on the LV" \
+    lvchange --addtag "vmexname_$name" --addtag "vmexhost_$me" "$SHARED_VG/$id"
+
+  step FORMAT_FS "Formatted $lv as GFS2 ($journals journals)" \
+    mkfs.gfs2 -O -q -p lock_dlm -t "$CLUSTER_NAME:$id" -j "$journals" "$lv"
+
+  if [[ ! -d "$mnt" ]]; then
+    step CREATE_MOUNTPOINT "Created folder $mnt" mkdir -p "$mnt"
+    UNDO+=("REMOVE_MOUNTPOINT|rmdir $mnt")
+  fi
+
+  # cluster resources: LV activation + GFS2 mount, cloned to every host
+  step CLUSTER_LV "Cluster resource $r-lv (shared LV activation)" \
+    pcs resource create "$r-lv" ocf:heartbeat:LVM-activate vgname="$SHARED_VG" lvname="$id" \
+      activation_mode=shared vg_access_mode=lvmlockd --disabled
+  UNDO+=("CLUSTER_LV|pcs resource delete $r-lv")
+  step CLUSTER_FS "Cluster resource $r-fs (GFS2 mount)" \
+    pcs resource create "$r-fs" ocf:heartbeat:Filesystem device="$lv" directory="$mnt" fstype=gfs2 \
+      options="$SHARED_MOUNTOPTS" op monitor interval=10s on-fail=fence --disabled
+  UNDO+=("CLUSTER_FS|pcs resource delete $r-fs")
+  step CLUSTER_CLONE_LV "Cloned $r-lv to every host" pcs_clone "$r-lv"
+  step CLUSTER_CLONE_FS "Cloned $r-fs to every host" pcs_clone "$r-fs"
+  step CLUSTER_ORDER    "Order: $LOCKING_CLONE -> $r-lv -> $r-fs" \
+    pcs constraint order start "$LOCKING_CLONE" then "$r-lv-clone"
+  step CLUSTER_ORDER    "Order: $r-lv -> $r-fs" \
+    pcs constraint order start "$r-lv-clone" then "$r-fs-clone"
+  step CLUSTER_COLOCATE "Keep $r-lv with $LOCKING_CLONE" \
+    pcs constraint colocation add "$r-lv-clone" with "$LOCKING_CLONE"
+  step CLUSTER_COLOCATE "Keep $r-fs with $r-lv" \
+    pcs constraint colocation add "$r-fs-clone" with "$r-lv-clone"
+  step CLUSTER_START "Started $r-lv and $r-fs on every host" pcs resource enable "$r-lv" "$r-fs"
+  step WAIT_MOUNT "GFS2 mounted on $mnt by the cluster" wait_mount "$mnt" "$MOUNT_WAIT"
+
+  selinux_label "$mnt"
+
+  step DEFINE_SP "Defined storage pool '$name'" $VIRSH pool-define-as "$name" dir --target "$mnt"
+  UNDO+=("UNDEFINE_SP|$VIRSH pool-undefine $name")
+  step START_SP "Activated storage pool '$name'" $VIRSH pool-start "$name"
+  UNDO+=("STOP_SP|$VIRSH pool-destroy $name")
+  step AUTOSTART_SP "Enabled autostart for '$name'" $VIRSH pool-autostart "$name"
+
+  trap - ERR
+  log "Done: shared SP '$name' -> $mnt (mounted on every cluster host)"
+  local -a nodes=(); mapfile -t nodes < <(target_nodes)
+  if (( ${#nodes[@]} )); then
+    local -a ok=() n
+    for n in "${nodes[@]}"; do ssh "${SSH_OPTS[@]}" "root@$n" true </dev/null &>/dev/null && ok+=("$n"); done
+    if (( ${#ok[@]} )); then
+      log "Adding '$name' on the other node(s): ${ok[*]}"
+      on_nodes SYNC_NODE "${ok[@]}" -- -sync || true
+    fi
+    for n in "${nodes[@]}"; do
+      [[ " ${ok[*]} " == *" $n "* ]] || echo "!! $n not reachable over SSH - run there: $PROG -sync" >&2
+    done
+  fi
+}
+
+# ---------------------------------------------------------------- rename
+rename_sp() {
+  local arg="$1" new="$2"
+  ACTION=RENAME_SP
+  resolve "$arg"
+  local old="$SP_NAME"
+  [[ -n "$old" ]] || die "SP '$SP_ID' has no storage pool in libvirt to rename"
+  [[ "$new" == "$old" ]] && die "The name is already '$new'"
+  valid_label "$new" "$SP_ID" "$old"
+
+  local vms
+  vms=$(vm_pool_refs | awk -F'\t' -v p="$old" '$1==p {printf " %s", $2}')
+  [[ -z "$vms" ]] || die "VM(s)$vms use pool '$old' by name - renaming it would stop them from starting"
+
+  TMPD=$(mktemp -d)
+  $VIRSH pool-dumpxml --inactive "$old" > "$TMPD/old.xml" 2>/dev/null ||
+    $VIRSH pool-dumpxml "$old" > "$TMPD/old.xml"
+  sed "0,/<name>[^<]*<\/name>/s//<name>$new<\/name>/" "$TMPD/old.xml" > "$TMPD/new.xml"
+  grep -q "<name>$new</name>" "$TMPD/new.xml" || die "Could not prepare the new pool definition"
+
+  local was_active=0 was_auto=0
+  pool_active "$old" && was_active=1
+  pool_auto "$old"   && was_auto=1
+  audit INFO VALIDATE "$old" "checks passed, rename '$old' -> '$new' (id=$SP_ID path=$BASE/$SP_ID)"
+
+  UNDO=()
+  trap rollback ERR
+  if (( was_active )); then
+    step STOP_SP "Deactivated storage pool '$old' (data kept)" $VIRSH pool-destroy "$old"
+    UNDO+=("START_SP|$VIRSH pool-start $old")
+  fi
+  # rollback runs in reverse: re-define the old pool, then autostart, then start
+  (( was_auto )) && UNDO+=("AUTOSTART_SP|$VIRSH pool-autostart $old")
+  step UNDEFINE_SP "Removed old definition '$old'" $VIRSH pool-undefine "$old"
+  UNDO+=("DEFINE_SP|$VIRSH pool-define $TMPD/old.xml")
+
+  TARGET="$new"
+  step DEFINE_SP "Defined storage pool '$new'" $VIRSH pool-define "$TMPD/new.xml"
+  UNDO+=("UNDEFINE_SP|$VIRSH pool-undefine $new")
+  if (( was_active )); then
+    step START_SP "Activated storage pool '$new'" $VIRSH pool-start "$new"
+    UNDO+=("STOP_SP|$VIRSH pool-destroy $new")
+  fi
+  if (( was_auto )); then
+    step AUTOSTART_SP "Enabled autostart for '$new'" $VIRSH pool-autostart "$new"
+  fi
+  trap - ERR
+  if is_shared_id "$SP_ID" && [[ "$(sp_tag_name "$SP_ID")" != "$new" ]]; then
+    local t; local -a targs=()
+    for t in $(sp_tags "$SP_ID" | grep '^vmexname_' || true); do targs+=(--deltag "$t"); done
+    step TAG_NAME "Recorded name '$new' on the shared LV"       lvchange "${targs[@]}" --addtag "vmexname_$new" "$SHARED_VG/$SP_ID" || true
+  fi
+  log "Done: '$old' renamed to '$new' (path $BASE/$SP_ID unchanged)"
+  if is_shared_id "$SP_ID"; then log "Other hosts: run '$PROG -sync' to use the new name there"; fi
+}
+
+# ---------------------------------------------------------------- delete
+delete() {
+  local arg="$1" force="$2" yes="$3"
+  ACTION=DELETE_SP
+  resolve "$arg"
+  local name="$SP_NAME" id="$SP_ID" shown="$TARGET"
+  local mnt="$BASE/$id" vg; vg=$(vg_of "$id")
+  local shared=0 r="vmexsp-$id"
+  is_shared_id "$id" && shared=1
+
+  # a shared SP is deleted for the whole cluster: every other host must detach first
+  # (that is where their VMs are checked - this host cannot see other hosts' VMs)
+  if (( shared )); then
+    cluster_check
+    local me others
+    me=$(host_tag)
+    others=$(sp_tag_hosts "$id" | grep -vxF "$me" | paste -sd' ' - || true)
+    [[ -z "$others" ]] || die "Shared SP '$shown' is still used on host(s): $others - run '$PROG -detach $shown' there first"
+  fi
+
+  vm_users "$mnt"
+  [[ -z "$RUNNING_VMS" ]] || die "SP '$shown' is used by running VM(s):$RUNNING_VMS - shut them down first"
+
+  # anything holding files open on the SP (e.g. an ISO in a running VM, a shell in the
+  # folder) would make the unmount fail half-way - refuse before changing anything
+  if mountpoint -q "$mnt" && command -v fuser &>/dev/null; then
+    local pids
+    pids=$(fuser -m "$mnt" 2>/dev/null | tr -s ' \t' '\n' | sed 's/[^0-9]//g' | sed '/^$/d' | sort -u | paste -sd, || true)
+    if [[ -n "$pids" ]]; then
+      die "SP '$shown' is in use by: $(ps -o comm= -p "$pids" 2>/dev/null | sort -u | paste -sd' ' || true) (pid $pids) - close them first, e.g. eject ISOs from running VMs"
+    fi
+  fi
+
+  local kids; kids=$(child_pools "$mnt")
+  local used=0
+  if mountpoint -q "$mnt" && [[ -n "$(ls -A "$mnt" 2>/dev/null)" ]]; then used=1; fi
+
+  if [[ "$force" != "--force" ]]; then
+    [[ -z "$STOPPED_VMS" ]] || die "SP '$shown' holds disks of VM(s):$STOPPED_VMS - use: $PROG -delete $shown -force"
+    [[ -z "$kids" ]]        || die "SP '$shown' has folder pools inside - use: $PROG -delete $shown -force"
+    (( used == 0 ))         || die "SP '$shown' is not empty - use: $PROG -delete $shown -force"
+  fi
+
+  local datasize="0"
+  mountpoint -q "$mnt" && datasize=$(du -sh "$mnt" 2>/dev/null | cut -f1)
+
+  # --- confirmation (skipped with -yes, e.g. when called from a UI)
+  if [[ "$yes" != "--yes" ]]; then
+    echo "About to PERMANENTLY delete SP '$shown':"
+    echo "   Path     : $mnt"
+    echo "   LV       : /dev/$vg/$id"
+    (( shared )) && echo "   Shared   : removed from EVERY cluster host (GFS2, cluster resources $r-lv / $r-fs)"
+    mountpoint -q "$mnt" && echo "   Data     : $datasize will be destroyed"
+    [[ -n "$STOPPED_VMS" ]] && echo "   VM disks : will be lost for:$STOPPED_VMS"
+    [[ -n "$kids" ]] && echo "   Folder pools to remove: $(cut -f1 <<<"$kids" | tr '\n' ' ')"
+    local ans=""
+    read -r -p "Type the SP name ($shown) to confirm: " ans || true
+    if [[ "$ans" != "$shown" ]]; then
+      audit WARN DELETE_SP "$shown" "cancelled at confirmation prompt"
+      echo "Cancelled" >&2
+      exit 1
+    fi
+  fi
+  local fz=no cz=prompt
+  [[ -n "$force" ]] && fz=yes
+  [[ -n "$yes"   ]] && cz=yes
+  audit INFO VALIDATE "$shown" "checks passed: path=$mnt shared=$shared force=$fz confirmed=$cz data=$datasize vms_losing_disks=${STOPPED_VMS:- none}"
+
+  # --- folder pools inside the SP
+  if [[ -n "$kids" ]]; then
+    local p
+    while IFS=$'\t' read -r p _; do
+      TARGET="$p"
+      if pool_active "$p"; then
+        step STOP_SP "Deactivated folder pool '$p'" $VIRSH pool-destroy "$p"
+      fi
+      step UNDEFINE_SP "Removed folder pool '$p'" $VIRSH pool-undefine "$p"
+    done <<<"$kids"
+    TARGET="$shown"
+  fi
+
+  # --- the SP pool itself
+  if [[ -n "$name" ]] && pool_exists "$name"; then
+    if pool_active "$name"; then
+      step STOP_SP "Deactivated storage pool '$name'" $VIRSH pool-destroy "$name"
+    fi
+    step UNDEFINE_SP "Removed storage pool '$name'" $VIRSH pool-undefine "$name"
+  fi
+
+  if (( shared )); then
+    # removing the cluster resources unmounts and deactivates it on every host
+    vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+    if pcs resource config "$r-fs" &>/dev/null; then
+      step CLUSTER_FS_DELETE "Unmounted on every host, removed cluster resource $r-fs" pcs resource delete "$r-fs"
+    fi
+    if pcs resource config "$r-lv" &>/dev/null; then
+      step CLUSTER_LV_DELETE "Deactivated on every host, removed cluster resource $r-lv" pcs resource delete "$r-lv"
+    fi
+    if mountpoint -q "$mnt"; then
+      die "$mnt is still mounted after removing the cluster resources - check: pcs status"
+    fi
+    if lv_exists "$id"; then
+      step DELETE_LV "Deleted shared LV $vg/$id" lvremove_retry "$vg/$id"
+    fi
+  else
+    if mountpoint -q "$mnt"; then
+      if ! step UNMOUNT_FS "Unmounted $mnt" umount "$mnt"; then
+        die "Cannot unmount $mnt - in use by: $(fuser -vm "$mnt" 2>&1 | tail -n +2 | awk '{print $NF}' | sort -u | tr '\n' ' ')"
+      fi
+    fi
+    if fstab_has "$mnt"; then
+      step REMOVE_FSTAB "Removed $mnt from $FSTAB" fstab_remove "$mnt"
+    fi
+    if lvs "$vg/$id" &>/dev/null; then
+      step DELETE_LV "Deleted LV $vg/$id" lvremove -fy "$vg/$id"
+    fi
+  fi
+
+  if [[ -d "$mnt" ]]; then
+    step REMOVE_MOUNTPOINT "Removed folder $mnt" rmdir "$mnt" || true
+  fi
+  log "Done: SP '$shown' deleted"
+  (( shared )) && log "The empty folder $mnt may remain on other hosts - safe to remove"
+  (( shared )) || publish_local_ids
+  return 0
+}
+
+# ---------------------------------------------------------------- detach (shared SP, this host only)
+detach_sp() {
+  ACTION=DETACH_SP
+  resolve "$1"
+  local name="$SP_NAME" id="$SP_ID" shown="$TARGET" mnt="$BASE/$SP_ID" me
+  is_shared_id "$id" || die "'$shown' is not a shared SP - use: $PROG -delete $shown"
+  me=$(host_tag)
+  vm_users "$mnt"
+  [[ -z "$RUNNING_VMS$STOPPED_VMS" ]] ||
+    die "VM(s)$RUNNING_VMS$STOPPED_VMS on this host have disks on '$shown' - move or remove them first"
+  local kids; kids=$(child_pools "$mnt")
+  [[ -z "$kids" ]] || die "Folder pools inside '$shown' on this host: $(cut -f1 <<<"$kids" | tr '\n' ' ')- remove them first ($PROG -cleanup <pool>)"
+  audit INFO VALIDATE "$shown" "checks passed, detach shared id=$id from host $me (data and cluster mount unchanged)"
+
+  if [[ -n "$name" ]] && pool_exists "$name"; then
+    if pool_active "$name"; then
+      step STOP_SP "Deactivated storage pool '$name'" $VIRSH pool-destroy "$name"
+    fi
+    step UNDEFINE_SP "Removed storage pool '$name' from this host" $VIRSH pool-undefine "$name"
+  fi
+  if sp_tag_hosts "$id" | grep -qxF "$me"; then
+    vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+    step UNTAG_HOST "Recorded that host $me no longer uses it" lvchange --deltag "vmexhost_$me" "$SHARED_VG/$id"
+  fi
+  if ! sp_tag_off "$id" | grep -qxF "$me"; then
+    vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+    step TAG_OFF "Recorded that -sync must not add it back on $me" lvchange --addtag "vmexoff_$me" "$SHARED_VG/$id"
+  fi
+  log "Done: '$shown' detached from this host (data kept, still mounted by the cluster)"
+  log "To use it here again later: $PROG -import $id"
+}
+
+# ---------------------------------------------------------------- start / stop / refresh
+start_sp() {
+  ACTION=START_SP
+  resolve "$1"
+  local name="$SP_NAME" id="$SP_ID" mnt="$BASE/$SP_ID"
+  local vg; vg=$(vg_of "$id")
+  lv_exists "$id"  || die "SP '$TARGET' has no LV $vg/$id"
+  [[ -n "$name" ]] || die "SP '$id' is not defined in libvirt"
+
+  if is_shared_id "$id"; then
+    # shared SPs are activated and mounted by the cluster, never by hand
+    [[ "$(fstype_at "$mnt")" == gfs2 ]] ||
+      die "Shared SP '$TARGET' is not mounted - the cluster mounts it (check: pcs resource status vmexsp-$id-fs-clone)"
+  else
+    if [[ "$(lvs --noheadings -o lv_active "$vg/$id" 2>/dev/null | tr -d ' ')" != active ]]; then
+      step ACTIVATE_LV "Activated LV $vg/$id" lvchange -ay "$vg/$id"
+    fi
+    if ! mountpoint -q "$mnt"; then
+      step MOUNT_FS "Mounted $mnt" mount "$mnt"
+    fi
+  fi
+  if pool_active "$name"; then
+    audit INFO START_SP "$name" "already active - nothing to do"
+    log "Storage pool '$name' is already active"
+  else
+    step START_SP "Activated storage pool '$name'" $VIRSH pool-start "$name"
+  fi
+}
+
+stop_sp() {
+  ACTION=STOP_SP
+  resolve "$1"
+  local name="$SP_NAME"
+  [[ -n "$name" ]] || die "SP '$SP_ID' is not defined in libvirt"
+  vm_users "$BASE/$SP_ID"
+  [[ -z "$RUNNING_VMS" ]] || die "SP '$name' is used by running VM(s):$RUNNING_VMS - shut them down first"
+
+  if pool_active "$name"; then
+    step STOP_SP "Deactivated storage pool '$name' (data kept)" $VIRSH pool-destroy "$name"
+  else
+    audit INFO STOP_SP "$name" "already inactive - nothing to do"
+    log "Storage pool '$name' is already inactive"
+  fi
+}
+
+refresh_sp() {
+  ACTION=REFRESH_SP
+  resolve "$1"
+  local name="$SP_NAME"
+  [[ -n "$name" ]]    || die "SP '$SP_ID' is not defined in libvirt"
+  pool_active "$name" || die "Storage pool '$name' is not active - run: $PROG -start $name"
+  step REFRESH_SP "Refreshed storage pool '$name'" $VIRSH pool-refresh "$name"
+}
+
+# ---------------------------------------------------------------- VMs on a pool
+human() {   # bytes -> 21.0GiB (same units everywhere)
+  [[ "${1:-}" =~ ^[0-9]+$ ]] || { echo "-"; return 0; }
+  numfmt --to=iec-i --suffix=B --round=nearest --format="%.1f" "$1" 2>/dev/null || echo "-"
+}
+
+# "used<TAB>size" for a disk file: used = space taken on the SP, size = size the VM sees
+disk_sizes() {
+  local f="$1" used virt
+  [[ -f "$f" ]] || { printf -- "-\t-\n"; return 0; }
+  used=$(du --block-size=1 "$f" 2>/dev/null | cut -f1)
+  virt=$(qemu-img info -U --output=json "$f" 2>/dev/null |
+         sed -n 's/.*"virtual-size": *\([0-9]*\).*/\1/p' | head -1)
+  [[ -n "$virt" ]] || virt=$(stat -c %s "$f" 2>/dev/null)
+  printf "%s\t%s\n" "$(human "$used")" "$(human "$virt")"
+}
+
+vms() {
+  local want="${1:-}" rows disks refs p path
+  rows=$(all_pools)
+  local -a sps=()
+  if [[ -n "$want" ]]; then
+    valid_name "$want"
+    if resolve_q "$want" && [[ -n "$SP_NAME" ]]; then
+      sps=("$SP_NAME")
+    elif pool_exists "$want"; then
+      sps=("$want")                        # an extra (non-SP) pool
+    else
+      die "Storage pool '$want' does not exist"
+    fi
+  else
+    while IFS=$'\t' read -r p path; do
+      [[ -z "$p" ]] && continue
+      is_sp "$p" "$path" && sps+=("$p")
+    done <<<"$rows"
+    (( ${#sps[@]} )) || { echo "No storage pools found"; return 0; }
+  fi
+  disks=$(all_vm_disks)
+  refs=$(vm_pool_refs)
+
+  local sp first=1
+  for sp in "${sps[@]}"; do
+    path=$(pool_path "$sp")
+    (( first )) || echo
+    first=0
+    echo "STORAGE POOL $sp  ($path)"
+    local hits
+    hits=$(awk -F'\t' -v m="$path/" -v sp="$sp" -v refs="$refs" '
+      BEGIN { n=split(refs, r, "\n"); for (i=1;i<=n;i++) { split(r[i], f, "\t"); if (f[1]==sp) byname[f[2]]=1 } }
+      (m != "/" && index($6, m) == 1) || ($3 == "volume" && ($1 in byname)) { print }' <<<"$disks")
+    if [[ -z "$hits" ]]; then
+      echo "  (no VMs)"
+      continue
+    fi
+    # one block per VM: name and state on the first row only
+    printf "  %-24s %-10s %-6s %-10s %-10s %s\n" VM STATE TARGET USED SIZE DISK
+    local vm st ty dev tgt src last="" used size sz
+    while IFS=$'\t' read -r vm st ty dev tgt src; do
+      sz=$(disk_sizes "$src"); used=${sz%%$'\t'*}; size=${sz#*$'\t'}
+      if [[ "$vm" == "$last" ]]; then
+        printf "  %-24s %-10s %-6s %-10s %-10s %s\n" "" "" "$tgt" "$used" "$size" "$src"
+      else
+        printf "  %-24s %-10s %-6s %-10s %-10s %s\n" "$vm" "$st" "$tgt" "$used" "$size" "$src"
+      fi
+      last="$vm"
+    done <<<"$hits"
+    local nvm nrun nd
+    nvm=$(cut -f1 <<<"$hits" | sort -u | wc -l)
+    nrun=$(awk -F'\t' '$2=="running" {print $1}' <<<"$hits" | sort -u | wc -l)
+    nd=$(wc -l <<<"$hits")
+    echo "  -- $nvm VM(s) ($nrun running), $nd disk(s)"
+  done
+}
+
+# ---------------------------------------------------------------- cleanup extra pools
+# cleanup            -> every non-SP pool whose path is under $BASE
+# cleanup <pool>...  -> the named non-SP pools, wherever they point
+cleanup() {
+  ACTION=CLEANUP
+  local rows refs n=0 skipped=0 p path vms
+  rows=$(all_pools)
+  refs=$(vm_pool_refs)
+  local -a want=("$@")
+
+  if (( ${#want[@]} )); then
+    for p in "${want[@]}"; do
+      TARGET="$p"
+      awk -F'\t' -v p="$p" '$1==p {f=1} END{exit !f}' <<<"$rows" || die "Pool '$p' does not exist"
+    done
+  fi
+
+  while IFS=$'\t' read -r p path; do
+    [[ -z "$p" ]] && continue
+    if (( ${#want[@]} )); then
+      [[ " ${want[*]} " == *" $p "* ]] || continue
+      if is_sp "$p" "$path"; then
+        TARGET="$p"; audit WARN CLEANUP "$p" "skipped: is a real SP - use '$PROG -delete $p'"
+        echo "!! Skipped '$p': it is a real SP - use: $PROG -delete $p" >&2
+        skipped=$((skipped+1)); continue
+      fi
+    else
+      is_sp "$p" "$path" && continue
+      [[ "$path" == "$BASE/"* ]] || continue
+    fi
+    TARGET="$p"
+    vms=$(awk -F'\t' -v p="$p" '$1==p {printf " %s", $2}' <<<"$refs")
+    if [[ -n "$vms" ]]; then
+      audit WARN CLEANUP "$p" "skipped: VM disk(s) reference this pool by name:$vms"
+      echo "!! Skipped '$p': VM(s)$vms use it by pool name - removing it would stop them from starting" >&2
+      skipped=$((skipped+1)); continue
+    fi
+    if pool_active "$p"; then
+      step STOP_SP "Deactivated pool '$p'" $VIRSH pool-destroy "$p"
+    fi
+    step UNDEFINE_SP "Removed pool '$p' (${path:-no path}) - files kept" $VIRSH pool-undefine "$p"
+    n=$((n+1))
+  done <<<"$rows"
+  TARGET="-"
+  log "Done: $n pool(s) removed, $skipped skipped"
+}
+
+# ---------------------------------------------------------------- list
+list() {
+  local rows; rows=$(all_pools)
+  local w=$NAME_MAX san_note=0 shared_rows=""
+  echo "STORAGE POOLS"
+  printf "  %-${w}s %-8s %-9s %-10s %-10s %-10s %s\n" NAME TYPE STATE AUTOSTART SIZE FREE PATH
+  while IFS=$'\t' read -r p path; do
+    [[ -z "$p" ]] && continue
+    is_sp "$p" "$path" || continue
+    local info ty; info=$($VIRSH pool-info "$p"); ty=$(storage_type "${path#$BASE/}")
+    [[ "$ty" == SAN || "$ty" == Mixed ]] && san_note=1
+    if is_shared_id "${path#$BASE/}"; then
+      shared_rows+="$(printf '  %-24s %s' "$p" "$(sp_tag_hosts "${path#$BASE/}" | paste -sd' ' - || true)")"$'\n'
+    fi
+    printf "  %-${w}s %-8s %-9s %-10s %-10s %-10s %s\n" "$p" "$ty" \
+      "$(awk -F': *' '/^State/{print $2}' <<<"$info")" \
+      "$(awk -F': *' '/^Autostart/{print $2}' <<<"$info")" \
+      "$(awk -F': *' '/^Capacity/{print $2}' <<<"$info" | tr -d ' ')" \
+      "$(awk -F': *' '/^Available/{print $2}' <<<"$info" | tr -d ' ')" \
+      "$path"
+  done <<<"$rows"
+  if (( san_note )); then
+    echo
+    echo "  SAN/Mixed = on SAN disks but NOT cluster-safe: use from ONE host only - never mount it on a second host"
+  fi
+  if [[ -n "$shared_rows" ]]; then
+    echo
+    echo "SHARED SPs - hosts using them"
+    printf '%s' "$shared_rows"
+  fi
+  local clash; clash=$(comm -12 <(local_ids | sort) <(shared_ids | sort) | paste -sd' ' - || true)
+  if [[ -n "$clash" ]]; then
+    echo
+    echo "!! ID used by a LOCAL and a SHARED SP on this host: $clash - the local one is hidden; contact support"
+  fi
+
+  [[ "${1:-}" == "-all" ]] || return 0
+
+  local others refs; refs=$(vm_pool_refs)
+  others=$(while IFS=$'\t' read -r p path; do
+             [[ -z "$p" ]] && continue
+             is_sp "$p" "$path" && continue
+             local st=inactive vms
+             pool_active "$p" && st=active
+             vms=$(awk -F'\t' -v p="$p" '$1==p {printf "%s ", $2}' <<<"$refs")
+             printf "  %-22s %-9s %-24s %s\n" "$p" "$st" "${vms:-no - safe to remove}" "${path:--}"
+           done <<<"$rows")
+  if [[ -n "$others" ]]; then
+    echo
+    echo "OTHER LIBVIRT POOLS (not SPs - removing them keeps the files)"
+    printf "  %-22s %-9s %-24s %s\n" NAME STATE "USED BY VM (by name)" PATH
+    echo "$others"
+  fi
+  local un; un=$(unregistered_ids)
+  if [[ -n "$un" ]]; then
+    echo
+    echo "LVs NOT REGISTERED AS STORAGE POOLS (register with: $PROG -import <id> [name]; shared: $PROG -sync)"
+    local id
+    while IFS= read -r id; do
+      printf "  %-12s %-10s %s\n" "$id" "$(lvs --noheadings --units g -o lv_size "$(vg_of "$id")/$id" 2>/dev/null | tr -d ' ')" \
+        "$(findmnt -n -o TARGET "/dev/$(vg_of "$id")/$id" 2>/dev/null | head -1 || true)"
+    done <<<"$un"
+  fi
+  echo
+  echo "VG $VG free: $(vgs --noheadings --units g -o vg_free "$VG" | tr -d ' ')"
+  if vgs "$SHARED_VG" &>/dev/null; then
+    echo "Shared VG $SHARED_VG free: $(vgs --noheadings --units g -o vg_free "$SHARED_VG" | tr -d ' ')"
+  fi
+}
+
+# ---------------------------------------------------------------- import existing LVs
+# import            -> every LV in $VG that is not a storage pool yet (name = ID)
+# import <id> [name] -> one LV, with the name to show in the UI
+import_sp() {
+  local id="${1:-}" name="${2:-}"
+  ACTION=IMPORT_SP
+  local -a ids=()
+  if [[ -n "$id" ]]; then
+    ids=("$id")
+  else
+    mapfile -t ids < <(unregistered_ids)
+    if (( ${#ids[@]} == 0 )); then log "Nothing to import - every LV in $VG is already a storage pool"; return 0; fi
+  fi
+  for id in "${ids[@]}"; do import_one "$id" "$name"; done
+}
+
+import_one() {
+  local id="$1" name="$2"
+  SPID="$id"; TARGET="${name:-$id}"
+  valid_name "$id"
+  if is_shared_id "$id"; then import_shared "$id" "$name"; return 0; fi
+  lvs "$VG/$id" &>/dev/null || die "No LV $VG/$id"
+  local lv="/dev/$VG/$id" mnt="$BASE/$id" p
+  p=$(all_pools | awk -F'\t' -v m="$mnt" '$2==m {print $1; exit}')
+  [[ -z "$p" ]] || die "LV $id is already registered as storage pool '$p'"
+  [[ -n "$name" ]] || name="$id"
+  TARGET="$name"
+  valid_label "$name" "$id"
+
+  local where; where=$(findmnt -n -o TARGET "$lv" 2>/dev/null | head -1 || true)
+  [[ -z "$where" || "$where" == "$mnt" ]] || die "LV $id is mounted on $where, not $mnt"
+  local uuid; uuid=$(blkid -s UUID -o value "$lv" 2>/dev/null || true)
+  [[ -n "$uuid" ]] || die "LV $id has no filesystem - not importing (nothing is formatted by import)"
+  if vg_on_san "$VG"; then
+    audit WARN IMPORT_SP "$name" "VG $VG is on SAN disks: single-host pool, never mount it on another host"
+    echo "!! WARNING: VG $VG is on SAN disks - this pool is single-host only. Never mount $mnt on another host." >&2
+  fi
+  audit INFO VALIDATE "$name" "checks passed, import id=$id path=$mnt"
+  log "Name: $name   Path: $mnt"
+
+  UNDO=()
+  trap rollback ERR
+  if [[ ! -d "$mnt" ]]; then
+    step CREATE_MOUNTPOINT "Created folder $mnt" mkdir -p "$mnt"
+    UNDO+=("REMOVE_MOUNTPOINT|rmdir $mnt")
+  fi
+  if ! fstab_has "$mnt"; then
+    step ADD_FSTAB "Added $mnt to $FSTAB" fstab_add "$uuid" "$mnt"
+    UNDO+=("REMOVE_FSTAB|fstab_remove $mnt")
+  fi
+  if ! mountpoint -q "$mnt"; then
+    step MOUNT_FS "Mounted $lv on $mnt" mount "$mnt"
+    UNDO+=("UNMOUNT_FS|umount $mnt")
+  fi
+  selinux_label "$mnt"
+  step DEFINE_SP "Defined storage pool '$name'" $VIRSH pool-define-as "$name" dir --target "$mnt"
+  UNDO+=("UNDEFINE_SP|$VIRSH pool-undefine $name")
+  step START_SP "Activated storage pool '$name'" $VIRSH pool-start "$name"
+  UNDO+=("STOP_SP|$VIRSH pool-destroy $name")
+  step AUTOSTART_SP "Enabled autostart for '$name'" $VIRSH pool-autostart "$name"
+  trap - ERR
+  log "Done: LV $id imported as SP '$name' -> $mnt"
+  publish_local_ids
+}
+
+# a shared SP on this host: the cluster already mounts it - only the libvirt pool
+# is added here, under the name recorded on the LV
+import_shared() {
+  local id="$1" name="$2" mnt="$BASE/$1" me p
+  [[ -n "$name" ]] || name=$(sp_tag_name "$id")
+  [[ -n "$name" ]] || name="$id"
+  TARGET="$name"
+  me=$(host_tag)
+  [[ "$me" != localhost* ]] || die "This host is named '$(hostname)' - give it a unique name first (hostnamectl set-hostname ...)"
+  lv_exists "$id" || die "No shared LV $SHARED_VG/$id"
+  p=$(all_pools | awk -F'\t' -v m="$mnt" '$2==m {print $1; exit}')
+  [[ -z "$p" ]] || die "Shared SP $id is already registered on this host as storage pool '$p'"
+  valid_label "$name" "$id"
+  [[ "$(fstype_at "$mnt")" == gfs2 ]] ||
+    die "Shared SP $id is not mounted on $mnt yet - the cluster mounts it (check: pcs resource status vmexsp-$id-fs-clone)"
+  audit INFO VALIDATE "$name" "checks passed, import shared id=$id path=$mnt host=$me"
+  log "Name: $name   Path: $mnt   (shared)"
+
+  UNDO=()
+  trap rollback ERR
+  step DEFINE_SP "Defined storage pool '$name'" $VIRSH pool-define-as "$name" dir --target "$mnt"
+  UNDO+=("UNDEFINE_SP|$VIRSH pool-undefine $name")
+  step START_SP "Activated storage pool '$name'" $VIRSH pool-start "$name"
+  UNDO+=("STOP_SP|$VIRSH pool-destroy $name")
+  step AUTOSTART_SP "Enabled autostart for '$name'" $VIRSH pool-autostart "$name"
+  if ! sp_tag_hosts "$id" | grep -qxF "$me"; then
+    vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+    step TAG_HOST "Recorded that host $me uses it" lvchange --addtag "vmexhost_$me" "$SHARED_VG/$id"
+  fi
+  if sp_tag_off "$id" | grep -qxF "$me"; then
+    step TAG_ON "Cleared the detach mark for $me" lvchange --deltag "vmexoff_$me" "$SHARED_VG/$id"
+  fi
+  trap - ERR
+  log "Done: shared SP '$name' added on this host -> $mnt"
+}
+
+# ---------------------------------------------------------------- sync (shared SPs on this host)
+# adds shared SPs created on another host, applies renames done on another host
+sync_shared() {
+  ACTION=SYNC
+  vgs "$SHARED_VG" &>/dev/null || die "Shared VG $SHARED_VG not visible on this host - run: $PROG -shared-join <SAN device>"
+  vgchange --lockstart "$SHARED_VG" &>/dev/null || true
+  local id want cur n=0 skipped=0
+  publish_local_ids
+  for id in $(shared_ids); do
+    SPID="$id"
+    want=$(sp_tag_name "$id"); [[ -n "$want" ]] || want="$id"
+    cur=$(all_pools | awk -F'\t' -v m="$BASE/$id" '$2==m {print $1; exit}')
+    if [[ -z "$cur" ]]; then
+      if sp_tag_off "$id" | grep -qxF "$(host_tag)"; then
+        echo ">> Skipped '$want' ($id): detached on this host - add it back with: $PROG -import $id"
+        skipped=$((skipped+1)); continue
+      fi
+      if [[ "$(fstype_at "$BASE/$id")" != gfs2 ]]; then
+        TARGET="$want"; audit WARN SYNC "$want" "skipped: $BASE/$id not mounted by the cluster yet"
+        echo "!! Skipped '$want' ($id): not mounted on this host yet - check: pcs resource status vmexsp-$id-fs-clone" >&2
+        skipped=$((skipped+1)); continue
+      fi
+      import_shared "$id" "$want"; n=$((n+1))
+    elif [[ "$cur" != "$want" ]]; then
+      rename_sp "$cur" "$want"; n=$((n+1))
+    fi
+  done
+  TARGET="-"; SPID="-"
+  log "Done: $n change(s), $skipped skipped - shared SPs on this host match the cluster"
+}
+
+# ---------------------------------------------------------------- shared VG setup
+# shared-init <device> [--yes]  - one time, on ONE host: wipe the SAN device, create the shared VG
+shared_init() {
+  local arg="$1" yes="$2"
+  ACTION=SHARED_INIT; TARGET="$SHARED_VG"
+  cluster_check
+  san_device "$arg"
+  local dev="$DEV"
+  vgs "$SHARED_VG" &>/dev/null && die "VG $SHARED_VG already exists - for another disk use: $PROG -shared-add <disk>; to join a node: $PROG -shared-join ${dev##*/} (on that node)"
+  if pvs "$dev" &>/dev/null; then die "$dev is already an LVM physical volume ($(pvs --noheadings -o vg_name "$dev" | tr -d ' '))"; fi
+  local mnts; mnts=$(lsblk -nro MOUNTPOINT "$dev" 2>/dev/null | sed '/^$/d' | paste -sd' ' - || true)
+  [[ -z "$mnts" ]] || die "$dev has mounted filesystems: $mnts"
+  local sigs; sigs=$(lsblk -nro NAME,FSTYPE,SIZE "$dev" 2>/dev/null | awk 'NF>=2 {print "     " $0}' || true)
+  local -a nodes=()
+  (( OPT_LOCAL )) || mapfile -t nodes < <(target_nodes)
+  (( ${#nodes[@]} )) && { log "Checking the other node(s): ${nodes[*]}"; preflight_nodes "$dev" "${nodes[@]}"; }
+
+  if [[ "$yes" != "--yes" ]]; then
+    echo "About to WIPE $dev and create the shared VG $SHARED_VG on it:"
+    echo "   Device   : $dev ($(lsblk -dno SIZE "$dev" | tr -d ' '))"
+    echo "   Cluster  : $CLUSTER_NAME ($CLUSTER_NODES hosts)"
+    echo "   Nodes    : $(host_tag) (this node)${nodes[*]:+, then joined: ${nodes[*]}}"
+    if [[ -n "$sigs" ]]; then echo "   Current content (will be DESTROYED on every host):"; echo "$sigs"; fi
+    local ans=""
+    read -r -p "Type the disk name (${dev##*/}) to confirm: " ans || true
+    if [[ "$ans" != "$dev" && "$ans" != "${dev##*/}" ]]; then
+      audit WARN SHARED_INIT "$SHARED_VG" "cancelled at confirmation prompt"
+      echo "Cancelled" >&2
+      exit 1
+    fi
+  fi
+  audit INFO VALIDATE "$SHARED_VG" "checks passed: device=$dev cluster=$CLUSTER_NAME hosts=$CLUSTER_NODES old_content=$(tr -s ' \n' ' ' <<<"$sigs")"
+
+  # old partitions (e.g. the VMFS partition) are mapped as device-mapper devices on top of
+  # the multipath device; they hold it open, so remove the mappings before wiping
+  if lsblk -nro TYPE "$dev" 2>/dev/null | grep -qx part; then
+    step REMOVE_PARTMAPS "Removed old partition mappings on $dev" kpartx -d "$dev"
+  fi
+  # -b keeps a backup of every wiped signature in $HOME (wipefs-*.bak)
+  step WIPE_DEVICE "Wiped old signatures on $dev (backup in ${HOME:-/root}/wipefs-*.bak)" \
+    bash -c 'cd "${HOME:-/root}" && wipefs -a -b "$1"' _ "$dev"
+  step CREATE_SHARED_VG "Created shared VG $SHARED_VG on $dev (dlm locking)" vgcreate --shared "$SHARED_VG" "$dev"
+  step LOCKSTART "Started the $SHARED_VG lockspace on this host" vgchange --lockstart "$SHARED_VG"
+  publish_local_ids
+  log "Done: shared VG $SHARED_VG ready on $(host_tag)"
+  if (( ${#nodes[@]} )); then
+    log "Joining the other node(s): ${nodes[*]}"
+    on_nodes JOIN_NODE "${nodes[@]}" -- -shared-join "$dev" || die "sharedvg was created, but not every node joined - see above"
+    log "Done: sharedvg ready on $(host_tag) ${nodes[*]} - create a shared SP with: $PROG -create <name> <size> -shared"
+  else
+    log "On each other host run: $PROG -shared-join ${dev##*/}"
+  fi
+}
+
+# shared-add <device> [-yes]  - on ONE host: wipe another SAN/NAS disk and add it to the shared VG
+shared_add() {
+  local arg="$1" yes="$2"
+  ACTION=SHARED_ADD; TARGET="$SHARED_VG"
+  cluster_check
+  shared_vg_check
+  san_device "$arg"
+  local dev="$DEV"
+  if pvs "$dev" &>/dev/null; then die "$dev is already an LVM physical volume ($(pvs --noheadings -o vg_name "$dev" | tr -d ' '))"; fi
+  local mnts; mnts=$(lsblk -nro MOUNTPOINT "$dev" 2>/dev/null | sed '/^$/d' | paste -sd' ' - || true)
+  [[ -z "$mnts" ]] || die "$dev has mounted filesystems: $mnts"
+  local sigs; sigs=$(lsblk -nro NAME,FSTYPE,SIZE "$dev" 2>/dev/null | awk 'NF>=2 {print "     " $0}' || true)
+  local before; before=$(vgs --noheadings --units g -o vg_size "$SHARED_VG" | tr -d ' ')
+  local -a nodes=()
+  (( OPT_LOCAL )) || mapfile -t nodes < <(target_nodes)
+  (( ${#nodes[@]} )) && { log "Checking the other node(s): ${nodes[*]}"; preflight_nodes "$dev" "${nodes[@]}"; }
+
+  if [[ "$yes" != "--yes" ]]; then
+    echo "About to WIPE $dev and add it to the shared VG $SHARED_VG:"
+    echo "   Device   : $dev ($(lsblk -dno SIZE "$dev" | tr -d ' '))"
+    echo "   VG now   : $SHARED_VG, $before"
+    echo "   Nodes    : $(host_tag) (this node)${nodes[*]:+, then joined: ${nodes[*]}}"
+    if [[ -n "$sigs" ]]; then echo "   Current content (will be DESTROYED on every host):"; echo "$sigs"; fi
+    echo "   Make sure NO other host, ESXi or NAS client still uses this disk."
+    local ans=""
+    read -r -p "Type the disk name (${dev##*/}) to confirm: " ans || true
+    if [[ "$ans" != "$dev" && "$ans" != "${dev##*/}" ]]; then
+      audit WARN SHARED_ADD "$SHARED_VG" "cancelled at confirmation prompt"
+      echo "Cancelled" >&2
+      exit 1
+    fi
+  fi
+  audit INFO VALIDATE "$SHARED_VG" "checks passed: add device=$dev vg_size_before=$before old_content=$(tr -s ' \n' ' ' <<<"$sigs")"
+
+  if lsblk -nro TYPE "$dev" 2>/dev/null | grep -qx part; then
+    step REMOVE_PARTMAPS "Removed old partition mappings on $dev" kpartx -d "$dev"
+  fi
+  step WIPE_DEVICE "Wiped old signatures on $dev (backup in ${HOME:-/root}/wipefs-*.bak)" \
+    bash -c 'cd "${HOME:-/root}" && wipefs -a -b "$1"' _ "$dev"
+  step EXTEND_SHARED_VG "Added $dev to shared VG $SHARED_VG" vgextend "$SHARED_VG" "$dev"
+  log "Done: $SHARED_VG is now $(vgs --noheadings --units g -o vg_size "$SHARED_VG" | tr -d ' ') (was $before)"
+  if (( ${#nodes[@]} )); then
+    log "Joining the other node(s) to $dev: ${nodes[*]}"
+    on_nodes JOIN_NODE "${nodes[@]}" -- -shared-join "$dev" || die "$dev was added, but not every node joined it - see above"
+    log "Done: every node sees $dev"
+  else
+    log "On each other host run: $PROG -shared-join ${dev##*/}"
+  fi
+}
+
+# shared-join <device>  - on every other host: make the shared VG usable here
+shared_join() {
+  local arg="$1"
+  ACTION=SHARED_JOIN; TARGET="$SHARED_VG"
+  cluster_check
+  san_device "$arg"
+  local dev="$DEV"
+  # Fedora uses an LVM devices file: a disk is only visible to LVM once it is listed
+  if ! pvs "$dev" &>/dev/null; then
+    step ADD_DEVICE "Added $dev to the LVM devices file" lvmdevices --adddev "$dev"
+  fi
+  local vgn; vgn=$(pvs --noheadings -o vg_name "$dev" 2>/dev/null | tr -d ' ' || true)
+  [[ "$vgn" == "$SHARED_VG" ]] || die "$dev holds VG '${vgn:-none}', not $SHARED_VG - is it the same SAN/NAS disk as on the first host?"
+  shared_vg_check
+  # a local SP with the same ID as a shared one would be hidden under the shared mount
+  local clash; clash=$(comm -12 <(local_ids | sort) <(shared_ids | sort) | paste -sd' ' - || true)
+  [[ -z "$clash" ]] || die "Local SP ID(s) on this host also used by shared SPs: $clash - this host cannot join until that is resolved (contact support)"
+  step LOCKSTART "Started the $SHARED_VG lockspace on this host" vgchange --lockstart "$SHARED_VG"
+  publish_local_ids
+  local miss; miss=$(vgs --noheadings -o vg_missing_pv_count "$SHARED_VG" 2>/dev/null | tr -d ' ' || true)
+  if [[ -n "$miss" && "$miss" != 0 ]]; then
+    log "This host does not see $miss disk(s) of $SHARED_VG yet - run '$PROG -shared-join <device>' for each of them"
+  else
+    log "Done: this host can use shared SPs - run: $PROG -sync"
+  fi
+}
+
+# shared-check - read-only readiness report
+shared_check() {
+  cluster_check
+  echo "Host          : $(host_tag)"
+  echo "Cluster       : $CLUSTER_NAME ($CLUSTER_NODES hosts, quorate)"
+  echo "DLM, lvmlockd : running ($LOCKING_CLONE)"
+  echo "Fencing       : running"
+  local lt; lt=$(vgs --noheadings -o lock_type "$SHARED_VG" 2>/dev/null | tr -d ' ' || true)
+  if [[ -z "$lt" ]]; then
+    echo "Shared VG     : $SHARED_VG not found - first host: $PROG -shared-init <device>, other hosts: $PROG -shared-join <device>"
+    return 0
+  fi
+  echo "Shared VG     : $SHARED_VG (lock type $lt, size $(vgs --noheadings --units g -o vg_size "$SHARED_VG" | tr -d ' '), free $(vgs --noheadings --units g -o vg_free "$SHARED_VG" | tr -d ' '))"
+  [[ "$lt" == dlm ]] || { echo "NOT READY: $SHARED_VG is not dlm-locked"; return 1; }
+  echo "Shared disks  :"
+  pvs --noheadings --units g -o pv_name,pv_size -S vg_name="$SHARED_VG" 2>/dev/null | awk '{printf "                %-50s %s\n", $1, $2}'
+  local miss; miss=$(vgs --noheadings -o vg_missing_pv_count "$SHARED_VG" 2>/dev/null | tr -d ' ' || true)
+  if [[ -n "$miss" && "$miss" != 0 ]]; then
+    echo "NOT READY: this host does not see $miss disk(s) of $SHARED_VG - run: $PROG -shared-join <device>"; return 1
+  fi
+  local node v
+  echo "Local IDs reported by each host:"
+  for node in $(timeout 10 crm_node -l 2>/dev/null | awk '{print $2}'); do
+    v=$(timeout 10 crm_attribute --node "$node" --name "$ID_ATTR" --lifetime forever --query --quiet 2>/dev/null || true)
+    printf "                %-20s %s\n" "$node" "${v:-NOT REPORTED - run '$PROG -sync' there}"
+  done
+  echo "Ready for shared storage pools"
+}
+
+# SP names only, one per line (used by tab completion)
+names() {
+  local p path
+  while IFS=$'\t' read -r p path; do
+    [[ -z "$p" ]] && continue
+    is_sp "$p" "$path" && echo "$p"
+  done < <(all_pools)
+  return 0
+}
+
+# ---------------------------------------------------------------- log viewer
+show_log() {
+  if [[ ! -s "$LOGFILE" ]]; then echo "No log entries yet ($LOGFILE)"; return 0; fi
+  local a="${1:-50}"
+  if [[ "$a" =~ ^[0-9]+$ ]]; then
+    tail -n "$a" "$LOGFILE"
+  elif valid_name "$a" && resolve_q "$a"; then
+    # whole history of this SP, also from before any rename
+    grep -F " sp=$SP_ID " "$LOGFILE" | tail -n 200 || true
+  else
+    grep -F "target=$a " "$LOGFILE" | tail -n 200 || true
+  fi
+}
+
+# ---------------------------------------------------------------- tab completion
+COMPLETION_FILE="/usr/share/bash-completion/completions/vmexsp"
+
+# the completion script, built into this file so one file is enough to install
+completion_script() {
+  cat <<'VMEXSP_COMPLETION_EOF'
+# bash completion for vmexsp - VMEX Storage Pool Management Tool v1.6
+#
+# Installed by: vmexsp -installautocomplete
+#   (writes this file to /usr/share/bash-completion/completions/vmexsp)
+
+# folder that holds the SPs: /etc/vmexsp.conf first, then the installed vmexsp's default
+_vmexsp_base() {
+  local bin base
+  [[ -r /etc/vmexsp.conf ]] &&
+    base=$(sed -n 's/^[[:space:]]*BASE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([^"'\'' #]*\).*/\1/p' /etc/vmexsp.conf | tail -1)
+  if [[ -z "$base" ]]; then
+    bin=$(command -v vmexsp 2>/dev/null)
+    [[ -n "$bin" ]] && base=$(sed -n 's/^BASE="\([^"]*\)".*/\1/p' "$bin" 2>/dev/null | head -1)
+  fi
+  echo "${base:-/storages}"
+}
+
+# SP display names (Finance, HR ...) from vmexsp itself; 3s limit so Tab never hangs.
+# Falls back to the internal IDs (mounted folders) if that is not possible.
+_vmexsp_sps() {
+  local out base d
+  out=$(timeout 3 vmexsp _names 2>/dev/null)
+  if [[ -n "$out" ]]; then echo "$out"; return 0; fi
+  base=$(_vmexsp_base)
+  for d in "$base"/*/; do
+    [[ -d "$d" ]] || continue
+    d=${d%/}
+    mountpoint -q "$d" 2>/dev/null && echo "${d##*/}"
+  done
+}
+
+# all libvirt pools (needs root / libvirt access; 3s limit so Tab never hangs)
+_vmexsp_pools() {
+  timeout 3 virsh -c qemu:///system pool-list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
+}
+
+# libvirt pools that are not SPs (candidates for cleanup)
+_vmexsp_extra_pools() {
+  local sps
+  sps=$(_vmexsp_sps)
+  _vmexsp_pools | grep -vxF -f <(printf '%s\n' $sps) 2>/dev/null
+}
+
+# shared SAN/NAS disks by short name: multipath devices (ibmstorwize = /dev/mapper/ibmstorwize)
+# and single-path iSCSI/FC disks (wwn-... = /dev/disk/by-id/wwn-..., the same on every host)
+_vmexsp_san_devs() {
+  lsblk -nro NAME,TYPE 2>/dev/null | awk '$2=="mpath" {print $1}' | sort -u
+  local n t tr l
+  while read -r n t tr; do
+    [[ "$t" == disk && "$tr" =~ ^(iscsi|fc|fcoe)$ ]] || continue
+    lsblk -nro TYPE "$n" 2>/dev/null | grep -qx mpath && continue
+    for l in /dev/disk/by-id/wwn-*; do
+      [[ "$l" != *-part* && "$(readlink -f "$l")" == "$n" ]] && { echo "${l##*/}"; break; }
+    done
+  done < <(lsblk -dnpro NAME,TYPE,TRAN 2>/dev/null)
+}
+
+# COMPREPLY from a newline-separated list (handles names with spaces)
+_vmexsp_reply() {
+  local IFS=$'\n'
+  COMPREPLY=($(compgen -W "$1" -- "$2"))
+}
+
+_vmexsp() {
+  local cur prev cmd
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  cmd="${COMP_WORDS[1]:-}"
+  cmd="${cmd#-}"; cmd="${cmd#-}"          # -create, --create and create are the same
+  COMPREPLY=()
+
+  # switches take ONE hyphen, like the other VMeX tools
+  local commands="-create -import -rename -delete -detach -start -stop -refresh -list -vms -sync -cleanup -log -shared-check -shared-init -shared-add -shared-join -version -help -installautocomplete"
+
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    return 0
+  fi
+
+  # words already typed after the command (to avoid suggesting them twice)
+  local -a used=("${COMP_WORDS[@]:2:COMP_CWORD-2}")
+  local w
+
+  case "$cmd" in
+    create)
+      # -create [name] [size] [-shared] - the name is free text, so sizes and -shared are suggested
+      local have_size="" opts=""
+      for w in "${used[@]}"; do
+        [[ "$w" =~ ^[0-9]+(\.[0-9]+)?[KkMmGgTtPp]?[Bb]?$ ]] && have_size=1
+      done
+      [[ -z "$have_size" ]] && opts+="100G 200G 500G 1T 2T "
+      [[ " ${used[*]} " == *" -shared "* || " ${used[*]} " == *" --shared "* ]] || opts+="-shared"
+      COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      ;;
+
+    detach)
+      # detach <name> - shared SPs on this host
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    shared-init|shared-add|shared-join)
+      # <disk>; -shared-init / -shared-add then take node names, -yes, -local
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$(_vmexsp_san_devs)" "$cur"
+      elif [[ "$cmd" != shared-join ]]; then
+        local opts="" me n
+        me=$(timeout 3 crm_node -n 2>/dev/null)
+        for n in $(timeout 3 crm_node -l 2>/dev/null | awk '{print $2}'); do
+          [[ "$n" == "$me" || " ${used[*]} " == *" $n "* ]] || opts+="$n "
+        done
+        [[ " ${used[*]} " == *" -yes "* ]]   || opts+="-yes "
+        [[ " ${used[*]} " == *" -local "* ]] || opts+="-local"
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      fi
+      ;;
+
+    import)
+      # import [id] [name] - suggest LVs not yet registered as storage pools
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(timeout 3 vmexsp _unregistered 2>/dev/null)" "$cur"
+      ;;
+
+    rename)
+      # rename <name> <new name> - suggest existing names for the first argument only
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    delete)
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      else
+        local opts=""
+        [[ " ${used[*]} " == *" -force "* || " ${used[*]} " == *" --force "* ]] || opts+="-force "
+        [[ " ${used[*]} " == *" -yes "*   || " ${used[*]} " == *" --yes "*   ]] || opts+="-yes"
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      fi
+      ;;
+
+    start|stop|refresh)
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    vms)
+      # SPs first; extra pools (e.g. migrated VM pools) also accepted
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$( { _vmexsp_sps; _vmexsp_pools; } | sort -u)" "$cur"
+      fi
+      ;;
+
+    list)
+      (( COMP_CWORD == 2 )) && COMPREPLY=($(compgen -W "-all" -- "$cur"))
+      ;;
+
+    cleanup)
+      # any number of extra pools, each suggested once
+      local cand p
+      cand=$(_vmexsp_extra_pools | while IFS= read -r p; do
+               [[ " ${used[*]} " == *" $p "* ]] || echo "$p"
+             done)
+      _vmexsp_reply "$cand" "$cur"
+      ;;
+
+    log)
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(printf '50\n100\n200\n500\n'; _vmexsp_sps)" "$cur"
+      ;;
+  esac
+  return 0
+}
+
+complete -F _vmexsp vmexsp
+VMEXSP_COMPLETION_EOF
+}
+
+install_autocomplete() {
+  ACTION=INSTALL_AUTOCOMPLETE; TARGET="$COMPLETION_FILE"
+  local self; self=$(readlink -f "$0" 2>/dev/null || echo "$0")
+  [[ "$self" == /usr/local/sbin/vmexsp ]] ||
+    echo "!! Note: this vmexsp runs from $self - the recommended place is /usr/local/sbin/vmexsp" >&2
+  command -v vmexsp &>/dev/null ||
+    echo "!! Note: 'vmexsp' is not in PATH - Tab completion needs it (install to /usr/local/sbin)" >&2
+
+  # the bash-completion package loads the files in $COMPLETION_FILE's folder
+  if ! rpm -q bash-completion &>/dev/null; then
+    if command -v dnf &>/dev/null; then
+      step INSTALL_PACKAGE "Installed package bash-completion" dnf install -y bash-completion ||
+        echo "!! Could not install bash-completion - install it with: dnf install -y bash-completion" >&2
+    else
+      echo "!! Package bash-completion is not installed - Tab completion needs it" >&2
+    fi
+  fi
+
+  local tmp; tmp=$(mktemp)
+  completion_script > "$tmp"
+  bash -n "$tmp" || { rm -f "$tmp"; die "Built-in completion script has a syntax error - not installed"; }
+  mkdir -p "${COMPLETION_FILE%/*}"
+  step WRITE_COMPLETION "Wrote $COMPLETION_FILE" install -m 0644 "$tmp" "$COMPLETION_FILE"
+  rm -f "$tmp"
+  # old names from earlier versions
+  local old
+  for old in /usr/share/bash-completion/completions/vmxsp /etc/bash_completion.d/vmxsp /etc/bash_completion.d/vmexsp; do
+    [[ -e "$old" ]] && step REMOVE_OLD_COMPLETION "Removed old $old" rm -f "$old"
+  done
+  log "Done: Tab completion installed (v$VERSION)"
+  log "Open a new SSH session, or run now:  source $COMPLETION_FILE"
+}
+
+# ---------------------------------------------------------------- main
+case "$CMD" in create|import|rename|delete|start|stop|refresh|cleanup|detach|sync|shared-init|shared-add|shared-join|installautocomplete) MUTATING=1 ;; esac
+trap on_exit EXIT
+
+case "$CMD" in
+  version|-v|-V|--version|help|-h|--help) ;;               # no root needed
+  *) [[ $EUID -eq 0 ]] || die "Must run as root" ;;
+esac
+if (( MUTATING )); then
+  mkdir -p "${LOGFILE%/*}" 2>/dev/null && chmod 750 "${LOGFILE%/*}" 2>/dev/null || true
+  touch "$LOGFILE" 2>/dev/null && chmod 640 "$LOGFILE" 2>/dev/null || true
+  audit INFO COMMAND "-" "begin: $PROG $ORIG_ARGS (v$VERSION)"
+fi
+
+need_name() { [[ $# -eq 2 ]] || die "usage: $PROG -$1 <name>"; }
+[[ "${PREFIX,,}" != "${SHARED_PREFIX,,}" ]] || die "PREFIX and SHARED_PREFIX must be different ($CONF)"
+
+case "$CMD" in
+  create)
+    # -create [name] [size] [-shared] - each may be left out, in any order
+    [[ $# -le 4 ]] || die "usage: $PROG -create [name] [size] [-shared]"
+    n=""; s=""; sh=0
+    for a in "${@:2}"; do
+      if [[ "$a" == -shared ]]; then
+        sh=1
+      elif [[ "$a" == -* ]]; then
+        die "Unknown option '$a' (options: -shared)"
+      elif [[ "$a" =~ ^[0-9]+(\.[0-9]+)?[KkMmGgTtPp]?[Bb]?$ ]]; then
+        [[ -z "$s" ]] || die "Two sizes given"; s="$a"
+      else
+        [[ -z "$n" ]] || die "Two names given (no spaces allowed in a name)"; n="$a"
+      fi
+    done
+    if (( sh )); then create_shared "$n" "$s"; else create "$n" "$s"; fi ;;
+  rename)
+    [[ $# -eq 3 ]] || die "usage: $PROG -rename <name> <new name>"
+    rename_sp "$2" "$3" ;;
+  delete)
+    [[ $# -ge 2 && $# -le 4 ]] || die "usage: $PROG -delete <name> [-force] [-yes]"
+    f=""; y=""
+    for a in "${@:3}"; do
+      case "$a" in -force) f=--force ;; -yes) y=--yes ;; *) die "Unknown option '$a' (options: -force -yes)" ;; esac
+    done
+    delete "$2" "$f" "$y" ;;
+  start)   need_name "$@"; start_sp "$2" ;;
+  stop)    need_name "$@"; stop_sp "$2" ;;
+  refresh) need_name "$@"; refresh_sp "$2" ;;
+  cleanup) cleanup "${@:2}" ;;
+  list)
+    case "${2:-}" in ""|-all) ;; *) die "Unknown option '$2' (options: -all)" ;; esac
+    list "${2:-}" ;;
+  vms)     [[ $# -le 2 ]] || die "usage: $PROG -vms [name]"; vms "${2:-}" ;;
+  log)     show_log "${2:-}" ;;
+  detach)  need_name "$@"; detach_sp "$2" ;;
+  sync)    [[ $# -eq 1 ]] || die "usage: $PROG -sync"; sync_shared ;;
+  shared-check) shared_check ;;
+  shared-init|shared-add)
+    # -shared-init|-shared-add <disk> [node ...] [-yes] [-local]
+    [[ $# -ge 2 && "$2" != -* ]] || die "usage: $PROG -$CMD <disk> [node ...] [-yes] [-local]"
+    y=""
+    for a in "${@:3}"; do
+      case "$a" in
+        -yes)   y=--yes ;;
+        -local) OPT_LOCAL=1 ;;
+        -*)     die "Unknown option '$a' (options: -yes -local)" ;;
+        *)      [[ "$a" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || die "Invalid node name '$a'"; OPT_NODES+=("$a") ;;
+      esac
+    done
+    (( OPT_LOCAL && ${#OPT_NODES[@]} )) && die "Give node names OR -local, not both"
+    if [[ "$CMD" == shared-init ]]; then shared_init "$2" "$y"; else shared_add "$2" "$y"; fi ;;
+  shared-join)
+    [[ $# -eq 2 ]] || die "usage: $PROG -shared-join <SAN device>"
+    shared_join "$2" ;;
+  import)
+    [[ $# -le 3 ]] || die "usage: $PROG -import [id] [name]"
+    import_sp "${2:-}" "${3:-}" ;;
+  _names)  names ;;
+  _unregistered) unregistered_ids ;;
+  installautocomplete)
+    [[ $# -eq 1 ]] || die "usage: $PROG -installautocomplete"
+    install_autocomplete ;;
+  version|-v|-V|--version)
+    echo "$TOOL_NAME v$VERSION"
+    cf="defaults"; [[ -r "$CONF" ]] && cf="$CONF"
+    echo "Layout: VG $VG, path $BASE/${PREFIX}NN  (from $cf)"
+    echo "Shared: VG $SHARED_VG, path $BASE/${PREFIX}NN (same numbering), cluster resource $LOCKING_CLONE"
+    sed -n 's/^# Last change: /Last change: /p' "$0" | head -1
+    echo "Installed: $(readlink -f "$0" 2>/dev/null || echo "$0")"
+    if [[ -r "$COMPLETION_FILE" ]]; then
+      cv=$(sed -n '1s/.* v\([0-9][0-9.]*\)$/\1/p' "$COMPLETION_FILE")
+      if [[ "$cv" == "$VERSION" ]]; then echo "Tab completion: v$cv ($COMPLETION_FILE)"
+      else echo "Tab completion: v${cv:-?} - older than vmexsp, update with: $PROG -installautocomplete"; fi
+    else
+      echo "Tab completion: not installed - install with: $PROG -installautocomplete"
+    fi ;;
+  help|-h|--help)
+    echo "$PROG - $TOOL_NAME v$VERSION"
+    awk 'NR>2 && /^#/ {sub(/^# ?/, ""); print; next} NR>2 {exit}' "$0" ;;
+  *) die "usage: $PROG {-create [name] [size] [-shared]|-import [id] [name]|-rename <name> <new>|-delete <name> [-force] [-yes]|-start|-stop|-refresh|-detach <name>|-sync|-list [-all]|-vms [name]|-cleanup [pool...]|-log [N|name]|-shared-check|-shared-init <disk> [node ...] [-yes] [-local]|-shared-add <disk> [node ...] [-yes] [-local]|-shared-join <device>|-version|-help|-installautocomplete}  (see: $PROG -help)" ;;
+esac

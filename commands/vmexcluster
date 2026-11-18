@@ -1,0 +1,3073 @@
+#!/usr/bin/bash
+# =============================================================================
+#  Tool        : vmexcluster
+#  Description : Fedora 42 KVM / Pacemaker HA cluster management
+#  Version     : 1.21.0
+#  Last change : 1.21.0 (2026-11-17) - Shared storage through vmexsp: -setuplocking, hints, -validate.
+# =============================================================================
+#
+#  Versioning: bump VERSION below on every change and update "Last change".
+#  When a command or option is added, also add it to vmexcluster.bash-completion
+#  and bump that file's version (2.21 matches 1.21.0).
+#
+#  CHANGELOG
+#  ---------
+#  1.21.0 2026-11-17  Shared storage pools are made with vmexsp (one numbering for
+#                     local and shared pools, libvirt pools on every node).
+#                     New -setuplocking: dlm + lvmlockd (locking-clone) and
+#                     no-quorum-policy=freeze - what vmexsp needs. Next-step hints
+#                     after -create, after the last -addfence and after
+#                     -setuplocking, with the exact vmexsp commands and SAN device.
+#                     -validate: new "Shared storage" section (vmexsp installed,
+#                     locking running, shared VG, missing disks, shared pools
+#                     mounted and registered), each with the command to fix it.
+#                     -setupstorage refuses when vmexsp is installed (-force).
+#                     -addvm: disks on any GFS2 pool are shared; the VM is ordered
+#                     after the cluster resource that mounts its pool (vmexsp-*).
+#  1.20.0 2026-11-17  -setupstorage follows the storage convention: without
+#                     -mount it uses the next /storages/storageNN that is free
+#                     on ALL nodes (storage01 = local storage), with matching
+#                     names: VG storagevgNN, LV storageNN, GFS2 name storageNN.
+#                     Refuses a VG name that exists on any node (each node has a
+#                     local VG "storagevg") and a mount point that is in use.
+#  1.19.0 2026-11-17  -validate checks every cluster node when no node is given
+#                     (was: only this node). Each "[Warning]" line from
+#                     vmexsanconnect -cluster-ready is counted as a WARN (was
+#                     ignored when the platform was ready). New "Time" checks:
+#                     NTP synchronised on each node, clocks of the nodes within
+#                     2 s of each other. -mpathalias uses vmexsanconnect
+#                     -alias-set when vmexsanconnect is installed (it manages
+#                     /etc/multipath.conf), and defaults to all cluster nodes.
+#  1.18.0 2026-11-16  SAN readiness from vmexsanconnect: -validate runs
+#                     "vmexsanconnect -cluster-ready" and requires the line
+#                     "[OK] Ready for vmex cluster" (FAIL otherwise; shown with
+#                     the reasons). -setupstorage checks it on every node before
+#                     wiping anything (-force overrides). Shared SAN storage is
+#                     mandatory for VM HA; -nosan skips SAN checks for early
+#                     setup. New -validate section "Network (survives reboot)":
+#                     the cluster and the management (default route) interfaces
+#                     must have a saved NetworkManager profile that starts at
+#                     boot and holds the live address - temporary (/run),
+#                     autoconnect=no, bound to another interface, or unsaved
+#                     addresses are FAILs; a cabled interface without any
+#                     address is a WARN.
+#  1.17.0 2026-11-16  Slow BMCs (IBM IMM2): -addfence times the IPMI login; if
+#                     it is slow (>8 s) or times out, it tries cipher suite 3
+#                     and uses it when that works better (new option -cipher N
+#                     to set it). Fence devices are created with timeouts for
+#                     slow BMCs (start/monitor 60 s, reboot 180 s) and
+#                     failure-timeout=120s, so one slow answer no longer stops
+#                     the device for good. -bmcstatus shows WHY a fence device
+#                     is not running and reports stale pending fence actions.
+#  1.16.0 2026-11-16  BMC (IMM) checks. New command -bmcstatus, and a BMC section
+#                     in -validate: BMC has an IP (not 0.0.0.0), is reachable
+#                     from the OTHER nodes (IMM port connected, link, VLAN),
+#                     fence device exists, is started, logs in from the other
+#                     nodes, and points to this node's own BMC.
+#  1.15.0 2026-11-15  -addfence tests the BMC from every OTHER node - the ones
+#                     that will run the fence device - instead of from the
+#                     node itself (a server often cannot reach its own BMC).
+#                     Per node it reports network (ping) and IPMI login, and
+#                     the likely cause of a failure.
+#  1.14.0 2026-11-15  -addfence reads the node's own BMC address (ipmitool on
+#                     that node, channels 1/2/8) and refuses an -ipaddr that
+#                     belongs to another server - a swapped BMC address would
+#                     power off the wrong node. A failed BMC test now explains
+#                     the usual causes (no link, IPMI over LAN off, password).
+#  1.13.0 2026-11-15  -setupstorage checks the LUN first: partitions, file
+#                     systems or other signatures (e.g. an old Windows/GPT
+#                     layout) are listed and the command stops unless -wipe is
+#                     given; a partition mounted on any node always stops it.
+#                     With -wipe the partition maps are removed on every node
+#                     (kpartx/partx on the multipath device and its paths),
+#                     the signatures erased (wipefs) and the result verified
+#                     on every node before LVM is created. New option -wipe.
+#  1.12.0 2026-11-15  -changeip changes the IP on the servers too (nmcli):
+#                     nodes still on their old IP are reached over another
+#                     address found automatically (management network);
+#                     cluster stopped, all old addresses removed, then the new
+#                     ones applied (swaps safe, no duplicate-address failures),
+#                     then waits for every node on its new IP. Nodes already
+#                     moved by hand are only updated in the cluster. Refuses
+#                     if your own SSH session uses an address being changed.
+#  1.11.1 2026-11-15  Fix -changeip: all checks (reachable on the new IP, and
+#                     answering as the expected node) now run BEFORE anything
+#                     is changed and before the confirmation, using a temporary
+#                     known_hosts file. Before, a run without the server IP
+#                     changed first could already rewrite SSH host keys.
+#                     Fix: SSH host keys are recorded as "name,ip" from one scan
+#                     of each node's IP, never via /etc/hosts lookups that may
+#                     still point to old addresses.
+#  1.11.0 2026-11-15  New command -changeip node=NEWIP ...: after the servers'
+#                     IPs were changed (cluster stopped first), updates
+#                     corosync.conf on all nodes, /etc/hosts, SSH host keys,
+#                     pcs host addresses and the node list, then starts the
+#                     cluster. Swapping IPs between nodes works. Node names
+#                     stay with their servers. SSH host keys are now replaced
+#                     (not added) when refreshed, so a reused IP never causes
+#                     "REMOTE HOST IDENTIFICATION HAS CHANGED". -create uses
+#                     fencing-enabled (Pacemaker 3) instead of the deprecated
+#                     stonith-enabled when available.
+#  1.10.0 2026-11-15  Output no longer shows where the hacluster password is
+#                     kept: "cluster authorization from: /************".
+#                     -create/-addnode pre-flight before pcs: pcsd answering on
+#                     port 2224 (restarted after renaming), and the network
+#                     path MTU (jumbo frames) to every node, so pcs no longer
+#                     hangs for 60 s. Clear hints when pcs cluster setup fails.
+#  1.9.0  2026-11-15  hacluster password handled automatically: the first
+#                     -installprereq generates a random password and saves it
+#                     in /opt/VMX-10.0.0/vmx-files/vmexcluster/hacluster
+#                     (root only, 0600) on every node it prepares. -create and
+#                     -addnode read it from there and also copy it to (and set
+#                     it on) every node, so all nodes always match. Order:
+#                     -hapass, HACLUSTER_PASS, the file. Changing an existing
+#                     saved password needs -force. -validate checks the file.
+#  1.8.0  2026-11-15  -validate ends with a summary table: OK, WARN and FAIL
+#                     counts per node, for the cross-node checks and in total,
+#                     plus the log file. An unreachable node is shown in the
+#                     summary (with the reason) instead of stopping the run.
+#  1.7.0  2026-11-15  Logging: every command (read-only ones too) writes its
+#                     output to /var/log/vmex/vmexcluster/<command>-ddmmyyyy.log
+#                     (e.g. validate-15112026.log) and one line per run to
+#                     history.log (time, user, command, exit code, duration;
+#                     passwords masked). New command -history [N].
+#                     Fix: Fedora archive repos only on Fedora 42 and older
+#                     (Fedora 43+ keeps its mirrors). Fix: -validate no longer
+#                     reports "across-nodes" as failed when only a node failed.
+#  1.6.0  2026-11-15  Connectivity test before any SSH: -onboard checks every
+#                     node first (route and interface, SSH port 22, ping) and
+#                     stops with the cause and the fix instead of a timeout.
+#                     Warns when a node IP is on the SAN (iSCSI) interface.
+#                     Other commands explain why SSH to a node fails. Hints
+#                     when ssh-copy-id is refused (Fedora root login).
+#  1.5.0  2026-11-15  -sshtrust renamed to -onboard (old name still accepted).
+#  1.4.0  2026-11-15  -validate now checks SAN storage: iSCSI initiator name,
+#                     discovered portals reachable (TCP), iSCSI sessions per
+#                     portal, multipath LUNs with active path count, the
+#                     cluster's shared device and mount. With several nodes:
+#                     same LUN visible on all nodes, unique initiator names.
+#                     New options -portal (extra portal to test) and -nosan
+#                     (skip the SAN checks, before storage is connected).
+#  1.3.0  2026-11-15  New command -validate [node ... | -all]: checks the
+#                     running kernel, CPU virtualization, required kernel
+#                     modules (kvm, kvm_intel/kvm_amd, vhost_net, tun, bridge,
+#                     dm_multipath, iscsi_tcp, dlm, gfs2), /dev/kvm, packages
+#                     and commands. Read-only; exit code 1 if anything fails.
+#  1.2.0  2026-11-15  Automatic node naming: -create and -addnode accept IP
+#                     addresses; nodes become node1, node2, node3 ... (option
+#                     -prefix), hostnames are set, a managed block is written
+#                     to /etc/hosts on every node and corosync uses those IPs.
+#                     -removenode updates /etc/hosts. New commands -listnodes
+#                     and -synchosts. SSH trust is set up automatically when
+#                     missing. Nodes can be given by IP everywhere.
+#  1.1.0  2026-11-15  New command -installautocomplete [-file F] [node ...]:
+#                     installs vmexcluster.bash-completion (Tab completion).
+#                     New option -file. bash-completion added to the
+#                     -installprereq package list.
+#  1.0.0  2026-11-11  First release: node preparation, cluster lifecycle,
+#                     nodes, fencing, iSCSI/multipath, GFS2 storage, VMs,
+#                     operations (47 commands).
+# -----------------------------------------------------------------------------
+#
+# Install:  install -m 0755 vmexcluster /usr/local/sbin/vmexcluster
+# Help:     vmexcluster -help
+#
+# Stack:    pcs/pacemaker/corosync, IPMI fencing, iSCSI + dm-multipath,
+#           shared LVM (lvmlockd/dlm), GFS2 on /vmstore, libvirt VMs managed
+#           by ocf:heartbeat:VirtualDomain with live migration over SSH.
+#
+# Switch syntax: single or double dash, case-insensitive:
+#   vmexcluster -installprereq
+#   vmexcluster -create cluster1
+#   vmexcluster -addnode server2 server3 -cluster cluster1
+# Every action supports -dryrun (print commands, change nothing).
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+VERSION="1.21.0"
+PROG=$(basename "$0")
+SELF=$(readlink -f "$0")
+REMOTE_BIN=/usr/local/sbin/vmexcluster
+COMPLETION_NAME=vmexcluster.bash-completion
+COMPLETION_DEST=/usr/share/bash-completion/completions/vmexcluster
+CONF_DIR=/etc/vmexcluster
+STATE_FILE=$CONF_DIR/cluster.conf
+VM_DIR=/etc/pacemaker/vms
+COROSYNC_CONF=/etc/corosync/corosync.conf
+LOG_DIR=${VMEX_LOG_DIR:-/var/log/vmex/vmexcluster}
+HAPASS_DIR=/opt/VMX-10.0.0/vmx-files/vmexcluster
+HAPASS_FILE=${VMEX_HAPASS_FILE:-$HAPASS_DIR/hacluster}
+AUTH_SHOW="/************"          # shown instead of the file path
+# prints the BMC IP address(es) of the node it runs on
+# shellcheck disable=SC2016
+BMC_IP_SCRIPT='modprobe -qa ipmi_devintf ipmi_si 2>/dev/null; for c in 1 2 8; do ipmitool lan print $c 2>/dev/null; done | awk -F": " "/^IP Address +:/ {print \$2}" | grep -v "^0\.0\.0\.0$" | sort -u'
+HISTORY=$LOG_DIR/history.log
+ARCHIVE_MAX_RELEASE=42      # Fedora releases at or below this use the archive
+ARCHIVE=https://archives.fedoraproject.org/pub/archive/fedora/linux
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10)
+WAIT=180
+
+DEF_VG=vg_shared
+DEF_LV=lv_vmstore
+DEF_MOUNT=/vmstore
+DEF_FSNAME=vmstore
+DEF_SIZE=100%FREE
+DEF_PREFIX=node
+STORAGES_DIR=/storages        # storage pools: /storages/storage01 (local), storage02 ...
+HOSTS_BEGIN="# BEGIN vmexcluster"
+HOSTS_END="# END vmexcluster"
+
+# ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+usage() {
+cat <<EOF
+$PROG $VERSION - KVM high-availability cluster management for Fedora 42
+
+USAGE
+  $PROG -<action> [arguments] [options]
+
+NODE PREPARATION
+  -installprereq [node ...]          Install and configure all prerequisites
+                                     (local node if none given; remote nodes
+                                     over root SSH). Cluster authorization is
+                                     generated on the first run and stored
+                                     securely on every node
+  -checkprereq   [node ...]          Verify prerequisites, report OK/FAIL
+  -validate      [node ...] [-portal IP[:port]] [-nosan]   (default: all cluster nodes)
+                                     Check required kernel modules (loaded or
+                                     loadable for the running kernel), CPU
+                                     virtualization, /dev/kvm, packages,
+                                     commands and SAN storage: iSCSI portals
+                                     reachable, sessions logged in, multipath
+                                     LUNs and active paths; with several nodes
+                                     also the same LUN on every node and unique
+                                     initiator names. Read-only; exit 1 on FAIL
+  -onboard       node node ...       Set up root SSH trust between all nodes
+                                     (needed for remote actions and live
+                                     migration). Asks each root password once.
+                                     Nodes may be given as IP addresses.
+
+CLUSTER LIFECYCLE
+  -create   NAME -nodes IP1 IP2 ...  Create a cluster. With IP addresses the nodes
+            [-prefix node]           are named node1, node2 ... in the order given,
+                                     hostnames are set, /etc/hosts is updated on
+                                     every node and corosync uses these IPs.
+                                     (Host names instead of IPs: no renaming.)
+  -destroy  -cluster NAME            Destroy the cluster on all nodes
+  -start    [node ...]               Start cluster services (default: all)
+  -stop     [node ...]               Stop cluster services (default: all)
+  -enable   [node ...]               Start cluster at boot (default: all)
+  -disable  [node ...]               Don't start cluster at boot
+  -status                            Cluster status (-full for more detail)
+  -quorum                            Quorum status and configuration
+  -property [key=value ...]          Show or set cluster properties
+
+NODE MANAGEMENT
+  -addnode    IP [IP ...] -cluster NAME
+                                     Add nodes: the next free numbers are used
+                                     (node3, node4 ...), /etc/hosts updated on all
+                                     nodes, VM definitions copied, shared disk
+                                     registered, GFS2 journals added if needed
+  -removenode node|IP [...] -cluster NAME
+                                     Remove nodes and their /etc/hosts entries
+  -listnodes                         Node names, IP addresses and state
+  -changeip   node1=IP [node2=IP ...] -cluster NAME
+                                     Change cluster node IP addresses, swaps
+                                     included: stops the cluster, changes the
+                                     IPs on the servers (nmcli, static IPs),
+                                     updates corosync, /etc/hosts, SSH keys and
+                                     pcs, starts the cluster. Each node must
+                                     also be reachable on another address
+                                     (management network) - found automatically.
+                                     Nodes already moved by hand are detected.
+                                     A node can also be given by its old IP:
+                                     10.10.10.151=10.10.10.150
+  -synchosts                         Rewrite the /etc/hosts block and SSH host
+                                     keys on all nodes (repair)
+  -standby    [node ...]             Put nodes in standby (VMs migrate away)
+  -unstandby  [node ...]             Bring nodes back from standby
+  -maintenance on|off [-nodes ...]   Cluster-wide (or per node) maintenance mode
+
+FENCING (STONITH)
+  -addfence    node -ipaddr BMC_IP -user USER [-pass PASS] [-delay 5s]
+               [-agent fence_ipmilan] [-params "k=v ..."] [-nolanplus] [-cipher N]
+                                     Create a fence device for a node
+                                     (password also from FENCE_PASS or prompt)
+  -removefence node                  Delete a node's fence device
+  -listfence                         Fence devices, status and history
+  -testfence   node                  Really fence (power-cycle) a node
+  -bmcstatus   [node ...]            BMC (IMM) of every node: IP set, reachable
+                                     from the other nodes (port connected), fence
+                                     device started and able to log in, and
+                                     pointing to the right server
+
+SHARED STORAGE  (pools are made with vmexsp; the cluster must exist, with fencing)
+  -setuplocking                      dlm + lvmlockd on all nodes (locking-clone):
+                                     needed before vmexsp -shared-init
+  -iscsilogin  -portal IP[:port] [-target IQN] [-chapuser U -chappass P]
+               [node ... | -all]     Discover and log in to iSCSI targets
+  -iscsilogout -portal IP[:port] [-target IQN] [-purge] [node ... | -all]
+  -listdisks   [node ... | -all]     Show multipath devices, WWIDs, sessions
+  -mpathalias  -wwid WWID -alias NAME [node ...]
+                                     Give a multipath device the same fixed name
+                                     on every node (default: all cluster nodes;
+                                     uses vmexsanconnect -alias-set if installed)
+  -setupstorage -device /dev/mapper/NAME [-mount $STORAGES_DIR/storageNN]
+               [-vg storagevgNN] [-lv storageNN] [-fsname storageNN]
+               [-size $DEF_SIZE|500G]
+               [-journals N] [-wipe] Create dlm/lvmlockd, shared VG, GFS2 and
+                                     the cloned mount on all nodes (DESTROYS
+                                     data on the device). If the LUN already
+                                     has partitions or a file system it is
+                                     shown and -wipe is required to erase it.
+                                     Default name: the next $STORAGES_DIR/storageNN
+                                     free on all nodes (e.g. storage02).
+                                     Only without vmexsp (use vmexsp -create -shared)
+  -addjournal  N                     Add N GFS2 journals (one per node needed)
+  -storagestatus                     Shared storage health on all nodes
+  -removestorage                     Remove storage resources (data kept)
+
+VIRTUAL MACHINES
+  -addvm      vm [vm ...] [-xml FILE] [-prefer node] [-nomigrate] [-nostart]
+                                     Put an existing libvirt VM under cluster
+                                     control (disks must be on shared storage)
+  -removevm   vm [-purge]            Remove from cluster; re-defines the VM in
+                                     libvirt on this node unless -purge
+  -startvm    vm [vm ...]
+  -stopvm     vm [vm ...]
+  -restartvm  vm [vm ...]
+  -migratevm  vm [-to node]          Live-migrate (or move away from current node)
+  -clearvm    vm                     Clear move/ban constraints for a VM
+  -listvms                           All clustered VMs and where they run
+  -vmstatus   vm                     Status, config and constraints of a VM
+  -syncvm     [vm ...] [-xml FILE]   Push VM XML definitions to all nodes
+
+OPERATIONS
+  -verify                            Check the cluster configuration
+  -cleanup    [resource]             Clear failed actions
+  -config                            Show full cluster configuration
+  -backup     [file]                 Back up cluster config and VM definitions
+  -restore    file.tar.bz2           Restore cluster config (cluster stopped)
+  -report     [dest] [-since "YYYY-MM-DD HH:MM"]
+                                     Collect a diagnostic report
+  -logs       [node ...] [-lines N]  Corosync/pacemaker/pcsd journal
+  -history    [N]                    Last N vmexcluster runs (default 30) from
+                                     $HISTORY
+  -installautocomplete [node ... | -all] [-file FILE]
+                                     Install Tab completion (looks for
+                                     $COMPLETION_NAME next to this script,
+                                     in $CONF_DIR or the current folder)
+  -help | -version
+
+COMMON OPTIONS
+  -cluster NAME     Cluster to act on (checked against this node's cluster)
+  -nodes n1 n2 ...  Target nodes (same as listing them after the action)
+  -all              All cluster nodes
+  -yes              Don't ask for confirmation
+  -dryrun           Print the commands without changing anything
+  -hapass PASS      hacluster password - normally not needed: cluster
+                    authorization is generated by -installprereq
+
+EXAMPLES
+  $PROG -installprereq 10.10.10.151 10.10.10.150
+  $PROG -create cluster1 -nodes 10.10.10.151 10.10.10.150   # -> node1 node2
+  $PROG -addfence node1 -ipaddr 10.0.0.11 -user admin -delay 5s
+  $PROG -addfence node2 -ipaddr 10.0.0.12 -user admin
+  $PROG -iscsilogin -portal 10.0.1.50 -all
+  $PROG -mpathalias -wwid 36001405abcdef -alias vmstore -all
+  $PROG -setupstorage -device /dev/mapper/vmstore -cluster cluster1
+  $PROG -addvm web01 db01 -cluster cluster1
+  $PROG -migratevm web01 -to node2
+  $PROG -addnode 10.10.10.152 -cluster cluster1              # -> node3
+
+Logs: $LOG_DIR/<command>-ddmmyyyy.log   (e.g. validate-$(date +%d%m%Y).log)
+      $HISTORY                (one line per run; see -history)
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+msg()  { printf '%s\n' "$*"; }
+step() { printf '\n--> %s\n' "$*"; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; }
+die()  { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Print a command with secrets masked
+show() {
+  local prefix=$1; shift
+  local out="" mask=0 a cmd=${1:-}
+  for a in "$@"; do
+    if ((mask)); then out+="**** "; mask=0; continue; fi
+    case $a in
+      -p|--password) out+="$a "; [ "$cmd" = pcs ] && mask=1 ;;
+      password=*|passwd=*|*_pass=*) out+="${a%%=*}=**** " ;;
+      *) out+="$(printf '%q' "$a") " ;;
+    esac
+  done
+  printf '%s %s\n' "$prefix" "$out"
+}
+
+run() {
+  if ((DRYRUN)); then show "[dry-run]" "$@"; return 0; fi
+  show "+" "$@"
+  "$@"
+}
+
+is_ip()     { [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+local_ips() {
+  if command -v ip >/dev/null 2>&1; then ip -4 -o addr show | awk '{sub(/\/.*/, "", $4); print $4}'
+  else hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^([0-9]+\.){3}[0-9]+$'; fi
+}
+
+is_local() {
+  local n=$1
+  [[ $n == localhost || $n == "$(hostname -s)" || $n == "$(hostname)" ]] && return 0
+  is_ip "$n" && local_ips | grep -qxF "$n"
+}
+
+# Run a single command on a node
+rrun() {
+  local node=$1; shift
+  if is_local "$node"; then run "$@"; return; fi
+  if ((DRYRUN)); then show "[dry-run][$node]" "$@"; return 0; fi
+  show "+[$node]" "$@"
+  ssh "${SSH_OPTS[@]}" "root@$node" "$(printf '%q ' "$@")"
+}
+
+# Run a shell script snippet on a node
+rsh() {
+  local node=$1 script=$2
+  if ((DRYRUN)); then
+    printf '[dry-run][%s] %s\n' "$node" "${script//"$HAPASS_FILE"/$AUTH_SHOW}" | sed -E 's/(auth\.password -v )[^ ]+/\1****/'
+    return 0
+  fi
+  if is_local "$node"; then bash -c "$script"
+  else ssh "${SSH_OPTS[@]}" "root@$node" "bash -c $(printf '%q' "$script")"; fi
+}
+
+# Same as rsh but always executes (read-only queries, also in dry-run)
+rq() {
+  local node=$1 script=$2
+  if is_local "$node"; then bash -c "$script"
+  else ssh "${SSH_OPTS[@]}" "root@$node" "bash -c $(printf '%q' "$script")"; fi
+}
+
+rcopy() {
+  local src=$1 node=$2 dst=$3
+  if is_local "$node"; then
+    [ "$(readlink -f "$src")" = "$(readlink -f "$dst" 2>/dev/null || echo "$dst")" ] && return 0
+    run cp -f "$src" "$dst"
+  else
+    run scp -q "${SSH_OPTS[@]}" "$src" "root@$node:$dst"
+  fi
+}
+
+ssh_check() {
+  local n=$1
+  is_local "$n" && return 0
+  ((DRYRUN)) && return 0
+  ssh "${SSH_OPTS[@]}" "root@$n" true 2>/dev/null && return 0
+  net_check "$n" >&2 || die "Cannot reach $n (see above)"
+  die "Cannot SSH as root to $n without a password. Run: $PROG -onboard $(hostname -s) $n"
+}
+
+# ---------------------------------------------------------------------------
+# Connectivity test (before SSH, so problems show at once instead of timeouts)
+# ---------------------------------------------------------------------------
+route_info() {   # "dev src" used to reach $1
+  ip route get "$1" 2>/dev/null | awk '{for (i = 1; i < NF; i++) {if ($i == "dev") d = $(i+1); if ($i == "src") s = $(i+1)}} END {if (d != "") print d, s}'
+}
+
+san_devs() {     # interfaces used to reach the iSCSI portals
+  local p
+  for p in $(iscsiadm -m node 2>/dev/null | awk '{sub(/:.*/, "", $1); print $1}' | sort -u); do
+    route_info "$p" | awk '{print $1}'
+  done | sort -u
+}
+
+# Prints one [ OK ]/[FAIL] line (plus fix) for node $1; returns 1 if SSH can't work
+net_check() {
+  local n=$1 ip dev src ri
+  if is_ip "$n"; then ip=$n
+  else
+    ip=$(getent ahostsv4 "$n" 2>/dev/null | awk 'NR == 1 {print $1}')
+    [ -n "$ip" ] || { printf '  [FAIL] %s: name does not resolve (check /etc/hosts or use the IP)\n' "$n"; return 1; }
+  fi
+  if is_local "$ip"; then printf '  [ OK ] %s: this host\n' "$n"; return 0; fi
+  ri=$(route_info "$ip")
+  if [ -z "$ri" ] && command -v ip >/dev/null 2>&1; then
+    printf '  [FAIL] %s: no route from this host - wrong IP or missing network interface\n' "$n"; return 1
+  fi
+  read -r dev src <<<"$ri"
+  local via=""; [ -n "$dev" ] && via=" via $dev${src:+ from $src}"
+  if tcp_open "$ip" 22; then
+    printf '  [ OK ] %s: SSH port 22 open%s\n' "$n" "$via"
+    mtu_check "$n" "$ip" | sed 's/\[FAIL\]/[WARN]/'
+    return 0
+  fi
+  if ping -c 1 -W 2 "$ip" >/dev/null 2>&1; then
+    printf '  [FAIL] %s: answers ping but SSH port 22 is closed or blocked%s\n' "$n" "$via"
+    printf '         fix on %s: systemctl enable --now sshd\n' "$n"
+    printf '                firewall-cmd --permanent --add-service=ssh && firewall-cmd --reload\n'
+  else
+    printf '  [FAIL] %s: no answer to ping or SSH%s\n' "$n" "$via"
+    printf '         host down, wrong IP, cable/VLAN, or a switch that keeps hosts apart\n'
+    printf '         (SAN switches/VLANs often allow host-to-array only, not host-to-host)\n'
+  fi
+  return 1
+}
+
+# Test all nodes, warn about SAN interfaces; die if any node is unreachable
+net_check_all() {
+  local n bad=0 sdevs dev
+  ((DRYRUN)) && { msg "[dry-run] connectivity test: $*"; return 0; }
+  step "Connectivity test"
+  for n in "$@"; do net_check "$n" || bad=1; done
+  sdevs=$(san_devs | paste -sd' ')
+  if [ -n "$sdevs" ]; then
+    for n in "$@"; do
+      is_ip "$n" || continue
+      dev=$(route_info "$n" | awk '{print $1}')
+      if is_local "$n"; then
+        dev=$(ip -4 -o addr show 2>/dev/null | awk -v a="$n" '{split($4, x, "/"); if (x[1] == a) print $2}')
+      fi
+      if [ -n "$dev" ] && [[ " $sdevs " == *" $dev "* ]]; then
+        printf '  [WARN] %s is on %s, the SAN (iSCSI) interface. Use the management network\n' "$n" "$dev"
+        printf '         IPs for cluster traffic and SSH; keep the SAN network for storage only.\n'
+      fi
+    done
+  fi
+  ((bad == 0)) || die "Connectivity test failed - fix the [FAIL] items above, then run the command again"
+}
+
+push_self() {
+  local n=$1
+  is_local "$n" && return 0
+  rcopy "$SELF" "$n" "$REMOTE_BIN"
+  rrun "$n" chmod 0755 "$REMOTE_BIN"
+}
+
+confirm() {
+  local prompt=$1 expect=${2:-yes}
+  ((YES)) && return 0
+  ((DRYRUN)) && return 0
+  [ -r /dev/tty ] || die "Confirmation needed; re-run with -yes"
+  local ans
+  printf '%s\nType "%s" to continue: ' "$prompt" "$expect" > /dev/tty
+  read -r ans < /dev/tty
+  [ "$ans" = "$expect" ] || die "Aborted"
+}
+
+ask_secret() {
+  local prompt=$1 a b
+  [ -r /dev/tty ] || { echo ""; return; }
+  while true; do
+    printf '%s: ' "$prompt" > /dev/tty; read -rs a < /dev/tty; printf '\n' > /dev/tty
+    printf 'Repeat: ' > /dev/tty;       read -rs b < /dev/tty; printf '\n' > /dev/tty
+    [ "$a" = "$b" ] && break
+    printf 'Passwords do not match.\n' > /dev/tty
+  done
+  printf '%s' "$a"
+}
+
+# hacluster password: -hapass > HACLUSTER_PASS > $HAPASS_FILE
+get_hapass() {
+  HAPASS="" HAPASS_SRC=""
+  if [ -n "${OPT[hapass]:-}" ]; then HAPASS=${OPT[hapass]}; HAPASS_SRC="-hapass option"
+  elif [ -n "${HACLUSTER_PASS:-}" ]; then HAPASS=$HACLUSTER_PASS; HAPASS_SRC="HACLUSTER_PASS"
+  elif [ -s "$HAPASS_FILE" ]; then IFS= read -r HAPASS < "$HAPASS_FILE" || true; HAPASS_SRC=$AUTH_SHOW
+  fi
+  # A password given by hand must not silently replace the saved one
+  if [ -n "$HAPASS" ] && [ "$HAPASS_SRC" != "$AUTH_SHOW" ] && [ -s "$HAPASS_FILE" ] && [ -z "${VMEX_NESTED:-}" ]; then
+    local saved; IFS= read -r saved < "$HAPASS_FILE" || true
+    if [ "$saved" != "$HAPASS" ] && ! ((FORCE)); then
+      die "The password from $HAPASS_SRC differs from the saved cluster authorization.
+Existing nodes use the saved one. Leave out $HAPASS_SRC to use it, or add -force to replace it."
+    fi
+  fi
+  return 0
+}
+
+need_hapass() {
+  get_hapass
+  if [ -z "$HAPASS" ] && [ -r /dev/tty ] && ! ((DRYRUN)); then
+    HAPASS=$(ask_secret "hacluster password (no saved cluster authorization)"); HAPASS_SRC=prompt
+  fi
+  [ -n "$HAPASS" ] || die "No cluster authorization found. Run: $PROG -installprereq <all node IPs>"
+  msg "cluster authorization from: $HAPASS_SRC"
+}
+
+gen_hapass() { head -c 96 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24; }
+
+save_hapass() {
+  if ((DRYRUN)); then msg "[dry-run] save cluster authorization ($AUTH_SHOW, 0600)"; return 0; fi
+  mkdir -p "$HAPASS_DIR"
+  ( umask 077; printf '%s\n' "$HAPASS" > "$HAPASS_FILE" )
+  chown root:root "$HAPASS_FILE"; chmod 0600 "$HAPASS_FILE"
+}
+
+# Save the password file on a node and set the hacluster password there
+push_hapass() {
+  local n=$1 remote
+  if ((DRYRUN)); then msg "[dry-run][$n] save cluster authorization and set it"; return 0; fi
+  if is_local "$n"; then
+    save_hapass; echo "hacluster:${HAPASS}" | chpasswd
+  else
+    remote='set -e; mkdir -p "$1"; IFS= read -r p; (umask 077; printf "%s\n" "$p" > "$2"); chmod 0600 "$2"; echo "hacluster:$p" | chpasswd'
+    ssh "${SSH_OPTS[@]}" "root@$n" "bash -c $(printf %q "$remote") _ $(printf %q "$HAPASS_DIR") $(printf %q "$HAPASS_FILE")" <<<"$HAPASS" \
+      || die "Could not set the cluster authorization on $n"
+  fi
+  msg "  $n: cluster authorization set"
+}
+
+cluster_name() {
+  [ -f "$COROSYNC_CONF" ] && awk '$1=="cluster_name:"{print $2; exit}' "$COROSYNC_CONF"
+}
+
+cluster_nodes() {
+  [ -f "$COROSYNC_CONF" ] && awk '$1=="nodelist"{f=1} f && $1=="name:"{print $2}' "$COROSYNC_CONF"
+}
+
+require_cluster() {
+  [ -f "$COROSYNC_CONF" ] || die "This node is not in a cluster. Run: $PROG -create NAME"
+  CL=$(cluster_name)
+  if [ -n "${OPT[cluster]:-}" ] && [ "${OPT[cluster]}" != "$CL" ]; then
+    die "This node belongs to cluster '$CL', not '${OPT[cluster]}'"
+  fi
+  mapfile -t NODES < <(cluster_nodes)
+}
+
+require_running() {
+  require_cluster
+  ((DRYRUN)) && return 0
+  crm_mon -1 >/dev/null 2>&1 || die "Cluster '$CL' is not running on this node. Run: $PROG -start"
+}
+
+res_exists() { crm_resource --resource "$1" --query-xml >/dev/null 2>&1; }
+
+wait_settle() {
+  ((DRYRUN)) && return 0
+  msg "Waiting for the cluster to settle (max ${WAIT}s)..."
+  crm_resource --wait --timeout="${WAIT}s" || warn "Cluster did not settle in ${WAIT}s - check: $PROG -status"
+}
+
+STATE_KEYS=(CLUSTER PREFIX NODEMAP SHARED_DEV VG LV MOUNT FSNAME JOURNALS)
+load_state() {
+  CLUSTER="" PREFIX="" NODEMAP="" SHARED_DEV="" VG="" LV="" MOUNT="" FSNAME="" JOURNALS=0
+  # shellcheck disable=SC1090
+  [ -f "$STATE_FILE" ] && . "$STATE_FILE"
+  return 0
+}
+
+save_state() {
+  local k
+  if ((DRYRUN)); then msg "[dry-run] update $STATE_FILE"; return 0; fi
+  mkdir -p "$CONF_DIR"
+  for k in "${STATE_KEYS[@]}"; do printf '%s=%q\n' "$k" "${!k:-}"; done > "$STATE_FILE"
+}
+
+push_state() {
+  local n
+  for n in "${NODES[@]}" "$@"; do
+    is_local "$n" && continue
+    rrun "$n" mkdir -p "$CONF_DIR"
+    rcopy "$STATE_FILE" "$n" "$STATE_FILE"
+  done
+}
+
+# Nodes an action targets: positional args > -nodes > -all > this node
+target_nodes() {
+  if ((${#ARGS[@]})); then printf '%s\n' "${ARGS[@]}"
+  elif [ -n "${OPT[nodes]:-}" ]; then printf '%s\n' ${OPT[nodes]}
+  elif ((ALL)); then require_cluster; printf '%s\n' "${NODES[@]}"
+  else hostname -s; fi
+}
+
+need_args() { ((${#ARGS[@]} >= $1)) || die "$2"; }
+need_opt()  { [ -n "${OPT[$1]:-}" ] || die "Option -$1 is required. See: $PROG -help"; }
+
+valid_id() {
+  [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]] || die "'$1' is not a valid name (letters, digits, _ . - ; must not start with a digit)"
+}
+
+# ---------------------------------------------------------------------------
+# Automatic node names (NODEMAP="1=IP 2=IP ..." -> node1 node2 ...)
+# ---------------------------------------------------------------------------
+map_ip()       { local e; for e in $NODEMAP; do [ "${e%%=*}" = "$1" ] && { echo "${e#*=}"; return; }; done; return 0; }
+map_num_of_ip(){ local e; for e in $NODEMAP; do [ "${e#*=}" = "$1" ] && { echo "${e%%=*}"; return; }; done; return 0; }
+map_names()    { local e; for e in $NODEMAP; do echo "${PREFIX}${e%%=*}"; done; }
+map_ips()      { local e; for e in $NODEMAP; do echo "${e#*=}"; done; }
+map_next()     { local e m=0; for e in $NODEMAP; do (( ${e%%=*} > m )) && m=${e%%=*}; done; echo $(( m + 1 )); }
+map_remove()   { local e out=""; for e in $NODEMAP; do [ "${e%%=*}" = "$1" ] || out+="${out:+ }$e"; done; NODEMAP=$out; }
+
+# node name or IP -> node name (for clusters with automatic names)
+to_name() {
+  local n=$1 num
+  if is_ip "$n" && [ -n "$NODEMAP" ]; then
+    num=$(map_num_of_ip "$n")
+    [ -n "$num" ] || die "$n is not a node of cluster ${CLUSTER:-$CL}"
+    echo "${PREFIX}${num}"
+  else
+    echo "$n"
+  fi
+}
+
+hosts_block() {
+  local e
+  echo "$HOSTS_BEGIN (cluster ${CLUSTER:-$CL}) - managed by $PROG, do not edit"
+  for e in $NODEMAP; do printf '%-16s %s\n' "${e#*=}" "${PREFIX}${e%%=*}"; done
+  echo "$HOSTS_END"
+}
+
+# Rewrite the managed block in /etc/hosts on one node (reached by IP).
+# Other lines for the same IPs or names are removed (a backup is kept).
+write_hosts() {
+  local reach=$1 block names ips
+  block=$(hosts_block)
+  names=$(map_names | paste -sd' ')
+  ips=$(map_ips | paste -sd' ')
+  rsh "$reach" "set -e
+f=/etc/hosts
+cp -a \$f \$f.vmexcluster.bak
+awk -v ips=$(printf %q "$ips") -v names=$(printf %q "$names") '
+  BEGIN { n = split(ips, a, \" \"); for (i = 1; i <= n; i++) ip[a[i]] = 1
+          n = split(names, b, \" \"); for (i = 1; i <= n; i++) nm[b[i]] = 1 }
+  /^$HOSTS_BEGIN/ { skip = 1; next }
+  /^$HOSTS_END/   { skip = 0; next }
+  skip            { next }
+  (\$1 in ip)     { next }
+  /^[[:space:]]*#/ || NF < 2 { print; next }
+  { out = \$1; hit = 0
+    for (i = 2; i <= NF; i++) { if (\$i in nm) hit = 1; else out = out \" \" \$i }
+    if (!hit) print; else if (split(out, t, \" \") > 1) print out }
+' \$f > \$f.new
+printf '%s\n' $(printf %q "$block") >> \$f.new
+cat \$f.new > \$f && rm -f \$f.new"
+}
+
+# Collect SSH host keys for all names and IPs and give every node the same list
+# Remove every known_hosts entry for the given names/IPs (plain and hashed)
+forget_host_keys() {
+  local kh=$1; shift
+  [ -f "$kh" ] || return 0
+  awk -v hs="$*" '
+    BEGIN { n = split(hs, a, " "); for (i = 1; i <= n; i++) del[a[i]] = 1 }
+    /^[ \t]*(#|$)/ { print; next }
+    { k = split($1, names, ","); drop = 0
+      for (i = 1; i <= k; i++) { h = names[i]; gsub(/^\[|\]:[0-9]+$/, "", h); if (h in del) drop = 1 }
+      if (!drop) print }' "$kh" > "$kh.tmp" && cat "$kh.tmp" > "$kh" && rm -f "$kh.tmp"
+  if command -v ssh-keygen >/dev/null 2>&1; then     # hashed entries (|1|...)
+    local h; for h in "$@"; do ssh-keygen -R "$h" -f "$kh" >/dev/null 2>&1 || true; done
+    rm -f "$kh.old"
+  fi
+}
+
+# Host key of the server at IP, written as "name,ip type key"
+scan_host_key() {
+  ssh-keyscan -q "$2" 2>/dev/null | awk -v h="$1,$2" '$1 !~ /^#/ && NF >= 3 {$1 = h; print}' || true
+}
+
+# Arguments: extra (old) names/IPs whose keys must be forgotten
+refresh_known_hosts() {
+  local hosts ip h kh=/root/.ssh/known_hosts
+  mapfile -t hosts < <(map_names; map_ips)
+  step "SSH host keys for: ${hosts[*]}"
+  if ((DRYRUN)); then msg "[dry-run] replace SSH host keys for ${hosts[*]} $* (all nodes)"; return 0; fi
+  mkdir -p -m 0700 /root/.ssh; touch "$kh"
+  # forget old keys first: an IP or name may now belong to another server
+  forget_host_keys "$kh" "${hosts[@]}" "$@"
+  local e
+  for e in $NODEMAP; do
+    scan_host_key "${PREFIX}${e%%=*}" "${e#*=}" >> "$kh"
+  done
+  sort -u "$kh" -o "$kh"
+  chmod 644 "$kh"
+  for ip in $(map_ips); do
+    is_local "$ip" && continue
+    rcopy /root/.ssh/known_hosts "$ip" /root/.ssh/known_hosts
+  done
+}
+
+sync_hosts() {
+  local e
+  for e in $NODEMAP; do
+    step "/etc/hosts on ${PREFIX}${e%%=*} (${e#*=})"
+    write_hosts "${e#*=}"
+  done
+  refresh_known_hosts
+}
+
+# Set hostnames for the given node numbers, then update /etc/hosts everywhere
+name_nodes() {
+  local num ip
+  for num in "$@"; do
+    ip=$(map_ip "$num")
+    step "Hostname ${PREFIX}${num} on $ip"
+    rrun "$ip" hostnamectl set-hostname "${PREFIX}${num}"
+    rsh "$ip" "systemctl is-enabled -q pcsd 2>/dev/null && systemctl restart pcsd || true"
+  done
+  sync_hosts
+}
+
+# Jumbo frames: if the interface MTU is above 1500, full-size packets must pass
+# (prints a line, returns 1 if large packets are dropped)
+mtu_check() {
+  local n=$1 ip=$2 dev mtu size
+  dev=$(route_info "$ip" | awk '{print $1}')
+  [ -n "$dev" ] && [ -r "/sys/class/net/$dev/mtu" ] || return 0
+  mtu=$(cat "/sys/class/net/$dev/mtu")
+  ((mtu > 1500)) || return 0
+  size=$((mtu - 28))
+  if ping -M do -s "$size" -c 2 -W 2 "$ip" >/dev/null 2>&1; then
+    printf '  [ OK ] %s: jumbo frames pass (MTU %s on %s)\n' "$n" "$mtu" "$dev"
+    return 0
+  fi
+  printf '  [FAIL] %s: MTU %s on %s, but full-size packets to %s are dropped\n' "$n" "$mtu" "$dev" "$ip"
+  printf '         small requests work, larger ones hang (pcs: "Connection timeout ... 0 bytes received").\n'
+  printf '         Fix: same MTU end to end - enable jumbo frames on the switch for this path,\n'
+  printf '         or set MTU 1500 on %s on every host: nmcli connection modify <conn> 802-3-ethernet.mtu 1500\n' "$dev"
+  return 1
+}
+
+# Before pcs talks to the nodes: pcsd up on port 2224 and the network path OK.
+# Arguments: "name=ip" pairs.
+pcs_preflight() {
+  local e n ip bad=0 i code
+  ((DRYRUN)) && { msg "[dry-run] pre-flight: pcsd and network path on ${*%%=*}"; return 0; }
+  step "Pre-flight: pcsd and network path"
+  for e in "$@"; do
+    n=${e%%=*}; ip=${e#*=}
+    if is_local "$ip"; then
+      if systemctl is-active -q pcsd; then printf '  [ OK ] %s: pcsd running (this host)\n' "$n"
+      else printf '  [FAIL] %s: pcsd not running - systemctl enable --now pcsd\n' "$n"; bad=1; fi
+      continue
+    fi
+    for ((i = 0; i < 15; i++)); do tcp_open "$ip" 2224 && break; sleep 2; done
+    if ! tcp_open "$ip" 2224; then
+      printf '  [FAIL] %s: pcsd port 2224 not reachable on %s\n' "$n" "$ip"
+      printf '         on %s: systemctl enable --now pcsd; firewall-cmd --permanent --add-service=high-availability; firewall-cmd --reload\n' "$n"
+      bad=1; continue
+    fi
+    code=$(curl -sk --max-time 10 -o /dev/null -w '%{http_code}' "https://$ip:2224/remote/status" 2>/dev/null || true)
+    if [[ $code =~ ^[1-5][0-9][0-9]$ ]]; then printf '  [ OK ] %s: pcsd answers on %s:2224\n' "$n" "$ip"
+    else printf '  [FAIL] %s: port 2224 open but pcsd does not answer (TLS/HTTP) - systemctl restart pcsd on %s\n' "$n" "$n"; bad=1; fi
+    mtu_check "$n" "$ip" || bad=1
+  done
+  ((bad == 0)) || die "Pre-flight failed - fix the [FAIL] items above, then run the command again"
+}
+
+pcs_setup_failed() {
+  msg ""
+  msg "pcs cluster setup failed. Common causes:"
+  msg "  - 'Connection timeout ... 0 bytes received': large packets dropped between the"
+  msg "    hosts (MTU/jumbo frames) or pcsd stuck - check: journalctl -u pcsd -n 50 on that node"
+  msg "  - nodes on the SAN (iSCSI) network: use the management IPs for the cluster"
+  msg "Before trying again, clean up on every node: pcs cluster destroy"
+  die "Cluster not created"
+}
+
+# Make sure this node can SSH as root to all given nodes; set it up if not
+ensure_trust() {
+  local n missing=0
+  ((DRYRUN)) && return 0
+  for n in "$@"; do
+    is_local "$n" && continue
+    ssh "${SSH_OPTS[@]}" "root@$n" true 2>/dev/null || missing=1
+  done
+  ((missing)) || return 0
+  [ -r /dev/tty ] || die "No root SSH trust to all nodes. Run: $PROG -onboard $*"
+  step "Root SSH trust is missing - setting it up (root password of each node needed once)"
+  sshtrust_nodes "$@"
+}
+
+# ---------------------------------------------------------------------------
+# Node preparation
+# ---------------------------------------------------------------------------
+prereq_local() {
+  local LIVE KVER f
+  [ -d /run/systemd/system ] && LIVE=1 || LIVE=0
+
+  local FEDVER
+  FEDVER=$(rpm -E %fedora 2>/dev/null || echo 0)
+  if [[ $FEDVER =~ ^[0-9]+$ ]] && (( FEDVER > 0 && FEDVER <= ARCHIVE_MAX_RELEASE )); then
+    step "Repositories (Fedora $FEDVER is end of life: using the archive)"
+    for f in /etc/yum.repos.d/fedora.repo /etc/yum.repos.d/fedora-updates.repo; do
+      if [ -f "$f" ]; then
+        run sed -i -e 's|^metalink=|#metalink=|' \
+          -e "s|^#\?baseurl=http://download.example/pub/fedora/linux|baseurl=${ARCHIVE}|" "$f"
+      fi
+    done
+  else
+    step "Repositories (Fedora $FEDVER: normal mirrors, no change)"
+  fi
+  if [ -f /etc/yum.repos.d/fedora-cisco-openh264.repo ]; then
+    run sed -i 's/^enabled=1/enabled=0/' /etc/yum.repos.d/fedora-cisco-openh264.repo
+  fi
+  run dnf -y makecache
+
+  step "Packages (kernel-modules-extra must match the newest kernel: gfs2, dlm)"
+  KVER=$(rpm -q kernel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort -V | tail -1)
+  run dnf -y install @virtualization \
+    pcs pacemaker corosync fence-agents-all resource-agents \
+    iscsi-initiator-utils device-mapper-multipath \
+    lvm2 lvm2-lockd dlm gfs2-utils \
+    "kernel-modules-extra-${KVER}" \
+    ipmitool cockpit cockpit-machines policycoreutils-python-utils rsync \
+    bash-completion
+
+  step "Services"
+  local SERVICES=(pcsd.service cockpit.socket virtqemud.socket iscsid.service multipathd.service)
+  if ((LIVE)); then run systemctl enable --now "${SERVICES[@]}"
+  else run systemctl enable "${SERVICES[@]}"; fi
+
+  step "Firewall"
+  if ((LIVE)) && systemctl is-active -q firewalld; then
+    run firewall-cmd --permanent --add-service=high-availability
+    run firewall-cmd --permanent --add-service=cockpit
+    run firewall-cmd --permanent --add-port=49152-49215/tcp
+    run firewall-cmd --reload
+  else
+    run firewall-offline-cmd --add-service=high-availability
+    run firewall-offline-cmd --add-service=cockpit
+    run firewall-offline-cmd --add-port=49152-49215/tcp
+  fi
+
+  step "iSCSI initiator name"
+  if ! grep -q '^InitiatorName=' /etc/iscsi/initiatorname.iscsi 2>/dev/null; then
+    if ((DRYRUN)); then msg "[dry-run] generate /etc/iscsi/initiatorname.iscsi"
+    else echo "InitiatorName=$(iscsi-iname)" > /etc/iscsi/initiatorname.iscsi; fi
+  fi
+  cat /etc/iscsi/initiatorname.iscsi 2>/dev/null || true
+
+  step "Multipath (default config; add aliases with -mpathalias)"
+  [ -f /etc/multipath.conf ] || run mpathconf --enable
+  run mkdir -p /etc/multipath/conf.d
+
+  step "LVM lvmlockd"
+  run sed -i 's/^\s*#\?\s*use_lvmlockd =.*/use_lvmlockd = 1/' /etc/lvm/lvm.conf
+  grep -E '^\s*use_lvmlockd' /etc/lvm/lvm.conf || true
+
+  step "Power button ignored (fencing must be immediate)"
+  run mkdir -p /etc/systemd/logind.conf.d
+  if ((DRYRUN)); then msg "[dry-run] write /etc/systemd/logind.conf.d/50-fencing.conf"
+  else printf '[Login]\nHandlePowerKey=ignore\n' > /etc/systemd/logind.conf.d/50-fencing.conf; fi
+  if ((LIVE)); then run systemctl restart systemd-logind || true; fi
+
+  step "Directories and SELinux"
+  run mkdir -p "$DEF_MOUNT" "$VM_DIR" "$CONF_DIR"
+  if ! semanage fcontext -l 2>/dev/null | grep -q "^${DEF_MOUNT}(/\.\*)?"; then
+    run semanage fcontext -a -t virt_image_t "${DEF_MOUNT}(/.*)?"
+  fi
+  run restorecon -R "$DEF_MOUNT"
+
+  step "Cluster authorization (from: ${HAPASS_SRC:-?})"
+  if [ -n "$HAPASS" ]; then
+    save_hapass
+    if ((DRYRUN)); then msg "[dry-run] set cluster authorization"
+    else echo "hacluster:${HAPASS}" | chpasswd; msg "cluster authorization set"; fi
+  else
+    msg "No cluster authorization - run 'passwd hacluster' manually (same on all nodes)"
+  fi
+
+  step "Kernel modules"
+  if ((LIVE)) && [ "$(uname -r)" = "$KVER" ]; then
+    modprobe gfs2 && modprobe dlm && msg "gfs2/dlm modules OK"
+  else
+    msg "Reboot into kernel ${KVER}, then check: modprobe gfs2 && modprobe dlm"
+  fi
+
+  msg ""
+  msg "Manual per-server steps: hostname, /etc/hosts entries for every node,"
+  msg "br0 bridge for VM networking, then: $PROG -onboard <all nodes>"
+}
+
+act_installprereq() {
+  local nodes n
+  mapfile -t nodes < <(target_nodes)
+  get_hapass
+  if [ -z "$HAPASS" ]; then
+    HAPASS=$(gen_hapass); HAPASS_SRC="newly generated"
+    msg "No cluster authorization saved yet: generated a new one."
+  fi
+  msg "cluster authorization from: $HAPASS_SRC"
+  save_hapass   # this node always keeps it, even if it is not in the list
+  for n in "${nodes[@]}"; do
+    if is_local "$n"; then
+      step "=== Prerequisites on $n (local) ==="
+      prereq_local
+    else
+      step "=== Prerequisites on $n ==="
+      ssh_check "$n"
+      push_self "$n"
+      local flags=""
+      ((DRYRUN)) && flags+=" -dryrun"
+      if ((DRYRUN)); then
+        msg "[dry-run][$n] $REMOTE_BIN -installprereq$flags"
+      else
+        ssh "${SSH_OPTS[@]}" "root@$n" \
+          "IFS= read -r HACLUSTER_PASS; export HACLUSTER_PASS VMEX_NESTED=1; $REMOTE_BIN -installprereq$flags" <<<"$HAPASS"
+      fi
+    fi
+  done
+}
+
+checkprereq_local() {
+  local fail=0 KVER p s
+  chk() { local d=$1; shift; if "$@" >/dev/null 2>&1; then printf '  [ OK ] %s\n' "$d"; else printf '  [FAIL] %s\n' "$d"; fail=1; fi; }
+  KVER=$(rpm -q kernel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort -V | tail -1)
+  msg "Node $(hostname -s):"
+  for p in pcs pacemaker corosync fence-agents-all resource-agents iscsi-initiator-utils \
+           device-mapper-multipath lvm2 lvm2-lockd dlm gfs2-utils libvirt-daemon-kvm; do
+    chk "package $p" rpm -q "$p"
+  done
+  chk "package kernel-modules-extra-$KVER" rpm -q "kernel-modules-extra-$KVER"
+  for s in pcsd.service virtqemud.socket iscsid.service multipathd.service; do
+    chk "service $s enabled" systemctl is-enabled "$s"
+  done
+  if systemctl is-active -q firewalld; then
+    chk "firewall high-availability" firewall-cmd --query-service=high-availability
+    chk "firewall migration ports" firewall-cmd --query-port=49152-49215/tcp
+  fi
+  chk "iSCSI initiator name" grep -q '^InitiatorName=' /etc/iscsi/initiatorname.iscsi
+  chk "multipath.conf" test -f /etc/multipath.conf
+  chk "use_lvmlockd = 1" grep -Eq '^\s*use_lvmlockd\s*=\s*1' /etc/lvm/lvm.conf
+  chk "gfs2 module available" modinfo -k "$KVER" gfs2
+  chk "dlm module available" modinfo -k "$KVER" dlm
+  chk "power button ignored" test -f /etc/systemd/logind.conf.d/50-fencing.conf
+  chk "$DEF_MOUNT exists" test -d "$DEF_MOUNT"
+  chk "$VM_DIR exists" test -d "$VM_DIR"
+  chk "cluster authorization set" bash -c "passwd -S hacluster | awk '{exit \$2!=\"PS\"}'"
+  if [ "$(uname -r)" != "$KVER" ]; then printf '  [WARN] running kernel %s, newest is %s - reboot\n' "$(uname -r)" "$KVER"; fi
+  return $fail
+}
+
+act_checkprereq() {
+  local nodes n rc=0
+  mapfile -t nodes < <(target_nodes)
+  for n in "${nodes[@]}"; do
+    if is_local "$n"; then checkprereq_local || rc=1
+    else
+      ssh_check "$n"; push_self "$n"
+      ssh "${SSH_OPTS[@]}" "root@$n" "$REMOTE_BIN -checkprereq" || rc=1
+    fi
+  done
+  return $rc
+}
+
+# --- -validate --------------------------------------------------------------
+tcp_open() { timeout 3 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null; }
+
+# Reads "multipath -ll" output, prints "name wwid vendor paths active" per LUN
+mpath_parse() {
+  awk '
+    function flush() { if (name != "") print name, wwid, vendor, total, active }
+    /^[^ |`]/ && / dm-[0-9]+ / {
+      flush(); name = $1; wwid = $1; total = 0; active = 0; vendor = "?"
+      if ($2 ~ /^\(/) { wwid = $2; gsub(/[()]/, "", wwid) }
+      for (i = 1; i < NF; i++) if ($i ~ /^dm-[0-9]+$/) vendor = $(i + 1)
+      next }
+    / [0-9]+:[0-9]+:[0-9]+:[0-9]+ sd[a-z]+ / { total++; if (/ active ready /) active++ }
+    END { flush() }'
+}
+
+# Cluster and management interfaces must come back after a reboot
+validate_netpersist() {
+  local devs=() d ip con line auto file method saved live a ok
+  msg " Network (survives reboot)"
+  command -v nmcli >/dev/null 2>&1 || { v_warn "nmcli not available - not checked"; return; }
+  # cluster interface: the local address used by corosync
+  if [ -f "$COROSYNC_CONF" ]; then
+    for ip in $(awk '$1 == "ring0_addr:" {print $2}' "$COROSYNC_CONF"); do
+      local_ips | grep -qxF "$ip" || continue
+      d=$(ip -4 -o addr show 2>/dev/null | awk -v a="$ip" '{split($4, x, "/"); if (x[1] == a) print $2}')
+      [ -n "$d" ] && devs+=("$d")
+    done
+  fi
+  # management interface: the default route
+  d=$(ip -4 route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i + 1); exit}}')
+  [ -n "$d" ] && devs+=("$d")
+  # cabled interfaces without any address (e.g. management lost after a reboot)
+  local up
+  for up in $(ip -o link show up 2>/dev/null | awk -F': ' '$3 ~ /LOWER_UP/ && $2 !~ /^(lo|enp0s29u|usb|virbr|vnet|br-|docker)/ {sub(/@.*/, "", $2); print $2}'); do
+    ip -4 -o addr show dev "$up" 2>/dev/null | grep -q inet || \
+      v_warn "$up: link is up but it has no IPv4 address (lost at boot? check: nmcli connection show)"
+  done
+  ((${#devs[@]})) || { v_warn "no cluster or default-route interface found - not checked"; return; }
+  for d in $(printf '%s\n' "${devs[@]}" | sort -u); do
+    con=$(nmcli -g GENERAL.CONNECTION device show "$d" 2>/dev/null || true)
+    if [ -z "$con" ] || [ "$con" = "--" ]; then
+      v_fail "$d: no NetworkManager profile active - its address is lost at the next reboot"
+      continue
+    fi
+    line=$(nmcli -t -f NAME,AUTOCONNECT,FILENAME connection show --active 2>/dev/null | grep -F "$con:" | head -1 || true)
+    auto=$(cut -d: -f2 <<<"$line"); file=$(cut -d: -f3- <<<"$line")
+    method=$(nmcli -g ipv4.method connection show "$con" 2>/dev/null || true)
+    saved=$(nmcli -g ipv4.addresses connection show "$con" 2>/dev/null | tr ',' '\n' | sed 's/ //g; s#/.*##')
+    live=$(ip -4 -o addr show dev "$d" 2>/dev/null | awk '$0 !~ /dynamic/ {split($4, x, "/"); print x[1]}')
+    ok=1
+    if [[ $file == /run/* ]]; then v_fail "$d: profile '$con' is temporary ($file) - lost at reboot"; ok=0; fi
+    if [ "$auto" = no ]; then v_fail "$d: profile '$con' has autoconnect=no - not started at boot"; ok=0; fi
+    local ifn; ifn=$(nmcli -g connection.interface-name connection show "$con" 2>/dev/null || true)
+    if [ -n "$ifn" ] && [ "$ifn" != "$d" ]; then
+      v_fail "$d: profile '$con' is bound to '$ifn', not $d - after a reboot $d gets no address"
+      msg "         fix: nmcli connection modify '$con' connection.interface-name $d"; ok=0
+    fi
+    if [ "$method" = manual ]; then
+      for a in $live; do
+        grep -qxF "$a" <<<"$saved" || { v_fail "$d: $a is set but not saved in profile '$con' - lost at reboot"; ok=0; }
+      done
+    fi
+    ((ok)) && v_ok "$d: $(paste -sd' ' <<<"${live:-dhcp}") saved in profile '$con' (starts at boot)"
+  done
+}
+
+# vmexsanconnect's verdict for the node it runs on.
+# Prints the output (colours removed); returns 0 = ready, 1 = not ready, 2 = no vmexsanconnect
+SAN_READY_SCRIPT='command -v vmexsanconnect >/dev/null 2>&1 || exit 2
+out=$(timeout 180 vmexsanconnect -cluster-ready 2>&1 | sed "s/\x1b\[[0-9;]*m//g")
+printf "%s\n" "$out"
+printf "%s\n" "$out" | sed "s/[[:space:]]*\$//" | grep -qE "(^|[[:space:]])\[OK\] Ready for vmex cluster\$"'
+
+# Shared storage pools (vmexsp): locking, shared VG, pools
+validate_shared() {
+  local svg lt miss ids id fst nm reg
+  msg " Shared storage (vmexsp)"
+  if ! command -v vmexsp >/dev/null 2>&1; then
+    v_warn "vmexsp not installed - shared storage pools are made with vmexsp"; return 0
+  fi
+  if ! crm_mon -1 >/dev/null 2>&1; then
+    v_warn "cluster not running on this node - shared storage needs the cluster ($PROG -create / -start)"; return 0
+  fi
+  if ! res_exists locking-clone; then
+    v_warn "dlm/lvmlockd not set up - next: $PROG -setuplocking (needs fencing first)"; return 0
+  fi
+  if ! pgrep -x dlm_controld >/dev/null || ! pgrep -x lvmlockd >/dev/null; then
+    v_fail "locking-clone exists but dlm/lvmlockd is not running on this node - check: $PROG -status"; return 0
+  fi
+  v_ok "dlm and lvmlockd running (locking-clone)"
+  svg=$(vmexsp_shared_vg)
+  lt=$(vgs --noheadings -o lock_type "$svg" 2>/dev/null | tr -d ' ' || true)
+  if [ -z "$lt" ]; then
+    v_warn "no shared VG '$svg' on this node - first node: vmexsp -shared-init <SAN device>; others: vmexsp -shared-join <SAN device>"
+    return 0
+  fi
+  if [ "$lt" != dlm ]; then v_fail "VG $svg is not a dlm-locked shared VG (lock type: $lt)"; return 0; fi
+  miss=$(vgs --noheadings -o vg_missing_pv_count "$svg" 2>/dev/null | tr -d ' ' || true)
+  if [ -n "$miss" ] && [ "$miss" != 0 ]; then
+    v_fail "this node does not see $miss disk(s) of $svg - run: vmexsp -shared-join <SAN device>"
+  else
+    v_ok "shared VG $svg (size $(vgs --noheadings --units g -o vg_size "$svg" | tr -d ' '), free $(vgs --noheadings --units g -o vg_free "$svg" | tr -d ' '))"
+  fi
+  ids=$(lvs --noheadings -o lv_name "$svg" 2>/dev/null | tr -d ' ' | grep -E '^(storage|shared)[0-9]+$' || true)
+  if [ -z "$ids" ]; then
+    v_warn "no shared storage pool yet - on one node: vmexsp -create <Name> [size] -shared; on the others: vmexsp -sync"
+    return 0
+  fi
+  for id in $ids; do
+    nm=$(lvs --noheadings -o lv_tags "$svg/$id" 2>/dev/null | tr ',' '\n' | sed -n 's/^ *vmexname_//p' | head -1)
+    fst=$(findmnt -n -o FSTYPE --mountpoint "$STORAGES_DIR/$id" 2>/dev/null | head -1 || true)
+    if [ "$fst" != gfs2 ]; then
+      v_fail "shared pool ${nm:-$id} ($id) is not mounted on $STORAGES_DIR/$id - check: pcs resource status vmexsp-$id-fs-clone"
+      continue
+    fi
+    reg=$(virsh -c qemu:///system pool-list --all --name 2>/dev/null | while read -r p; do
+            [ -n "$p" ] && virsh -c qemu:///system pool-dumpxml "$p" 2>/dev/null | grep -q "<path>$STORAGES_DIR/$id</path>" && echo "$p"
+          done | head -1)
+    if [ -z "$reg" ]; then v_warn "shared pool ${nm:-$id} ($id) mounted but not a libvirt pool on this node - run: vmexsp -sync"
+    else v_ok "shared pool $reg ($id) mounted on $STORAGES_DIR/$id"; fi
+  done
+}
+
+validate_san() {
+  local portals=() portal ip port cnt maps=0 name wwid vendor total active target
+  msg " SAN storage"
+  local sr src
+  sr=$(bash -c "$SAN_READY_SCRIPT" 2>&1) && src=0 || src=$?
+  case $src in
+    0) v_ok "vmexsanconnect: Ready for vmex cluster"
+       local wl
+       while IFS= read -r wl; do
+         v_warn "vmexsanconnect: $wl"
+       done < <(sed -n 's/^.*\[[Ww][Aa][Rr][Nn][Ii]*[Nn]*[Gg]*\] *//p' <<<"$sr") ;;
+    2) v_warn "vmexsanconnect not installed - SAN readiness checked by $PROG only" ;;
+    *) v_fail "vmexsanconnect: platform is NOT ready for vmex cluster"
+       grep -E '\[ ?(FAIL|WARN|ERROR)|ERROR|not ready' <<<"$sr" | head -8 | sed 's/^[[:space:]]*/         /' || true
+       msg "         details: vmexsanconnect -cluster-ready" ;;
+  esac
+  if ! command -v iscsiadm >/dev/null 2>&1; then v_fail "iscsiadm not installed - SAN not checked"; return; fi
+
+  if grep -q '^InitiatorName=' /etc/iscsi/initiatorname.iscsi 2>/dev/null; then
+    v_ok "initiator $(sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi)"
+  else
+    v_fail "no iSCSI initiator name in /etc/iscsi/initiatorname.iscsi"
+  fi
+
+  # Portals: discovered target records plus -portal
+  mapfile -t portals < <( { iscsiadm -m node 2>/dev/null | awk '{sub(/,.*/, "", $1); print $1}'
+                            [ -n "${OPT[portal]:-}" ] && echo "${OPT[portal]}"; true; } | sort -u)
+  if ((${#portals[@]} == 0)); then
+    v_fail "no iSCSI targets discovered - run vmexsanconnect or $PROG -iscsilogin"
+  fi
+  for portal in "${portals[@]}"; do
+    ip=${portal%:*}; port=3260; [[ $portal == *:* ]] && port=${portal##*:}
+    if tcp_open "$ip" "$port"; then v_ok "portal $ip:$port reachable"
+    else v_fail "portal $ip:$port NOT reachable (network/cable/array port)"; fi
+  done
+
+  # Sessions (logged in?)
+  cnt=$(iscsiadm -m session 2>/dev/null | grep -c '^tcp' || true)
+  if ((cnt == 0)); then
+    v_fail "not logged in to the SAN (no iSCSI sessions)"
+  else
+    while read -r _ _ portal target _; do
+      v_ok "logged in: ${portal%,*} -> $target"
+    done < <(iscsiadm -m session 2>/dev/null | grep '^tcp')
+    for portal in "${portals[@]}"; do
+      iscsiadm -m session 2>/dev/null | grep -q " ${portal%:*}:" || \
+        v_warn "portal $portal discovered but not logged in"
+    done
+    ((cnt >= 2)) || v_warn "only 1 iSCSI session - no redundancy if an array controller fails"
+  fi
+
+  # Multipath LUNs and paths
+  while read -r name wwid vendor total active; do
+    maps=$((maps + 1))
+    if ((active == 0)); then v_fail "LUN $name ($wwid, $vendor): no active path"
+    elif ((active < 2)); then v_warn "LUN $name ($wwid, $vendor): $active of $total path(s) active - single path"
+    else v_ok "LUN $name ($wwid, $vendor): $active of $total paths active"; fi
+  done < <(multipath -ll 2>/dev/null | mpath_parse)
+  if ((maps == 0)); then
+    if ((cnt > 0)); then v_fail "logged in but no LUN visible - map a volume to this host on the array"
+    else v_fail "no SAN LUN visible"; fi
+  fi
+
+  # Cluster shared device (after -setupstorage)
+  load_state
+  if [ -n "$SHARED_DEV" ]; then
+    if [ -b "$SHARED_DEV" ]; then v_ok "cluster shared device $SHARED_DEV present"
+    else v_fail "cluster shared device $SHARED_DEV missing"; fi
+    if mountpoint -q "$MOUNT"; then v_ok "$MOUNT mounted"
+    else v_warn "$MOUNT not mounted (cluster not running here?)"; fi
+  fi
+}
+
+validate_local() {
+  local F=0 W=0 P=0 krun knew vendor kvmmod m mode hint p c
+  v_ok()   { printf '  [ OK ] %s\n' "$*"; P=$((P + 1)); }
+  v_warn() { printf '  [WARN] %s\n' "$*"; W=$((W + 1)); }
+  v_fail() { printf '  [FAIL] %s\n' "$*"; F=$((F + 1)); }
+
+  krun=$(uname -r)
+  knew=$(rpm -q kernel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null | sort -V | tail -1)
+  msg "Node $(hostname -s) - kernel $krun"
+
+  msg " Kernel"
+  if [ -n "$knew" ] && [ "$knew" != "$krun" ]; then
+    v_warn "running $krun but newest installed is $knew - reboot to use it"
+  else
+    v_ok "running the newest installed kernel"
+  fi
+  if rpm -q "kernel-modules-extra-$krun" >/dev/null 2>&1; then
+    v_ok "kernel-modules-extra-$krun installed (provides dlm, gfs2)"
+  else
+    v_fail "kernel-modules-extra-$krun missing - dnf install kernel-modules-extra-$krun"
+  fi
+
+  msg " CPU virtualization"
+  if grep -qw vmx /proc/cpuinfo; then vendor=intel; kvmmod=kvm_intel
+  elif grep -qw svm /proc/cpuinfo; then vendor=amd; kvmmod=kvm_amd
+  else vendor=""; kvmmod=""; fi
+  if [ -n "$vendor" ]; then v_ok "CPU supports hardware virtualization ($vendor)"
+  else v_fail "no vmx/svm CPU flag - enable VT-x/AMD-V in the BIOS/UEFI"; fi
+  if [ -c /dev/kvm ]; then v_ok "/dev/kvm present"
+  else v_fail "/dev/kvm missing - KVM module not loaded or virtualization disabled"; fi
+
+  msg " Kernel modules (running kernel)"
+  # name:mode   mode = loaded (must be loaded now) | avail (must be loadable)
+  local MODS=("kvm:loaded")
+  [ -n "$kvmmod" ] && MODS+=("$kvmmod:loaded")
+  MODS+=("vhost_net:avail" "tun:avail" "bridge:avail" "dm_multipath:avail" "dm_service_time:avail"
+         "iscsi_tcp:avail" "dlm:avail" "gfs2:avail")
+  systemctl is-active -q multipathd 2>/dev/null && MODS=("${MODS[@]/dm_multipath:avail/dm_multipath:loaded}")
+  for m in "${MODS[@]}"; do
+    mode=${m#*:}; m=${m%%:*}
+    case $m in
+      dlm|gfs2) hint="dnf install kernel-modules-extra-$krun" ;;
+      kvm*)     hint="enable virtualization in the BIOS, then: modprobe $m" ;;
+      *)        hint="dnf reinstall kernel-modules-core-$krun" ;;
+    esac
+    if [ -d "/sys/module/$m" ]; then
+      v_ok "$m loaded"
+    elif modprobe -n -q "$m" 2>/dev/null; then
+      if [ "$mode" = loaded ]; then v_fail "$m available but NOT loaded - modprobe $m"
+      else v_ok "$m available (loaded when needed)"; fi
+    else
+      v_fail "$m not available for $krun - $hint"
+    fi
+  done
+
+  msg " Packages"
+  for p in qemu-kvm libvirt-daemon-kvm pcs pacemaker corosync fence-agents-all resource-agents \
+           iscsi-initiator-utils device-mapper-multipath lvm2 lvm2-lockd dlm gfs2-utils; do
+    if rpm -q "$p" >/dev/null 2>&1; then v_ok "$p"; else v_fail "$p not installed - $PROG -installprereq"; fi
+  done
+  rpm -q bash-completion >/dev/null 2>&1 || v_warn "bash-completion not installed (Tab completion)"
+
+  msg " Commands"
+  for c in pcs crm_mon corosync-cfgtool virsh iscsiadm multipath lvmlockctl dlm_tool \
+           mkfs.gfs2 gfs2_jadd fence_ipmilan ipmitool; do
+    if command -v "$c" >/dev/null 2>&1; then v_ok "$c"; else v_fail "$c not found"; fi
+  done
+
+  msg " Cluster authorization"
+  if [ -s "$HAPASS_FILE" ]; then
+    if [ "$(stat -c '%a %U' "$HAPASS_FILE")" = "600 root" ]; then v_ok "cluster authorization saved ($AUTH_SHOW, 0600 root)"
+    else v_warn "cluster authorization file permissions are $(stat -c '%a %U' "$HAPASS_FILE") - should be 600 root"; fi
+  else
+    v_warn "no cluster authorization saved - created by $PROG -installprereq"
+  fi
+
+  validate_netpersist
+
+  msg " Time"
+  local ntpon ntpsync
+  ntpon=$(timedatectl show -p NTP --value 2>/dev/null || true)
+  ntpsync=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
+  if [ "$ntpsync" = yes ]; then v_ok "clock synchronised (NTP)"
+  elif [ "$ntpon" = no ]; then v_warn "NTP is off - cluster nodes need the same time: timedatectl set-ntp true"
+  else v_warn "NTP is on but the clock is not synchronised - check: chronyc sources (NTP server reachable?)"; fi
+
+  msg " BMC (IMM)"
+  if ! command -v ipmitool >/dev/null 2>&1; then
+    v_fail "ipmitool not installed (run $PROG -installprereq)"
+  else
+    local lp bip bsrc bmac
+    modprobe -qa ipmi_devintf ipmi_si 2>/dev/null || true
+    lp=$(ipmitool lan print 1 2>/dev/null || true)
+    if [ -z "$lp" ]; then
+      v_fail "no local access to the BMC (ipmitool lan print 1 failed)"
+    else
+      bip=$(awk -F': ' '/^IP Address +:/ {print $2}' <<<"$lp")
+      bsrc=$(awk -F': ' '/^IP Address Source/ {print $2}' <<<"$lp")
+      bmac=$(awk -F': ' '/^MAC Address/ {print $2}' <<<"$lp")
+      if [ -z "$bip" ] || [ "$bip" = 0.0.0.0 ]; then
+        v_fail "BMC has no IP address (MAC $bmac) - set one: ipmitool lan set 1 ipsrc static; ... ipaddr; ... netmask; ... defgw ipaddr"
+      else
+        v_ok "BMC IP $bip ($bsrc, MAC $bmac) - reachability is tested from the other nodes"
+      fi
+    fi
+    if crm_mon -1 >/dev/null 2>&1; then
+      if res_exists "fence_$(hostname -s)"; then v_ok "fence device fence_$(hostname -s) configured"
+      else v_warn "no fence device for $(hostname -s): $PROG -addfence $(hostname -s) -ipaddr ${bip:-<BMC IP>} -user USERID"; fi
+    fi
+  fi
+
+  if ((NOSAN)); then msg " SAN storage: skipped (-nosan)"; else validate_san; validate_shared; fi
+
+  msg " Result $(hostname -s): $P OK, $W warning(s), $F failed"
+  ((F == 0))
+}
+
+act_validate() {
+  local nodes n r rc=0 flags="" wwid all common dup tmp line p w f name
+  local xo=0 xw=0 xf=0 tp=0 tw=0 tf=0 ok_nodes=()
+  declare -A LUNS=() IQN=() SP=() SW=() SF=() SN=() SR=()
+  if ((${#ARGS[@]} == 0)) && [ -z "${OPT[nodes]:-}" ] && [ -z "${VMEX_NESTED:-}" ] && [ -f "$COROSYNC_CONF" ]; then
+    require_cluster; nodes=("${NODES[@]}")      # in a cluster: every node by default
+  else
+    mapfile -t nodes < <(target_nodes)
+  fi
+  [ -n "${OPT[portal]:-}" ] && flags+=" -portal $(printf %q "${OPT[portal]}")"
+  ((NOSAN)) && flags+=" -nosan"
+  tmp=$(mktemp)
+
+  for n in "${nodes[@]}"; do
+    echo
+    : > "$tmp"
+    set +e
+    if is_local "$n"; then
+      validate_local 2>&1 | tee "$tmp"; r=${PIPESTATUS[0]}
+    elif ! ssh "${SSH_OPTS[@]}" "root@$n" true 2>/dev/null; then
+      msg "=== $n ==="
+      net_check "$n" 2>&1 | tee "$tmp"
+      grep -q 'FAIL' "$tmp" || msg "  [FAIL] $n: no root SSH trust - run: $PROG -onboard $(hostname -s) $n" | tee -a "$tmp"
+      r=1; SR[$n]="UNREACHABLE"
+    else
+      push_self "$n" >/dev/null 2>&1
+      ssh "${SSH_OPTS[@]}" "root@$n" "VMEX_NESTED=1 $REMOTE_BIN -validate$flags" 2>&1 | tee "$tmp"; r=${PIPESTATUS[0]}
+    fi
+    set -e
+    ((r == 0)) || rc=1
+    line=$(grep -o 'Result [^:]*: [0-9]* OK, [0-9]* warning(s), [0-9]* failed' "$tmp" | tail -1 || true)
+    if [ -n "$line" ]; then
+      read -r name p w f <<<"$(sed 's/^Result \([^:]*\): \([0-9]*\) OK, \([0-9]*\) warning(s), \([0-9]*\) failed/\1 \2 \3 \4/' <<<"$line")"
+      ok_nodes+=("$n")
+    else
+      name=""; p=$(grep -c '\[ OK \]' "$tmp" || true); w=$(grep -c '\[WARN\]' "$tmp" || true); f=$(grep -c '\[FAIL\]' "$tmp" || true)
+      ((f > 0)) || f=1
+    fi
+    SP[$n]=$p SW[$n]=$w SF[$n]=$f SN[$n]=$name
+    tp=$((tp + p)) tw=$((tw + w)) tf=$((tf + f))
+    if [ -z "${SR[$n]:-}" ] && ! ((NOSAN)) && ((${#nodes[@]} > 1)); then
+      LUNS[$n]=$(rq "$n" "multipath -ll 2>/dev/null" 2>/dev/null | mpath_parse | awk '{print $2}' | sort -u | paste -sd' ')
+      IQN[$n]=$(rq "$n" "sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi" 2>/dev/null || true)
+    fi
+  done
+
+  rm -f "$tmp"
+
+  # Checks across the reachable nodes
+  if ! ((NOSAN)) && ((${#ok_nodes[@]} > 1)); then
+    echo
+    msg "Across nodes (${ok_nodes[*]})"
+    dup=$(for n in "${ok_nodes[@]}"; do echo "${IQN[$n]}"; done | grep . | sort | uniq -d || true)
+    if [ -n "$dup" ]; then
+      msg "  [FAIL] same iSCSI initiator name on several nodes: $dup"
+      msg "         (cloned install) fix on one node, then log in again:"
+      msg "         echo \"InitiatorName=\$(iscsi-iname)\" > /etc/iscsi/initiatorname.iscsi; systemctl restart iscsid"
+      xf=$((xf + 1))
+    else
+      msg "  [ OK ] iSCSI initiator names are unique"; xo=$((xo + 1))
+    fi
+    common=""
+    for wwid in ${LUNS[${ok_nodes[0]}]}; do
+      all=1
+      for n in "${ok_nodes[@]:1}"; do [[ " ${LUNS[$n]} " == *" $wwid "* ]] || all=0; done
+      ((all)) && common+="${common:+ }$wwid"
+    done
+    if [ -n "$common" ]; then
+      for wwid in $common; do msg "  [ OK ] LUN $wwid visible on all nodes (shared)"; xo=$((xo + 1)); done
+    else
+      msg "  [FAIL] no LUN is visible on all nodes - map the same volume to every host on the array"
+      xf=$((xf + 1))
+    fi
+    for n in "${ok_nodes[@]}"; do
+      for wwid in ${LUNS[$n]}; do
+        [[ " $common " == *" $wwid "* ]] || { msg "  [WARN] LUN $wwid only visible on $n"; xw=$((xw + 1)); }
+      done
+    done
+    ((xf == 0)) || rc=1
+    tp=$((tp + xo)) tw=$((tw + xw)) tf=$((tf + xf))
+  fi
+
+  # Clocks of the nodes must agree
+  if ((${#ok_nodes[@]} > 1)); then
+    local t tmin="" tmax=""
+    echo
+    msg "Time across nodes"
+    for n in "${ok_nodes[@]}"; do
+      t=$(rq "$n" "date +%s" 2>/dev/null || true)
+      [[ $t =~ ^[0-9]+$ ]] || continue
+      if [ -z "$tmin" ] || ((t < tmin)); then tmin=$t; fi
+      if [ -z "$tmax" ] || ((t > tmax)); then tmax=$t; fi
+    done
+    if [ -n "$tmin" ] && ((tmax - tmin > 2)); then
+      msg "  [WARN] clocks differ by $((tmax - tmin)) s between the nodes - enable NTP on all nodes"; xw=$((xw + 1)); tw=$((tw + 1))
+    else
+      msg "  [ OK ] clocks of the nodes agree"; xo=$((xo + 1)); tp=$((tp + 1))
+    fi
+  fi
+
+  # BMC (IMM): each node's BMC tested from the other nodes
+  if ((${#ok_nodes[@]} > 1)); then
+    echo
+    msg "BMC (IMM) - tested from the other nodes"
+    bmc_check "${ok_nodes[@]}"
+    xo=$((xo + BX_OK)) xw=$((xw + BX_WARN)) xf=$((xf + BX_FAIL))
+    tp=$((tp + BX_OK)) tw=$((tw + BX_WARN)) tf=$((tf + BX_FAIL))
+    ((BX_FAIL == 0)) || rc=1
+  fi
+
+  # Summary (not when called by another node: that node prints it)
+  if [ -z "${VMEX_NESTED:-}" ]; then
+    local label res
+    status() { if (($1 > 0)); then echo FAILED; elif (($2 > 0)); then echo "passed, with warnings"; else echo passed; fi; }
+    echo
+    msg "==================== Validation summary ===================="
+    printf '%-28s %5s %5s %5s  %s\n' NODE OK WARN FAIL RESULT
+    for n in "${nodes[@]}"; do
+      label=$n; [ -n "${SN[$n]}" ] && [ "${SN[$n]}" != "$n" ] && label="$n (${SN[$n]})"
+      res=${SR[$n]:-$(status "${SF[$n]}" "${SW[$n]}")}
+      printf '%-28s %5s %5s %5s  %s\n' "$label" "${SP[$n]}" "${SW[$n]}" "${SF[$n]}" "$res"
+    done
+    if ((${#ok_nodes[@]} > 1)); then
+      printf '%-28s %5s %5s %5s  %s\n' "across nodes" "$xo" "$xw" "$xf" "$(status "$xf" "$xw")"
+    fi
+    msg "------------------------------------------------------------"
+    printf '%-28s %5s %5s %5s  %s\n' TOTAL "$tp" "$tw" "$tf" "$(status "$tf" "$tw")"
+    echo
+    if ((tf > 0)); then
+      msg "VALIDATION FAILED: $tf failed, $tw warning(s) - fix the [FAIL] items above"
+    elif ((tw > 0)); then
+      msg "VALIDATION PASSED with $tw warning(s)"
+    else
+      msg "VALIDATION PASSED"
+    fi
+    [ -n "${LOGFILE:-}" ] && msg "Log: $LOGFILE"
+  fi
+  ((tf == 0 && rc == 0))
+}
+
+act_onboard() {
+  local nodes
+  mapfile -t nodes < <(target_nodes)
+  sshtrust_nodes "${nodes[@]}"
+}
+
+sshtrust_nodes() {
+  local nodes=("$@") n key=/root/.ssh/id_ed25519
+  ((${#nodes[@]} >= 2)) || die "List all cluster nodes, e.g.: $PROG -onboard 10.10.10.151 10.10.10.150"
+  net_check_all "${nodes[@]}"
+  run mkdir -p -m 0700 /root/.ssh
+  [ -f "$key" ] || run ssh-keygen -q -t ed25519 -N '' -C "root@vmexcluster" -f "$key"
+
+  step "Copying public key (enter each node's root password once)"
+  for n in "${nodes[@]}"; do
+    is_local "$n" && continue
+    if ssh "${SSH_OPTS[@]}" -o StrictHostKeyChecking=accept-new "root@$n" true 2>/dev/null; then
+      msg "  $n: key already accepted"; continue
+    fi
+    if ! run ssh-copy-id -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -i "$key.pub" "root@$n"; then
+      msg ""
+      msg "Could not copy the key to $n. If the root password was right, root login with a"
+      msg "password is probably disabled (Fedora default). Allow it on $n for onboarding:"
+      msg "  echo 'PermitRootLogin yes' > /etc/ssh/sshd_config.d/01-vmexcluster.conf"
+      msg "  systemctl reload sshd"
+      msg "(After onboarding you can remove that file: key login keeps working.)"
+      die "Onboarding stopped at $n"
+    fi
+  done
+  if ! grep -qF "$(cat "$key.pub" 2>/dev/null)" /root/.ssh/authorized_keys 2>/dev/null; then
+    if ((DRYRUN)); then msg "[dry-run] add own key to authorized_keys"
+    else cat "$key.pub" >> /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys; fi
+  fi
+
+  step "Collecting host keys"
+  if ! ((DRYRUN)); then
+    { cat /root/.ssh/known_hosts 2>/dev/null; ssh-keyscan -q "${nodes[@]}" 2>/dev/null; } \
+      | sort -u > /root/.ssh/known_hosts.new
+    mv /root/.ssh/known_hosts.new /root/.ssh/known_hosts
+    chmod 644 /root/.ssh/known_hosts
+  fi
+
+  step "Distributing key pair and known_hosts (all nodes trust each other)"
+  for n in "${nodes[@]}"; do
+    is_local "$n" && continue
+    rrun "$n" mkdir -p -m 0700 /root/.ssh
+    rcopy "$key" "$n" "$key"
+    rcopy "$key.pub" "$n" "$key.pub"
+    rcopy /root/.ssh/known_hosts "$n" /root/.ssh/known_hosts
+    rrun "$n" chmod 600 "$key"
+  done
+
+  step "Verifying node-to-node SSH"
+  ((DRYRUN)) && return 0
+  local a b bad=0
+  for a in "${nodes[@]}"; do
+    for b in "${nodes[@]}"; do
+      [ "$a" = "$b" ] && continue
+      if rq "$a" "ssh -o BatchMode=yes -o ConnectTimeout=5 root@$b true" 2>/dev/null; then
+        msg "  $a -> $b OK"
+      else msg "  $a -> $b FAILED"; bad=1; fi
+    done
+  done
+  ((bad == 0)) || die "Some SSH paths failed (check /etc/hosts on every node)"
+}
+
+# ---------------------------------------------------------------------------
+# Cluster lifecycle
+# ---------------------------------------------------------------------------
+act_create() {
+  need_args 1 "Usage: $PROG -create NAME -nodes IP1 IP2 ... [-prefix node]"
+  local name=${ARGS[0]} nodes n found=0 named=0 i pcsnodes=()
+  [[ $name =~ ^[A-Za-z0-9_-]{1,32}$ ]] || die "Cluster name: 1-32 chars, letters/digits/_/-"
+  [ -f "$COROSYNC_CONF" ] && ! ((DRYRUN)) && die "This node already belongs to cluster '$(cluster_name)'"
+  if [ -n "${OPT[nodes]:-}" ]; then read -ra nodes <<<"${OPT[nodes]}"
+  elif ((${#ARGS[@]} > 1)); then nodes=("${ARGS[@]:1}")
+  else nodes=("$(hostname -s)"); fi
+
+  if is_ip "${nodes[0]}"; then
+    named=1
+    for n in "${nodes[@]}"; do
+      is_ip "$n" || die "Give either IP addresses (automatic names) or host names, not both"
+    done
+  else
+    for n in "${nodes[@]}"; do
+      is_ip "$n" && die "Give either IP addresses (automatic names) or host names, not both"
+    done
+  fi
+  [ -z "$(printf '%s\n' "${nodes[@]}" | sort | uniq -d)" ] || die "A node is listed twice"
+  for n in "${nodes[@]}"; do is_local "$n" && found=1; done
+  ((found)) || die "Run -create on one of the cluster nodes (one of its IPs must be in -nodes)"
+  need_hapass
+  load_state
+
+  if ((named)); then
+    PREFIX=${OPT[prefix]:-$DEF_PREFIX}
+    [[ $PREFIX =~ ^[a-z][a-z0-9-]{0,20}$ ]] || die "-prefix: lowercase letters, digits and -, starting with a letter"
+    CLUSTER=$name NODEMAP=""
+    i=1
+    for n in "${nodes[@]}"; do NODEMAP+="${NODEMAP:+ }$i=$n"; i=$((i + 1)); done
+    msg "Node names:"
+    for n in $NODEMAP; do msg "  ${PREFIX}${n%%=*}  ${n#*=}"; done
+
+    ensure_trust "${nodes[@]}"
+    for n in "${nodes[@]}"; do
+      ((DRYRUN)) || rq "$n" "rpm -q pcs >/dev/null" 2>/dev/null || \
+        die "Prerequisites missing on $n. Run: $PROG -installprereq $n"
+    done
+    name_nodes $(for n in $NODEMAP; do echo "${n%%=*}"; done)
+
+    step "Cluster authorization on all nodes"
+    for n in "${nodes[@]}"; do push_hapass "$n"; done
+
+    nodes=()
+    for n in $NODEMAP; do
+      nodes+=("${PREFIX}${n%%=*}")
+      pcsnodes+=("${PREFIX}${n%%=*}" "addr=${n#*=}")
+    done
+  else
+    CLUSTER=$name
+    pcsnodes=("${nodes[@]}")
+    step "Cluster authorization on all nodes"
+    for n in "${nodes[@]}"; do
+      if is_local "$n" || ((DRYRUN)) || ssh "${SSH_OPTS[@]}" "root@$n" true 2>/dev/null; then push_hapass "$n"
+      else warn "$n: no root SSH - its cluster authorization must already match"; fi
+    done
+  fi
+
+  local pairs=()
+  if ((named)); then
+    for n in $NODEMAP; do pairs+=("${PREFIX}${n%%=*}=${n#*=}"); done
+  else
+    for n in "${nodes[@]}"; do pairs+=("$n=$(getent ahostsv4 "$n" 2>/dev/null | awk 'NR==1{print $1}')"); done
+  fi
+  pcs_preflight "${pairs[@]}"
+
+  step "Authenticating nodes: ${nodes[*]}"
+  run pcs host auth "${pcsnodes[@]}" -u hacluster -p "$HAPASS"
+
+  step "Creating cluster $name"
+  run pcs cluster setup "$name" "${pcsnodes[@]}" --start --enable --wait="$WAIT" || pcs_setup_failed
+
+  step "Cluster defaults"
+  if ((DRYRUN)) || pcs property describe fencing-enabled >/dev/null 2>&1; then
+    run pcs property set fencing-enabled=true          # Pacemaker 3 name
+  else
+    run pcs property set stonith-enabled=true
+  fi
+  run pcs resource defaults update resource-stickiness=100
+
+  CL=$name; NODES=("${nodes[@]}")
+  save_state; push_state
+  for n in "${nodes[@]}"; do rrun "$n" mkdir -p "$VM_DIR"; done
+
+  msg ""
+  msg "Cluster '$name' created with nodes: ${nodes[*]}"
+  ((named)) && msg "(Hostnames changed: log in again to see the new name in the prompt.)"
+  msg "Next steps:"
+  msg "  1. Fencing for every node:  $PROG -addfence ${nodes[0]} -ipaddr <BMC IP> -user <user>   (check: $PROG -bmcstatus)"
+  msg "  2. Shared-disk locking:     $PROG -setuplocking"
+  if command -v vmexsp >/dev/null 2>&1; then
+    msg "  3. Shared storage pool:     vmexsp -shared-init / -shared-join / -create <Name> -shared"
+    msg "                              (after step 2, $PROG -setuplocking prints the exact commands)"
+  else
+    msg "  3. Shared storage:          $PROG -setupstorage -device /dev/mapper/<SAN volume>"
+  fi
+  msg "  4. VMs:                     $PROG -addvm <vm>   (VM disks on the shared pool)"
+  msg "Note: with stonith enabled and no fence devices, resources will not start."
+}
+
+act_destroy() {
+  require_cluster
+  confirm "This DESTROYS cluster '$CL' on nodes: ${NODES[*]}
+VMs managed by the cluster will be stopped. Disks and VM images are not touched." "$CL"
+  local nodes=("${NODES[@]}") n
+  run pcs cluster destroy --all
+  for n in "${nodes[@]}"; do rrun "$n" rm -f "$STATE_FILE" || true; done
+  msg "Cluster '$CL' destroyed. VM XML files remain in $VM_DIR (use 'virsh define' to restore)."
+}
+
+act_start() {
+  require_cluster
+  if ((${#ARGS[@]})); then run pcs cluster start "${ARGS[@]}" --wait="$WAIT"
+  else run pcs cluster start --all --wait="$WAIT"; fi
+}
+
+act_stop() {
+  require_cluster
+  if ((${#ARGS[@]})); then
+    confirm "Stop cluster services on ${ARGS[*]}? Their VMs will migrate or stop."
+    run pcs cluster stop "${ARGS[@]}"
+  else
+    confirm "Stop cluster '$CL' on ALL nodes? All clustered VMs will be shut down." "$CL"
+    run pcs cluster stop --all
+  fi
+}
+
+act_enable()  { require_cluster; if ((${#ARGS[@]})); then run pcs cluster enable "${ARGS[@]}"; else run pcs cluster enable --all; fi; }
+act_disable() { require_cluster; if ((${#ARGS[@]})); then run pcs cluster disable "${ARGS[@]}"; else run pcs cluster disable --all; fi; }
+
+act_status() {
+  require_cluster
+  if ((FULL)); then
+    pcs status --full
+    echo; pcs quorum status || true
+    echo; pcs stonith history || true
+  else
+    pcs status
+  fi
+}
+
+act_quorum()   { require_cluster; pcs quorum status; echo; pcs quorum config; }
+
+act_property() {
+  require_cluster
+  if ((${#ARGS[@]})); then run pcs property set "${ARGS[@]}"
+  else pcs property config; fi
+}
+
+# ---------------------------------------------------------------------------
+# Node management
+# ---------------------------------------------------------------------------
+act_addnode() {
+  need_args 1 "Usage: $PROG -addnode IP [IP ...] -cluster NAME"
+  require_running
+  load_state
+  local n f new=() total need ip num nums=()
+  declare -A ADDR=()
+  if is_ip "${ARGS[0]}"; then
+    [ -n "$NODEMAP" ] || die "Cluster $CL was not created with IP addresses (automatic names); add nodes by host name"
+    for ip in "${ARGS[@]}"; do
+      is_ip "$ip" || die "Give either IP addresses or host names, not both"
+      num=$(map_num_of_ip "$ip")
+      [ -z "$num" ] || die "$ip is already ${PREFIX}${num}"
+    done
+    need_hapass
+    ensure_trust "${NODES[@]}" "${ARGS[@]}"
+    for ip in "${ARGS[@]}"; do
+      ((DRYRUN)) || rq "$ip" "rpm -q pcs gfs2-utils lvm2-lockd >/dev/null" 2>/dev/null || \
+        die "Prerequisites missing on $ip. Run: $PROG -installprereq $ip"
+      num=$(map_next); NODEMAP+=" $num=$ip"; nums+=("$num")
+      new+=("${PREFIX}${num}"); ADDR[${PREFIX}${num}]=$ip
+      msg "  $ip -> ${PREFIX}${num}"
+    done
+    name_nodes "${nums[@]}"
+    save_state
+  else
+    for n in "${ARGS[@]}"; do
+      printf '%s\n' "${NODES[@]}" | grep -qx "$n" && die "$n is already in cluster $CL"
+      new+=("$n")
+    done
+    need_hapass
+  fi
+
+  for n in "${new[@]}"; do
+    step "Preparing $n"
+    ssh_check "$n"
+    ((DRYRUN)) || rq "$n" "rpm -q pcs gfs2-utils lvm2-lockd >/dev/null" || \
+      die "Prerequisites missing on $n. Run: $PROG -installprereq $n"
+    push_hapass "$n"
+    pcs_preflight "$n=${ADDR[$n]:-$(getent ahostsv4 "$n" 2>/dev/null | awk 'NR==1{print $1}')}"
+    run pcs host auth "$n" ${ADDR[$n]:+"addr=${ADDR[$n]}"} -u hacluster -p "$HAPASS"
+    rrun "$n" mkdir -p "$VM_DIR" "$CONF_DIR"
+    for f in "$VM_DIR"/*.xml; do [ -e "$f" ] && rcopy "$f" "$n" "$f"; done
+    [ -f "$STATE_FILE" ] && rcopy "$STATE_FILE" "$n" "$STATE_FILE"
+    if [ -n "$SHARED_DEV" ]; then
+      rq "$n" "test -b $(printf %q "$SHARED_DEV")" 2>/dev/null || ((DRYRUN)) || \
+        die "$SHARED_DEV not present on $n. Run -iscsilogin and -mpathalias for $n first"
+      rsh "$n" "lvmdevices --adddev $(printf %q "$SHARED_DEV") 2>/dev/null || true"
+      if [ "$MOUNT" != "$DEF_MOUNT" ]; then
+        rsh "$n" "mkdir -p $(printf %q "$MOUNT"); semanage fcontext -a -t virt_image_t '$MOUNT(/.*)?' 2>/dev/null || true"
+      fi
+    fi
+  done
+
+  if [ -n "$SHARED_DEV" ]; then
+    total=$(( ${#NODES[@]} + ${#new[@]} ))
+    if (( JOURNALS < total )); then
+      need=$(( total - JOURNALS ))
+      step "Adding $need GFS2 journal(s) ($JOURNALS -> $total)"
+      ((DRYRUN)) || mountpoint -q "$MOUNT" || die "$MOUNT not mounted on this node; run from a node where it is"
+      run gfs2_jadd -j "$need" "$MOUNT"
+      JOURNALS=$total; save_state
+    fi
+  fi
+
+  for n in "${new[@]}"; do
+    step "Adding $n to cluster $CL"
+    run pcs cluster node add "$n" ${ADDR[$n]:+"addr=${ADDR[$n]}"} --start --enable --wait="$WAIT"
+  done
+  require_cluster
+  push_state
+  wait_settle
+  msg ""
+  msg "Added: ${new[*]}. Create fencing for each new node:"
+  for n in "${new[@]}"; do msg "  $PROG -addfence $n -ipaddr <BMC IP> -user <user>"; done
+}
+
+act_removenode() {
+  need_args 1 "Usage: $PROG -removenode node|IP [...] -cluster NAME"
+  require_running
+  load_state
+  local n i
+  for i in "${!ARGS[@]}"; do ARGS[i]=$(to_name "${ARGS[i]}"); done
+  for n in "${ARGS[@]}"; do
+    is_local "$n" && die "Cannot remove the node you are on; run this from another node"
+    printf '%s\n' "${NODES[@]}" | grep -qx "$n" || die "$n is not in cluster $CL"
+  done
+  confirm "Remove ${ARGS[*]} from cluster '$CL'? Their VMs will move to other nodes."
+  for n in "${ARGS[@]}"; do
+    step "Removing $n"
+    run pcs node standby "$n" --wait="$WAIT" || true
+    if res_exists "fence_$n"; then run pcs stonith delete "fence_$n"; fi
+    run pcs cluster node remove "$n"
+    if [ -n "$NODEMAP" ] && [[ $n == "$PREFIX"* ]]; then map_remove "${n#"$PREFIX"}"; fi
+  done
+  require_cluster
+  if [ -n "$NODEMAP" ]; then
+    save_state; push_state
+    sync_hosts
+  fi
+  wait_settle
+}
+
+# "name addr" for every node in corosync.conf (ring0_addr)
+corosync_addrs() {
+  awk '/^[ \t]*node[ \t]*\{/ {inb = 1; nm = ""; ad = ""; next}
+       inb && $1 == "name:"       {nm = $2}
+       inb && $1 == "ring0_addr:" {ad = $2}
+       inb && /^[ \t]*\}/        {if (nm != "") print nm, ad; inb = 0}' "$COROSYNC_CONF"
+}
+
+act_changeip() {
+  need_args 1 "Usage: $PROG -changeip node1=NEWIP [node2=NEWIP ...] -cluster NAME"
+  require_cluster; load_state
+  local a node ip n e num oldips=() pairs=() changed=0 conf tmp running=() keyf
+  declare -A NEW=() OLD=() ADDR=()
+
+  while read -r n e; do OLD[$n]=$e; done < <(corosync_addrs)
+  for a in "${ARGS[@]}"; do
+    [[ $a == *=* ]] || die "Use node=NEWIP, e.g. node1=10.10.10.150"
+    node=${a%%=*}; ip=${a#*=}
+    is_ip "$ip" || die "'$ip' is not an IPv4 address"
+    if is_ip "$node"; then     # old IP given instead of the name
+      local found=""
+      for n in "${NODES[@]}"; do [ "${OLD[$n]:-}" = "$node" ] && found=$n; done
+      [ -n "$found" ] || die "$node is not the address of any node in cluster $CL"
+      node=$found
+    fi
+    printf '%s\n' "${NODES[@]}" | grep -qx "$node" || die "$node is not a node of cluster $CL (nodes: ${NODES[*]})"
+    NEW[$node]=$ip
+  done
+  for n in "${NODES[@]}"; do
+    ADDR[$n]=${NEW[$n]:-${OLD[$n]}}
+    [ "${ADDR[$n]}" != "${OLD[$n]}" ] && changed=1
+  done
+  ((changed)) || die "Nothing to change - the addresses are already in use"
+  [ -z "$(printf '%s\n' "${ADDR[@]}" | sort | uniq -d)" ] || die "Two nodes would get the same IP"
+
+  msg "Cluster $CL - address change:"
+  printf '  %-10s %-16s    %s\n' NODE OLD NEW
+  for n in "${NODES[@]}"; do
+    printf '  %-10s %-16s -> %s%s\n' "$n" "${OLD[$n]}" "${ADDR[$n]}" "$([ "${OLD[$n]}" = "${ADDR[$n]}" ] && echo '  (unchanged)')"
+  done
+  # Fresh, temporary host keys for this run: IPs may now belong to other servers
+  local tmpkh; tmpkh=$(mktemp)
+  local SSH_OPTS_SAVED=("${SSH_OPTS[@]}")
+  SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o UserKnownHostsFile="$tmpkh" -o StrictHostKeyChecking=accept-new)
+  whoami_at() {   # "short fqdn" of the server answering on $1, empty if none
+    if is_local "$1"; then echo "$(hostname -s) $(hostname)"
+    else ssh "${SSH_OPTS[@]}" "root@$1" 'echo "$(hostname -s) $(hostname)"' 2>/dev/null || true; fi
+  }
+  declare -A VIA=() MOVE=() DEVCON=()
+
+  # 1. Checks - nothing is changed until all of them pass
+  step "Checking the nodes"
+  for n in "${NODES[@]}"; do
+    if [[ " $(whoami_at "${ADDR[$n]}") " == *" $n "* ]]; then
+      VIA[$n]=${ADDR[$n]}
+      [ "${ADDR[$n]}" = "${OLD[$n]}" ] && msg "  [ OK ] $n: unchanged (${OLD[$n]})" \
+                                       || msg "  [ OK ] $n: already on its new IP ${ADDR[$n]}"
+      continue
+    fi
+    [[ " $(whoami_at "${OLD[$n]}") " == *" $n "* ]] || \
+      die "$n answers neither on ${OLD[$n]} (old) nor on ${ADDR[$n]} (new) - nothing was changed"
+    MOVE[$n]=1
+    if is_local "${OLD[$n]}"; then
+      VIA[$n]=localhost
+      if ss -Htn state established '( sport = :22 )' 2>/dev/null | awk '{print $3}' | grep -q "^${OLD[$n]}:22$" && ! ((FORCE)); then
+        die "An SSH session to this server uses ${OLD[$n]}, the address being changed - it would drop.
+Log in over the management IP and run this again (or add -force) - nothing was changed."
+      fi
+      msg "  [ OK ] $n: this server, IP ${OLD[$n]} -> ${ADDR[$n]}"
+      continue
+    fi
+    # another address of this node that we can reach (management network)
+    local cdev cands c
+    cdev=$(rq "${OLD[$n]}" "ip -4 -o addr show | awk -v a=${OLD[$n]} '{split(\$4, x, \"/\"); if (x[1] == a) print \$2}'" 2>/dev/null || true)
+    cands=$(rq "${OLD[$n]}" "ip -4 -o addr show | awk '\$2 != \"lo\" && \$2 != \"$cdev\" {split(\$4, x, \"/\"); print x[1]}'" 2>/dev/null || true)
+    for c in $cands; do
+      [[ " $(whoami_at "$c") " == *" $n "* ]] && { VIA[$n]=$c; break; }
+    done
+    [ -n "${VIA[$n]:-}" ] || die "$n has no other address this server can reach (only ${OLD[$n]} on $cdev).
+Its IP would be changed over the connection that the change cuts. Give it a management IP,
+or change its IP by hand and run this again - nothing was changed."
+    msg "  [ OK ] $n: IP ${OLD[$n]} -> ${ADDR[$n]}, reached over $c"
+  done
+
+  local what="The cluster will be stopped on all nodes (clustered VMs and the shared storage stop)"
+  ((${#MOVE[@]})) && what+=",
+the IP will be changed on: ${!MOVE[*]} (iSCSI sessions on that interface reconnect)"
+  confirm "$what, the cluster reconfigured and started again. Continue?" "$CL"
+
+  # node list with the new addresses (in memory; saved below)
+  if [ -n "$NODEMAP" ]; then
+    local newmap=""
+    for e in $NODEMAP; do
+      num=${e%%=*}; n=${PREFIX}${num}
+      newmap+="${newmap:+ }$num=${ADDR[$n]:-${e#*=}}"
+    done
+    NODEMAP=$newmap
+  fi
+  for n in "${NODES[@]}"; do pairs+=("$n=${ADDR[$n]}"); oldips+=("${OLD[$n]}"); done
+
+  # 2. Stop the cluster everywhere (local stop on each node, no cluster network needed)
+  step "Stopping the cluster on all nodes"
+  for n in "${NODES[@]}"; do
+    if ((DRYRUN)) || rq "${VIA[$n]}" "systemctl is-active -q corosync || systemctl is-active -q pacemaker" 2>/dev/null; then
+      rsh "${VIA[$n]}" "pcs cluster stop --force --request-timeout=$WAIT >/dev/null 2>&1 || systemctl stop pacemaker corosync"
+      msg "  $n: stopped"
+    else
+      msg "  $n: already stopped"
+    fi
+  done
+
+  # 3. Change the IPs on the servers: first remove every old address, then apply
+  if ((${#MOVE[@]})); then
+    local setip_remove setip_apply out
+    # shellcheck disable=SC2016
+    setip_remove='set -e; old=$1; new=$2
+      line=$(ip -4 -o addr show | awk -v a="$old" "{split(\$4, x, \"/\"); if (x[1] == a) {print \$2, x[2]; exit}}")
+      [ -n "$line" ] || { echo "ERROR: $old is not configured on $(hostname -s)"; exit 1; }
+      dev=${line% *}; pfx=${line#* }
+      con=$(nmcli -g GENERAL.CONNECTION device show "$dev" 2>/dev/null || true)
+      { [ -n "$con" ] && [ "$con" != "--" ]; } || { echo "ERROR: $dev is not managed by NetworkManager"; exit 1; }
+      method=$(nmcli -g ipv4.method connection show "$con")
+      [ "$method" = manual ] || { echo "ERROR: connection $con uses ipv4.method=$method - only static IPs can be changed"; exit 1; }
+      addrs=$(nmcli -g ipv4.addresses connection show "$con")
+      newaddrs=$(printf "%s" "$addrs" | awk -v o="$old" -v n="$new" "BEGIN {RS=\",\"} {gsub(/^[ \n]+|[ \n]+\$/, \"\"); if (\$0 == \"\") next; split(\$0, x, \"/\"); if (x[1] == o) \$0 = n \"/\" x[2]; out = out (out == \"\" ? \"\" : \",\") \$0} END {print out}")
+      nmcli connection modify "$con" ipv4.addresses "$newaddrs"
+      ip addr del "$old/$pfx" dev "$dev"
+      echo "$dev|$con"'
+    setip_apply='dev=$1; con=$2; nmcli device reapply "$dev" >/dev/null 2>&1 || nmcli connection up "$con" >/dev/null'
+
+    step "Changing the IPs on the servers"
+    for n in "${!MOVE[@]}"; do
+      if ((DRYRUN)); then msg "  [dry-run] $n: nmcli: ${OLD[$n]} -> ${ADDR[$n]} (old address removed)"; DEVCON[$n]="dev|con"; continue; fi
+      out=$(rq "${VIA[$n]}" "bash -c $(printf %q "$setip_remove") _ ${OLD[$n]} ${ADDR[$n]}" 2>&1) || \
+        die "$n: could not change the IP: ${out##*$'\n'}
+The cluster is stopped. Fix the problem, then run this command again."
+      DEVCON[$n]=${out##*$'\n'}
+      msg "  $n: ${OLD[$n]} removed from ${DEVCON[$n]%%|*}"
+    done
+    for n in "${!MOVE[@]}"; do
+      ((DRYRUN)) && { msg "  [dry-run] $n: nmcli device reapply -> ${ADDR[$n]}"; continue; }
+      rq "${VIA[$n]}" "bash -c $(printf %q "$setip_apply") _ $(printf %q "${DEVCON[$n]%%|*}") $(printf %q "${DEVCON[$n]#*|}")" >/dev/null 2>&1 || \
+        die "$n: could not apply ${ADDR[$n]} - the cluster is stopped. Check: nmcli connection show"
+      msg "  $n: ${ADDR[$n]} applied"
+    done
+
+    if ! ((DRYRUN)); then
+      step "Waiting for the nodes on their new IPs"
+      : > "$tmpkh"   # the addresses changed hands: forget what this run saw
+      local i
+      for n in "${!MOVE[@]}"; do
+        for ((i = 0; i < 30; i++)); do
+          [[ " $(whoami_at "${ADDR[$n]}") " == *" $n "* ]] && break
+          sleep 2
+        done
+        [[ " $(whoami_at "${ADDR[$n]}") " == *" $n "* ]] || \
+          die "$n does not answer on ${ADDR[$n]} - the cluster is stopped. Check the server's network (it is still reachable over ${VIA[$n]})"
+        msg "  [ OK ] $n answers on ${ADDR[$n]}"
+        VIA[$n]=${ADDR[$n]}
+      done
+    fi
+  fi
+
+  # 4. SSH host keys in the real known_hosts: the IPs may now belong to other servers
+  SSH_OPTS=("${SSH_OPTS_SAVED[@]}")
+  if [ -n "$NODEMAP" ]; then
+    refresh_known_hosts "${oldips[@]}"
+  elif ! ((DRYRUN)); then
+    step "SSH host keys"
+    touch /root/.ssh/known_hosts
+    forget_host_keys /root/.ssh/known_hosts "${OLD[@]}" "${ADDR[@]}" "${NODES[@]}"
+    for n in "${NODES[@]}"; do scan_host_key "$n" "${ADDR[$n]}" >> /root/.ssh/known_hosts; done
+  fi
+  rm -f "$tmpkh"
+
+  # 5. corosync.conf with the new addresses, on every node
+  step "Updating corosync.conf"
+  conf=$(mktemp)
+  awk -v map="$(for n in "${NODES[@]}"; do printf '%s=%s ' "$n" "${ADDR[$n]}"; done)" '
+    BEGIN { k = split(map, a, " "); for (i = 1; i <= k; i++) { split(a[i], kv, "="); ip[kv[1]] = kv[2] } }
+    /^[ \t]*node[ \t]*\{/ { inb = 1; c = 0; nm = ""; L[++c] = $0; next }
+    inb { L[++c] = $0; if ($1 == "name:") nm = $2
+          if ($0 ~ /^[ \t]*\}/) {
+            for (i = 1; i <= c; i++) {
+              if ((nm in ip) && L[i] ~ /ring0_addr:/) sub(/ring0_addr:.*/, "ring0_addr: " ip[nm], L[i])
+              print L[i]
+            }
+            inb = 0 }
+          next }
+    { print }' "$COROSYNC_CONF" > "$conf"
+  for n in "${NODES[@]}"; do
+    grep -A3 -B3 "name: $n\$" "$conf" | grep -q "ring0_addr: ${ADDR[$n]}\$" || { rm -f "$conf"; die "corosync.conf update failed for $n - nothing changed"; }
+  done
+  if ((DRYRUN)); then
+    diff "$COROSYNC_CONF" "$conf" | sed 's/^/  [dry-run] /' || true
+  else
+    cp -a "$COROSYNC_CONF" "$COROSYNC_CONF.vmexcluster.$(date +%Y%m%d%H%M%S)"
+    for n in "${NODES[@]}"; do
+      if is_local "${ADDR[$n]}"; then cat "$conf" > "$COROSYNC_CONF"
+      else rcopy "$conf" "${ADDR[$n]}" "$COROSYNC_CONF"; fi
+      msg "  $n: corosync.conf updated"
+    done
+  fi
+  rm -f "$conf"
+
+  # 6. /etc/hosts, node list, authorization, pcs host addresses
+  if [ -n "$NODEMAP" ]; then
+    save_state
+    for e in $NODEMAP; do step "/etc/hosts on ${PREFIX}${e%%=*} (${e#*=})"; write_hosts "${e#*=}"; done
+    for e in $NODEMAP; do is_local "${e#*=}" || rcopy "$STATE_FILE" "${e#*=}" "$STATE_FILE"; done
+  else
+    warn "Cluster was created with host names: update DNS or /etc/hosts so ${NODES[*]} resolve to the new IPs"
+  fi
+  get_hapass
+  [ -n "$HAPASS" ] || need_hapass
+  step "pcs host addresses on all nodes"
+  for n in "${NODES[@]}"; do
+    push_hapass "${ADDR[$n]}"
+    keyf=$(printf %q "$HAPASS_FILE")
+    rsh "${ADDR[$n]}" "pcs host auth $(for e in "${pairs[@]}"; do printf '%s addr=%s ' "${e%%=*}" "${e#*=}"; done)-u hacluster -p \"\$(head -n1 $keyf)\" >/dev/null"
+    msg "  $n: pcs knows the new addresses"
+  done
+
+  # 7. Start again
+  pcs_preflight "${pairs[@]}"
+  step "Starting cluster $CL"
+  run pcs cluster start --all --wait="$WAIT" || die "Cluster did not start - check: $PROG -status ; journalctl -u corosync -n 50"
+  wait_settle
+  msg ""
+  msg "Addresses changed. Cluster $CL is running on:"
+  for n in "${NODES[@]}"; do msg "  $n  ${ADDR[$n]}"; done
+  msg "Check with: $PROG -listnodes ; $PROG -status"
+}
+
+act_listnodes() {
+  require_cluster; load_state
+  local e n ip st
+  declare -A STATE=()
+  while read -r _ n st; do [ -n "$n" ] && STATE[$n]=$st; done < <(crm_node -l 2>/dev/null)
+  printf '%-12s %-16s %s\n' NODE ADDRESS STATE
+  if [ -n "$NODEMAP" ]; then
+    for e in $NODEMAP; do
+      n=${PREFIX}${e%%=*}
+      printf '%-12s %-16s %s\n' "$n" "${e#*=}" "${STATE[$n]:-unknown}"
+    done
+  else
+    for n in "${NODES[@]}"; do
+      ip=$(getent ahostsv4 "$n" 2>/dev/null | awk 'NR==1{print $1}')
+      printf '%-12s %-16s %s\n' "$n" "${ip:-?}" "${STATE[$n]:-unknown}"
+    done
+  fi
+}
+
+act_synchosts() {
+  require_cluster; load_state
+  [ -n "$NODEMAP" ] || die "Cluster $CL does not use automatic names (created with host names)"
+  sync_hosts
+  push_state
+  msg "/etc/hosts and SSH host keys updated on: $(map_names | paste -sd' ')"
+}
+
+act_standby()   { require_running; load_state; local _i; for _i in "${!ARGS[@]}"; do ARGS[_i]=$(to_name "${ARGS[_i]}"); done; if ((${#ARGS[@]})); then run pcs node standby "${ARGS[@]}" --wait="$WAIT"; else run pcs node standby --wait="$WAIT"; fi; }
+act_unstandby() { require_running; load_state; local _i; for _i in "${!ARGS[@]}"; do ARGS[_i]=$(to_name "${ARGS[_i]}"); done; if ((${#ARGS[@]})); then run pcs node unstandby "${ARGS[@]}" --wait="$WAIT"; else run pcs node unstandby --wait="$WAIT"; fi; }
+
+act_maintenance() {
+  need_args 1 "Usage: $PROG -maintenance on|off [-nodes n1 ...]"
+  require_running
+  local mode=${ARGS[0],,} nodes=()
+  [ -n "${OPT[nodes]:-}" ] && read -ra nodes <<<"${OPT[nodes]}"
+  case $mode in
+    on)
+      if ((${#nodes[@]})); then run pcs node maintenance "${nodes[@]}"
+      else run pcs property set maintenance-mode=true; fi
+      msg "Maintenance ON: the cluster will not start, stop or move resources." ;;
+    off)
+      if ((${#nodes[@]})); then run pcs node unmaintenance "${nodes[@]}"
+      else run pcs property set maintenance-mode=false; fi ;;
+    *) die "Use: -maintenance on|off" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Fencing
+# ---------------------------------------------------------------------------
+# Run fence_ipmilan (options on stdin) on node $1; sets FT_OUT FT_RC FT_MS
+fence_try() {
+  local m=$1 input=$2 t0
+  t0=$(date +%s%N)
+  if is_local "$m"; then FT_OUT=$(printf '%s\n' "$input" | fence_ipmilan 2>&1) && FT_RC=0 || FT_RC=$?
+  else FT_OUT=$(ssh "${SSH_OPTS[@]}" "root@$m" "fence_ipmilan" <<<"$input" 2>&1) && FT_RC=0 || FT_RC=$?; fi
+  FT_MS=$(( ($(date +%s%N) - t0) / 1000000 ))
+}
+
+act_addfence() {
+  need_args 1 "Usage: $PROG -addfence node -ipaddr BMC_IP -user USER [-pass PASS]"
+  require_running; load_state
+  local node agent=${OPT[agent]:-fence_ipmilan} id pass params=()
+  node=$(to_name "${ARGS[0]}")
+  id="fence_$node"
+  printf '%s\n' "${NODES[@]}" | grep -qx "$node" || die "$node is not in cluster $CL"
+  res_exists "$id" && die "$id already exists (remove with -removefence $node)"
+
+  if [ "$agent" = fence_ipmilan ]; then
+    need_opt ipaddr; need_opt user
+  fi
+  if [ -n "${OPT[pass]:-}" ]; then pass=${OPT[pass]}
+  elif [ -n "${FENCE_PASS:-}" ]; then pass=$FENCE_PASS
+  elif [ -n "${OPT[ipaddr]:-}" ]; then pass=$(ask_secret "BMC password for $node")
+  else pass=""; fi
+
+  [ -n "${OPT[ipaddr]:-}" ] && params+=("ip=${OPT[ipaddr]}")
+  [ -n "${OPT[user]:-}" ]   && params+=("username=${OPT[user]}")
+  [ -n "$pass" ]            && params+=("password=$pass")
+  if [ "$agent" = fence_ipmilan ] && ! ((NOLANPLUS)); then params+=("lanplus=1"); fi
+  if [ -n "${OPT[params]:-}" ]; then local extra; read -ra extra <<<"${OPT[params]}"; params+=("${extra[@]}"); fi
+  [ -n "${OPT[delay]:-}" ] && params+=("pcmk_delay_base=${OPT[delay]}")
+  params+=("pcmk_host_list=$node")
+  local cipher=${OPT[cipher]:-}
+  [ -z "$cipher" ] || [[ $cipher =~ ^[0-9]+$ ]] || die "-cipher must be a number (IMM2: 3)"
+
+  # The BMC address must be this node's own BMC (a swapped one fences the wrong server)
+  if [ -n "${OPT[ipaddr]:-}" ] && ! ((DRYRUN)); then
+    step "Checking that ${OPT[ipaddr]} is the BMC of $node"
+    local bmcips bscript
+    # shellcheck disable=SC2016
+    bscript=$BMC_IP_SCRIPT
+    bmcips=$(rq "$node" "$bscript" 2>/dev/null | paste -sd' ' || true)
+    if [ -z "$bmcips" ]; then
+      warn "Could not read the BMC address of $node (ipmitool) - make sure ${OPT[ipaddr]} is $node's own BMC"
+    elif [[ " $bmcips " == *" ${OPT[ipaddr]} "* ]]; then
+      msg "  [ OK ] ${OPT[ipaddr]} is the BMC of $node"
+    elif ! ((FORCE)); then
+      local other="" m
+      for m in "${NODES[@]}"; do
+        [ "$m" = "$node" ] && continue
+        [[ " $(rq "$m" "$bscript" 2>/dev/null | paste -sd' ') " == *" ${OPT[ipaddr]} "* ]] && other=$m
+      done
+      die "${OPT[ipaddr]} is NOT the BMC of $node - $node's BMC is: $bmcips${other:+
+${OPT[ipaddr]} belongs to $other.}
+Fencing $node through another server's BMC would power off the wrong node. Use: -ipaddr ${bmcips%% *}"
+    fi
+  fi
+
+  if [ "$agent" = fence_ipmilan ] && ! ((FORCE)) && ! ((DRYRUN)); then
+    # The device for $node runs on the OTHER nodes: test from there
+    local testers=() m input bad=0 ip=${OPT[ipaddr]}
+    for m in "${NODES[@]}"; do [ "$m" = "$node" ] || testers+=("$m"); done
+    ((${#testers[@]})) || testers=("$(hostname -s)")
+    step "Testing BMC of $node ($ip) from: ${testers[*]}"
+    input=$(printf 'ip=%s\nusername=%s\npassword=%s\naction=status\n' "$ip" "${OPT[user]}" "$pass")
+    ((NOLANPLUS)) || input+=$'\nlanplus=1'
+    [ -n "$cipher" ] && input+=$'\n'"cipher=$cipher"
+    for m in "${testers[@]}"; do
+      local net="" out rc dur out3 rc3 dur3
+      if rq "$m" "ping -c 2 -W 2 $ip >/dev/null 2>&1" 2>/dev/null; then net="ping OK"; else net="no ping reply"; fi
+      fence_try "$m" "$input"; out=$FT_OUT rc=$FT_RC dur=$FT_MS
+      # slow or timed out with automatic cipher selection: try cipher suite 3
+      if [ -z "$cipher" ] && ! ((NOLANPLUS)) && [ "$net" = "ping OK" ] && { ((rc != 0)) || ((dur > 8000)); }; then
+        fence_try "$m" "$input"$'\n'"cipher=3"; out3=$FT_OUT rc3=$FT_RC dur3=$FT_MS
+        if ((rc3 == 0)) && { ((rc != 0)) || ((dur3 * 2 < dur)); }; then
+          printf '  [INFO] %s -> %s: automatic cipher %s, cipher 3 OK in %s s - using cipher=3\n' \
+            "$m" "$ip" "$( ((rc == 0)) && echo "took $((dur / 1000)) s" || echo failed)" "$((dur3 / 1000))"
+          cipher=3; input+=$'\n'"cipher=3"; out=$out3 rc=$rc3 dur=$dur3
+        fi
+      fi
+      if ((rc == 0)); then
+        printf '  [ OK ] %s -> %s: %s, login OK in %s s (%s)\n' "$m" "$ip" "$net" "$((dur / 1000))" "$(tail -1 <<<"$out")"
+        ((dur > 15000)) && printf '  [WARN] the BMC answers slowly (%s s) - fencing timeouts are set for slow BMCs\n' "$((dur / 1000))"
+        continue
+      fi
+      bad=1
+      printf '  [FAIL] %s -> %s: %s, login failed: %s\n' "$m" "$ip" "$net" "$(grep -m1 -i 'error' <<<"$out" | sed 's/^[0-9 :,-]*//' || tail -1 <<<"$out")"
+      if [ "$net" = "no ping reply" ]; then
+        printf '         the BMC is not reachable from %s: BMC port not cabled, wrong port mode\n' "$m"
+        printf '         (dedicated/shared), wrong IP/subnet on the BMC, or a VLAN/firewall between them\n'
+      elif grep -qi 'timed out' <<<"$out"; then
+        printf '         BMC answers ping but not IPMI (udp/623): enable "IPMI over LAN" on the BMC\n'
+        printf '         (IMM/XCC web: Network -> Service Enablement), or try -nolanplus\n'
+      else
+        printf '         BMC answers, login refused: check user/password (on %s: ipmitool user list 1)\n' "$node"
+      fi
+    done
+    ((bad == 0)) || die "BMC test failed for $node (use -force to create the device anyway)"
+  fi
+
+  [ -n "$cipher" ] && params+=("cipher=$cipher")
+  step "Creating fence device $id ($agent${cipher:+, cipher $cipher})"
+  # timeouts for slow BMCs; failure-timeout: one slow answer must not stop the device for good
+  run pcs stonith create "$id" "$agent" "${params[@]}" pcmk_reboot_timeout=180s \
+    op start timeout=60s op monitor interval=60s timeout=60s meta failure-timeout=120s
+  run pcs constraint location "$id" avoids "$node"
+  if ((${#NODES[@]} == 2)) && [ -z "${OPT[delay]:-}" ]; then
+    msg "Tip: in a 2-node cluster give ONE node's fence device a delay (-delay 5s) to avoid fence races."
+  fi
+  local m missing=()
+  for m in "${NODES[@]}"; do [ "$m" = "$node" ] || res_exists "fence_$m" || missing+=("$m"); done
+  msg ""
+  if ((${#missing[@]})); then
+    msg "Still without fencing: ${missing[*]} - $PROG -addfence <node> -ipaddr <BMC IP> -user <user>"
+  else
+    msg "Every node has fencing. Next: $PROG -bmcstatus, then $PROG -setuplocking (shared storage)"
+  fi
+}
+
+# BMC reachability and fencing readiness of each node, tested from the OTHER nodes
+BX_OK=0 BX_WARN=0 BX_FAIL=0
+bx_ok()   { msg "  [ OK ] $*"; BX_OK=$((BX_OK + 1)); }
+bx_warn() { msg "  [WARN] $*"; BX_WARN=$((BX_WARN + 1)); }
+bx_fail() { msg "  [FAIL] $*"; BX_FAIL=$((BX_FAIL + 1)); }
+
+bmc_check() {
+  local n m b fid fip user pass lanplus input out rc st running=0 testers
+  BX_OK=0 BX_WARN=0 BX_FAIL=0
+  crm_mon -1 >/dev/null 2>&1 && running=1
+  declare -A BIP=()
+  for n in "$@"; do BIP[$n]=$(rq "$n" "$BMC_IP_SCRIPT" 2>/dev/null | head -1 || true); done
+  for n in "$@"; do
+    b=${BIP[$n]} fid="fence_$n" fip=""
+    if ((running)) && res_exists "$fid"; then fip=$(crm_resource -r "$fid" -g ip 2>/dev/null || true); fi
+    if [ -z "$b" ]; then
+      if [ -z "$fip" ]; then bx_fail "$n: BMC has no IP address (not configured) - see: $PROG -validate $n"; continue; fi
+      bx_warn "$n: BMC address not readable on $n - using the fence device's address $fip"
+      b=$fip
+    fi
+    if [ -n "$fip" ] && [ "$fip" != "$b" ]; then
+      bx_fail "$n: $fid points to $fip, but the BMC of $n is $b - it would fence the wrong server"
+    fi
+    testers=()
+    for m in "$@"; do [ "$m" = "$n" ] || testers+=("$m"); done
+    ((${#testers[@]})) || testers=("$n")
+    for m in "${testers[@]}"; do
+      if ! rq "$m" "ping -c 2 -W 2 $b >/dev/null 2>&1" 2>/dev/null; then
+        bx_fail "$n: BMC $b NOT reachable from $m - IMM port not connected, no link, or wrong IP/VLAN"
+        continue
+      fi
+      bx_ok "$n: BMC $b reachable from $m"
+      [ -n "$fip" ] || continue
+      user=$(crm_resource -r "$fid" -g username 2>/dev/null || true)
+      pass=$(crm_resource -r "$fid" -g password 2>/dev/null || true)
+      lanplus=$(crm_resource -r "$fid" -g lanplus 2>/dev/null || true)
+      local cph; cph=$(crm_resource -r "$fid" -g cipher 2>/dev/null || true)
+      input=$(printf 'ip=%s\nusername=%s\npassword=%s\naction=status\n' "$fip" "$user" "$pass")
+      [ -n "$lanplus" ] && input+=$'\n'"lanplus=$lanplus"
+      [ -n "$cph" ] && input+=$'\n'"cipher=$cph"
+      fence_try "$m" "$input"; out=$FT_OUT rc=$FT_RC
+      if ((rc == 0)); then
+        bx_ok "$n: $fid can log in from $m in $((FT_MS / 1000)) s ($(tail -1 <<<"$out"))"
+        if ((FT_MS > 15000)); then bx_warn "$n: the BMC answers slowly ($((FT_MS / 1000)) s)${cph:+ even with cipher $cph} - fence operations may time out"
+        elif ((FT_MS > 8000)) && [ -z "$cph" ]; then bx_warn "$n: login is slow ($((FT_MS / 1000)) s) - re-create the device: $PROG -removefence $n; $PROG -addfence $n ... (detects a faster cipher)"; fi
+      else bx_fail "$n: $fid cannot log in to $fip from $m - IPMI over LAN off, or user/password changed"; fi
+    done
+    if ((running)); then
+      if [ -z "$fip" ]; then
+        bx_warn "$n: no fence device - $PROG -addfence $n -ipaddr $b -user USERID"
+      else
+        st=$(crm_resource -r "$fid" --locate 2>&1 || true)
+        if [[ $st == *"is running on"* ]]; then bx_ok "$n: $fid started"
+        else
+          bx_fail "$n: $fid is not running"
+          local why
+          why=$(crm_mon -1 2>/dev/null | grep -m1 "${fid}_" | sed 's/^ *\* *//' || true)
+          [ -n "$why" ] && msg "         last failure: $why"
+          msg "         fix: $PROG -cleanup $fid   (devices made before 1.17.0: re-create with -removefence/-addfence)"
+        fi
+      fi
+    fi
+  done
+  if ((running)); then
+    local pend
+    pend=$(stonith_admin --history '*' 2>/dev/null | grep -i 'pending' || true)
+    [ -n "$pend" ] && bx_warn "stale pending fence action(s): $(head -1 <<<"$pend" | sed 's/^ *\* *//') - clear: pcs stonith history cleanup"
+  fi
+  return 0
+}
+
+act_bmcstatus() {
+  require_cluster
+  local nodes n
+  if ((${#ARGS[@]})) || [ -n "${OPT[nodes]:-}" ]; then mapfile -t nodes < <(target_nodes)
+  else nodes=("${NODES[@]}"); fi
+  for n in "${nodes[@]}"; do ssh_check "$n"; done
+  msg "BMC (IMM) status - each BMC is tested from the other nodes"
+  bmc_check "${nodes[@]}"
+  echo
+  if ((BX_FAIL > 0)); then msg "BMC: $BX_OK OK, $BX_WARN warning(s), $BX_FAIL FAILED"
+  elif ((BX_WARN > 0)); then msg "BMC: $BX_OK OK, $BX_WARN warning(s) - fencing not complete"
+  else msg "BMC: all $BX_OK checks OK - fencing ready"; fi
+  ((BX_FAIL == 0))
+}
+
+act_removefence() {
+  need_args 1 "Usage: $PROG -removefence node"
+  require_running; load_state
+  local node; node=$(to_name "${ARGS[0]}")
+  confirm "Delete fence device fence_${node}? The node cannot be fenced afterwards."
+  run pcs stonith delete "fence_${node}"
+}
+
+act_listfence() {
+  require_cluster
+  pcs stonith status || true; echo
+  pcs stonith config || true; echo
+  pcs stonith history || true
+}
+
+act_testfence() {
+  need_args 1 "Usage: $PROG -testfence node"
+  require_running; load_state
+  local node; node=$(to_name "${ARGS[0]}")
+  is_local "$node" && warn "You are fencing the node you are logged in to."
+  confirm "This will POWER-CYCLE $node right now. Its VMs will restart on other nodes." "$node"
+  run pcs stonith fence "$node"
+}
+
+# ---------------------------------------------------------------------------
+# Shared storage
+# ---------------------------------------------------------------------------
+act_iscsilogin() {
+  need_opt portal
+  local nodes n sel s
+  mapfile -t nodes < <(target_nodes)
+  sel="-p $(printf %q "${OPT[portal]}")"
+  [ -n "${OPT[target]:-}" ] && sel+=" -T $(printf %q "${OPT[target]}")"
+  s="set -e
+iscsiadm -m discovery -t sendtargets -p $(printf %q "${OPT[portal]}")"
+  if [ -n "${OPT[chapuser]:-}" ]; then
+    s+="
+iscsiadm -m node $sel --op update -n node.session.auth.authmethod -v CHAP
+iscsiadm -m node $sel --op update -n node.session.auth.username -v $(printf %q "${OPT[chapuser]}")
+iscsiadm -m node $sel --op update -n node.session.auth.password -v $(printf %q "${OPT[chappass]:-}")"
+  fi
+  s+="
+iscsiadm -m node $sel --op update -n node.startup -v automatic
+iscsiadm -m node $sel --login || true
+multipath -r >/dev/null 2>&1 || true
+sleep 2
+multipath -ll"
+  for n in "${nodes[@]}"; do
+    step "iSCSI login on $n"
+    ssh_check "$n"
+    rsh "$n" "$s"
+  done
+}
+
+act_iscsilogout() {
+  need_opt portal
+  local nodes n sel s
+  mapfile -t nodes < <(target_nodes)
+  sel="-p $(printf %q "${OPT[portal]}")"
+  [ -n "${OPT[target]:-}" ] && sel+=" -T $(printf %q "${OPT[target]}")"
+  confirm "Log out of iSCSI ${OPT[target]:-all targets} at ${OPT[portal]} on: ${nodes[*]}? Make sure nothing uses these disks."
+  s="iscsiadm -m node $sel --logout || true"
+  ((PURGE)) && s+="; iscsiadm -m node $sel --op delete || true"
+  for n in "${nodes[@]}"; do step "iSCSI logout on $n"; ssh_check "$n"; rsh "$n" "$s"; done
+}
+
+act_listdisks() {
+  local nodes n
+  mapfile -t nodes < <(target_nodes)
+  for n in "${nodes[@]}"; do
+    step "Disks on $n"
+    ssh_check "$n"
+    rq "$n" "echo '# iSCSI sessions'; iscsiadm -m session 2>/dev/null || echo none
+echo; echo '# Multipath devices (name (WWID) dm-N vendor,product)'; multipath -ll 2>/dev/null || true
+echo; lsblk -o NAME,SIZE,TYPE,WWN,MOUNTPOINTS"
+  done
+}
+
+act_mpathalias() {
+  need_opt wwid; need_opt alias
+  local nodes n file content
+  if ((${#ARGS[@]} == 0)) && [ -z "${OPT[nodes]:-}" ] && [ -f "$COROSYNC_CONF" ]; then
+    require_cluster; nodes=("${NODES[@]}")      # same name on every node
+  else
+    mapfile -t nodes < <(target_nodes)
+  fi
+  [[ ${OPT[alias]} =~ ^[A-Za-z0-9_-]+$ ]] || die "Alias: letters, digits, _ and - only"
+  file=/etc/multipath/conf.d/vmexcluster-${OPT[alias]}.conf
+  content="multipaths {
+    multipath {
+        wwid ${OPT[wwid]}
+        alias ${OPT[alias]}
+    }
+}"
+  for n in "${nodes[@]}"; do
+    step "Multipath alias ${OPT[alias]} -> ${OPT[wwid]} on $n"
+    ssh_check "$n"
+    if ((DRYRUN)) || rq "$n" "command -v vmexsanconnect >/dev/null 2>&1" 2>/dev/null; then
+      # vmexsanconnect manages /etc/multipath.conf: let it set the alias
+      rsh "$n" "rm -f $file; vmexsanconnect -alias-set $(printf %q "${OPT[wwid]}") $(printf %q "${OPT[alias]}")"
+      continue
+    fi
+    rsh "$n" "mkdir -p /etc/multipath/conf.d
+printf '%s\n' $(printf %q "$content") > $file
+multipath -a /dev/disk/by-id/dm-uuid-mpath-${OPT[wwid]} >/dev/null 2>&1 || true
+multipathd reconfigure >/dev/null 2>&1 || systemctl reload multipathd
+sleep 2
+ls -l /dev/mapper/${OPT[alias]} || echo 'Device not visible yet - check: multipath -ll'"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Shared storage through vmexsp
+# ---------------------------------------------------------------------------
+vmexsp_shared_vg() {
+  local v
+  v=$(sed -n 's/^[[:space:]]*SHARED_VG[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([A-Za-z0-9_.+-]*\).*/\1/p' /etc/vmexsp.conf 2>/dev/null | tail -1)
+  echo "${v:-sharedvg}"
+}
+
+# The vmexsp steps for a shared pool, with this cluster's node names and SAN device
+shared_hint() {
+  local devs d me others=()
+  devs=$(lsblk -npro NAME,TYPE 2>/dev/null | awk '$2 == "mpath" {print $1}' | sort -u | paste -sd' ' || true)
+  d=${devs%% *}; [ -n "$d" ] || d="/dev/mapper/<SAN volume>"
+  me=$(hostname -s)
+  [ -n "${NODES[*]:-}" ] || mapfile -t NODES < <(cluster_nodes)
+  for n in "${NODES[@]}"; do [ "$n" = "$me" ] || others+=("$n"); done
+  msg "Shared storage pool (vmexsp), in this order:"
+  msg "  1. on $me:  vmexsp -shared-init $d        (WIPES the SAN volume, creates $(vmexsp_shared_vg))"
+  ((${#others[@]})) && msg "  2. on ${others[*]}:  vmexsp -shared-join $d"
+  msg "  3. on $me:  vmexsp -create <Name> [size] -shared   (e.g. vmexsp -create Finance 2T -shared)"
+  ((${#others[@]})) && msg "  4. on ${others[*]}:  vmexsp -sync"
+  [[ $devs == *" "* ]] && msg "  (SAN volumes on this node: $devs)"
+  return 0
+}
+
+setup_locking() {
+  step "Cluster property for GFS2"
+  run pcs property set no-quorum-policy=freeze
+  step "DLM and lvmlockd (locking-clone on all nodes)"
+  if res_exists locking-clone; then
+    msg "locking-clone already exists"
+  else
+    run pcs resource create dlm ocf:pacemaker:controld op monitor interval=30s on-fail=fence --disabled
+    run pcs resource create lvmlockd ocf:heartbeat:lvmlockd op monitor interval=30s on-fail=fence --disabled
+    run pcs resource group add locking dlm lvmlockd
+    run pcs resource clone locking meta interleave=true
+    run pcs resource enable dlm lvmlockd
+    wait_settle
+  fi
+}
+
+act_setuplocking() {
+  require_running
+  local n bad=0 st
+  if ! ((DRYRUN)); then
+    pcs stonith status 2>/dev/null | grep -q Started || \
+      die "No fence device is running - shared storage needs fencing first: $PROG -addfence ... ; $PROG -bmcstatus"
+    for n in "${NODES[@]}"; do
+      rq "$n" "lvmconfig --typeconfig full global/use_lvmlockd 2>/dev/null | tr -d ' ' | grep -qx use_lvmlockd=1" 2>/dev/null || \
+        die "use_lvmlockd = 1 is not set on $n - run: $PROG -installprereq $n"
+    done
+  fi
+  setup_locking
+  if ! ((DRYRUN)); then
+    st=$(crm_resource -r locking-clone --locate 2>&1 || true)
+    for n in "${NODES[@]}"; do
+      if grep -q "running on: $n\b" <<<"$st"; then msg "  [ OK ] dlm and lvmlockd running on $n"
+      else msg "  [FAIL] dlm and lvmlockd NOT running on $n"; bad=1; fi
+    done
+    ((bad == 0)) || die "locking-clone is not running everywhere - check: $PROG -status ; $PROG -cleanup locking-clone"
+  fi
+  msg ""
+  if command -v vmexsp >/dev/null 2>&1; then shared_hint
+  else msg "Next: shared storage - install vmexsp, or: $PROG -setupstorage -device /dev/mapper/<SAN volume>"; fi
+}
+
+act_setupstorage() {
+  need_opt device
+  require_running
+  if command -v vmexsp >/dev/null 2>&1 && ! ((FORCE)); then
+    msg "vmexsp is installed: it manages all storage pools (storage01 local, storage02 shared ...,"
+    msg "one numbering, libvirt pools on every node). Create the shared pool with vmexsp:"
+    msg ""
+    res_exists locking-clone || msg "First: $PROG -setuplocking"
+    shared_hint
+    die "Use vmexsp for shared storage (-force uses $PROG's own GFS2 setup, which vmexsp does not know)"
+  fi
+  load_state
+  [ -z "$SHARED_DEV" ] || ((FORCE)) || die "Shared storage already configured on $SHARED_DEV ($MOUNT). Use -removestorage first."
+  local dev=${OPT[device]} size=${OPT[size]:-$DEF_SIZE} mnt=${OPT[mount]:-} vg lv fs j n num nn used
+  # Storage name: next /storages/storageNN free on every node (storage01 = local storage)
+  if [ -z "$mnt" ]; then
+    for ((num = 1; num < 100; num++)); do
+      nn=$(printf '%02d' "$num"); mnt=$STORAGES_DIR/storage$nn; used=0
+      for n in "${NODES[@]}"; do
+        rq "$n" "test -e $mnt || grep -qs ' $mnt ' /proc/mounts" 2>/dev/null && { used=1; break; }
+      done
+      ((used)) || break
+    done
+    msg "Storage name: storage$nn -> $mnt (next free on ${NODES[*]})"
+  fi
+  if [[ $mnt =~ /storage([0-9]+)$ ]]; then
+    nn=${BASH_REMATCH[1]}
+    vg=${OPT[vg]:-storagevg$nn} lv=${OPT[lv]:-storage$nn} fs=${OPT[fsname]:-storage$nn}
+  else
+    vg=${OPT[vg]:-$DEF_VG} lv=${OPT[lv]:-$DEF_LV} fs=${OPT[fsname]:-$DEF_FSNAME}
+  fi
+  j=${OPT[journals]:-${#NODES[@]}}; ((j < 2)) && j=2
+  valid_id "$vg"; valid_id "$lv"; valid_id "$fs"
+  ((${#fs} <= 30)) || die "-fsname must be at most 30 characters"
+  [[ $mnt == /* ]] || die "-mount must be an absolute path"
+  for n in "${NODES[@]}"; do
+    if rq "$n" "vgs --noheadings -o vg_name 2>/dev/null | awk '{print \$1}' | grep -qx $(printf %q "$vg")" 2>/dev/null; then
+      die "Volume group '$vg' already exists on $n - give another name with -vg"
+    fi
+    if rq "$n" "grep -qs ' $mnt ' /proc/mounts || [ -n \"\$(ls -A $(printf %q "$mnt") 2>/dev/null)\" ]" 2>/dev/null; then
+      die "$mnt is mounted or not empty on $n - choose another -mount"
+    fi
+  done
+
+  for n in "${NODES[@]}"; do
+    ssh_check "$n"
+    ((DRYRUN)) || rq "$n" "test -b $(printf %q "$dev")" || \
+      die "$dev not present on $n (run -iscsilogin / -mpathalias on all nodes)"
+  done
+  # SAN must be ready on every node (vmexsanconnect)
+  local srout srrc notready=()
+  step "SAN readiness (vmexsanconnect -cluster-ready) on: ${NODES[*]}"
+  for n in "${NODES[@]}"; do
+    srout=$(rq "$n" "$SAN_READY_SCRIPT" 2>&1) && srrc=0 || srrc=$?
+    case $srrc in
+      0) msg "  [ OK ] $n: Ready for vmex cluster" ;;
+      2) msg "  [WARN] $n: vmexsanconnect not installed - not checked" ;;
+      *) msg "  [FAIL] $n: platform is NOT ready for vmex cluster"
+         grep -E '\[ ?(FAIL|WARN|ERROR)|ERROR|not ready' <<<"$srout" | head -5 | sed 's/^[[:space:]]*/         /' || true
+         notready+=("$n") ;;
+    esac
+  done
+  if ((${#notready[@]})) && ! ((FORCE)) && ! ((DRYRUN)); then
+    die "SAN not ready on: ${notready[*]} - nothing was changed. Fix it (vmexsanconnect -cluster-ready), or use -force"
+  fi
+
+  # Existing data on the LUN? (read-only checks)
+  local has_data=0 sigs parts
+  for n in "${NODES[@]}"; do
+    if rq "$n" "lsblk -nr -o MOUNTPOINTS $(printf %q "$dev") 2>/dev/null | grep -q ." 2>/dev/null; then
+      die "Something on $dev is MOUNTED on $n - unmount it first:
+$(rq "$n" "lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS $(printf %q "$dev")" 2>/dev/null)"
+    fi
+  done
+  parts=$(lsblk -nr -o TYPE "$dev" 2>/dev/null | grep -c '^part$' || true)
+  sigs=$(wipefs --no-act --noheadings --output TYPE "$dev" 2>/dev/null | paste -sd, || true)
+  if ((parts > 0)) || [ -n "$sigs" ]; then
+    has_data=1
+    msg ""
+    msg "$dev is NOT empty:"
+    [ -n "$sigs" ] && msg "  signatures: $sigs"
+    lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,PARTLABEL "$dev" 2>/dev/null | sed 's/^/  /'
+    if ! ((WIPE)); then
+      die "The LUN contains partitions or data (above). Make sure nothing on it is needed,
+then run the same command with -wipe to erase it."
+    fi
+  fi
+  confirm "ALL DATA on $dev will be destroyed$( ((has_data)) && echo " (existing partitions/data shown above will be wiped)").
+Creating: VG $vg (shared) -> LV $lv ($size) -> GFS2 $CL:$fs ($j journals) mounted at $mnt on: ${NODES[*]}" "$dev"
+
+  if ((has_data)); then
+    local unmap
+    # remove partition mappings: on the multipath device and on its path devices
+    unmap="d=$(printf %q "$dev"); kpartx -d \"\$d\" >/dev/null 2>&1 || true
+dm=\$(basename \"\$(readlink -f \"\$d\")\")
+for s in /sys/block/\$dm/slaves/*; do [ -e \"\$s\" ] && partx -d \"/dev/\$(basename \"\$s\")\" >/dev/null 2>&1; done
+udevadm settle 2>/dev/null; true"
+    step "Erasing the existing partitions and signatures on $dev"
+    for n in "${NODES[@]}"; do rsh "$n" "$unmap"; msg "  $n: partition maps removed"; done
+    run wipefs -a "$dev"
+    for n in "${NODES[@]}"; do
+      rsh "$n" "$unmap; multipath -r >/dev/null 2>&1; udevadm settle 2>/dev/null; true"
+    done
+    if ! ((DRYRUN)); then
+      for n in "${NODES[@]}"; do
+        parts=$(rq "$n" "lsblk -nr -o TYPE $(printf %q "$dev") | grep -c '^part\$' || true" 2>/dev/null || echo "?")
+        [ "$parts" = 0 ] || die "$n still sees partitions on $dev - reboot $n (or run partx -d on its path devices), then run this again"
+        msg "  [ OK ] $n: $dev is empty"
+      done
+    fi
+  fi
+
+  setup_locking
+
+  step "Registering $dev in the LVM devices file on all nodes"
+  for n in "${NODES[@]}"; do
+    rsh "$n" "lvmdevices --adddev $(printf %q "$dev") 2>/dev/null || true"
+  done
+
+  step "Shared volume group $vg"
+  run vgcreate --yes --shared "$vg" "$dev"
+  for n in "${NODES[@]}"; do
+    is_local "$n" && continue
+    rrun "$n" vgchange --lockstart "$vg"
+  done
+
+  step "Logical volume $lv"
+  if [[ $size == *%* ]]; then run lvcreate --yes --activate sy -l "$size" -n "$lv" "$vg"
+  else run lvcreate --yes --activate sy -L "$size" -n "$lv" "$vg"; fi
+
+  step "GFS2 file system $CL:$fs"
+  run mkfs.gfs2 -O -j "$j" -p lock_dlm -t "$CL:$fs" "/dev/$vg/$lv"
+
+  step "Mount point $mnt on all nodes"
+  for n in "${NODES[@]}"; do
+    rsh "$n" "mkdir -p $(printf %q "$mnt"); semanage fcontext -l | grep -q '^$mnt(/\.\*)?' || semanage fcontext -a -t virt_image_t '$mnt(/.*)?'"
+  done
+
+  step "Cluster resources for the shared file system"
+  run pcs resource create "${lv}-lv" ocf:heartbeat:LVM-activate \
+    vgname="$vg" lvname="$lv" activation_mode=shared vg_access_mode=lvmlockd --disabled
+  run pcs resource create "${fs}-fs" ocf:heartbeat:Filesystem \
+    device="/dev/$vg/$lv" directory="$mnt" fstype=gfs2 options=noatime \
+    op monitor interval=10s on-fail=fence --disabled
+  run pcs resource group add "$vg" "${lv}-lv" "${fs}-fs"
+  run pcs resource clone "$vg" meta interleave=true
+  run pcs constraint order start locking-clone then "${vg}-clone"
+  run pcs constraint colocation add "${vg}-clone" with locking-clone
+  run pcs resource enable "${lv}-lv" "${fs}-fs"
+  wait_settle
+
+  if ! ((DRYRUN)) && mountpoint -q "$mnt"; then run restorecon -R "$mnt"; fi
+
+  CLUSTER=$CL SHARED_DEV=$dev VG=$vg LV=$lv MOUNT=$mnt FSNAME=$fs JOURNALS=$j
+  save_state; push_state
+  msg ""
+  msg "Shared storage ready: $mnt (GFS2) on ${NODES[*]}. Check: $PROG -storagestatus"
+}
+
+act_addjournal() {
+  need_args 1 "Usage: $PROG -addjournal N"
+  require_running; load_state
+  [ -n "$MOUNT" ] || die "No shared storage configured"
+  [[ ${ARGS[0]} =~ ^[1-9][0-9]*$ ]] || die "N must be a positive number"
+  ((DRYRUN)) || mountpoint -q "$MOUNT" || die "$MOUNT is not mounted on this node"
+  run gfs2_jadd -j "${ARGS[0]}" "$MOUNT"
+  JOURNALS=$(( JOURNALS + ARGS[0] )); save_state; push_state
+  msg "GFS2 journals: $JOURNALS"
+}
+
+act_storagestatus() {
+  require_cluster; load_state
+  [ -n "$VG" ] || { msg "No shared storage configured (see -setupstorage)"; return 0; }
+  msg "Device: $SHARED_DEV  VG: $VG  LV: $LV  FS: $CL:$FSNAME  Mount: $MOUNT  Journals: $JOURNALS"
+  echo; pcs resource status locking-clone 2>/dev/null || true
+  pcs resource status "${VG}-clone" 2>/dev/null || true
+  local n
+  echo
+  for n in "${NODES[@]}"; do
+    printf '%-20s ' "$n"
+    rq "$n" "if mountpoint -q $(printf %q "$MOUNT"); then df -hP $(printf %q "$MOUNT") | awk 'NR==2{print \"mounted  size \"\$2\"  used \"\$3\" (\"\$5\")  free \"\$4}'; else echo 'NOT mounted'; fi" 2>/dev/null || echo "unreachable"
+  done
+  ((${#NODES[@]} > JOURNALS)) && warn "More nodes (${#NODES[@]}) than GFS2 journals ($JOURNALS): $PROG -addjournal $(( ${#NODES[@]} - JOURNALS ))"
+  return 0
+}
+
+act_removestorage() {
+  require_running; load_state
+  [ -n "$VG" ] || die "No shared storage configured"
+  local vms
+  vms=$(ls "$VM_DIR"/*.xml 2>/dev/null | wc -l)
+  ((vms == 0)) || ((FORCE)) || die "$vms clustered VM(s) still defined. Remove them first (or use -force)"
+  confirm "Unmount $MOUNT on all nodes and delete its cluster resources? Data on $SHARED_DEV is kept." "$VG"
+  run pcs resource disable "${VG}-clone" --wait="$WAIT"
+  run pcs resource delete "${FSNAME}-fs"
+  run pcs resource delete "${LV}-lv"
+  SHARED_DEV="" VG="" LV="" MOUNT="" FSNAME="" JOURNALS=0
+  save_state; push_state
+  msg "Storage resources removed. dlm/lvmlockd (locking-clone) kept. Delete with: pcs resource delete locking"
+}
+
+# ---------------------------------------------------------------------------
+# Virtual machines
+# ---------------------------------------------------------------------------
+push_vm_xml() {
+  local vm=$1 n
+  for n in "${NODES[@]}"; do
+    is_local "$n" && continue
+    rrun "$n" mkdir -p "$VM_DIR"
+    rcopy "$VM_DIR/$vm.xml" "$n" "$VM_DIR/$vm.xml"
+  done
+}
+
+act_addvm() {
+  need_args 1 "Usage: $PROG -addvm vm [vm ...] [-xml FILE] [-prefer node]"
+  require_running; load_state
+  [ -n "${OPT[prefer]:-}" ] && OPT[prefer]=$(to_name "${OPT[prefer]}")
+  [ -n "${OPT[xml]:-}" ] && ((${#ARGS[@]} > 1)) && die "-xml can only be used with one VM"
+  local vm n xml f state mnt=${MOUNT:-$DEF_MOUNT} i
+  for vm in "${ARGS[@]}"; do
+    step "=== Adding VM $vm ==="
+    valid_id "$vm"
+    res_exists "$vm" && die "Resource $vm already exists"
+    xml=$VM_DIR/$vm.xml
+    run mkdir -p "$VM_DIR"
+
+    if [ -n "${OPT[xml]:-}" ]; then
+      [ -f "${OPT[xml]}" ] || die "${OPT[xml]} not found"
+      run cp -f "${OPT[xml]}" "$xml"
+    else
+      virsh dominfo "$vm" >/dev/null 2>&1 || die "VM $vm is not defined on this node (or use -xml FILE)"
+      if ((DRYRUN)); then msg "[dry-run] virsh dumpxml --inactive --security-info $vm > $xml"
+      else virsh dumpxml --inactive --security-info "$vm" > "$xml"; fi
+    fi
+
+    local fsres=() id r
+    if [ -f "$xml" ]; then
+      while read -r f; do
+        id=""; [[ $f =~ ^$STORAGES_DIR/([^/]+)/ ]] && id=${BASH_REMATCH[1]}
+        if [ "$(findmnt -n -o FSTYPE --target "$f" 2>/dev/null)" != gfs2 ]; then
+          warn "$vm disk $f is NOT on shared (GFS2) storage - migration/failover will fail"
+          continue
+        fi
+        # the cluster resource that mounts this pool: the VM must start after it
+        if [ -n "$id" ] && res_exists "vmexsp-$id-fs-clone"; then fsres+=("vmexsp-$id-fs-clone")
+        elif [ -n "$VG" ] && [[ $f == "$mnt"/* ]]; then fsres+=("${VG}-clone"); fi
+      done < <(grep -oP "<source file=['\"]\K[^'\"]+" "$xml" || true)
+    fi
+
+    step "Removing $vm from libvirt on every node (the cluster owns it now)"
+    for n in "${NODES[@]}"; do
+      ((DRYRUN)) && { msg "[dry-run][$n] shut down / undefine $vm if defined"; continue; }
+      state=$(rq "$n" "virsh domstate $(printf %q "$vm") 2>/dev/null" || true)
+      [ -z "$state" ] && continue
+      if [[ $state == running* || $state == paused* ]]; then
+        is_local "$n" || die "$vm is running on $n - shut it down there first"
+        msg "Shutting down $vm on $n..."
+        virsh shutdown "$vm" >/dev/null || true
+        for ((i = 0; i < WAIT; i += 5)); do
+          [[ $(virsh domstate "$vm" 2>/dev/null) == "shut off" ]] && break; sleep 5
+        done
+        [[ $(virsh domstate "$vm" 2>/dev/null) == "shut off" ]] || die "$vm did not shut down in ${WAIT}s"
+      fi
+      rsh "$n" "virsh undefine --keep-nvram $(printf %q "$vm") >/dev/null 2>&1 || virsh undefine $(printf %q "$vm")"
+    done
+
+    push_vm_xml "$vm"
+
+    step "Creating cluster resource $vm"
+    local meta=(allow-migrate=true)
+    ((NOMIGRATE)) && meta=(allow-migrate=false)
+    run pcs resource create "$vm" ocf:heartbeat:VirtualDomain \
+      config="$xml" hypervisor=qemu:///system migration_transport=ssh \
+      meta "${meta[@]}" \
+      op start timeout=120s op stop timeout=180s \
+      op monitor interval=10s timeout=30s \
+      op migrate_to timeout=180s op migrate_from timeout=180s --disabled
+    for r in $(printf '%s\n' "${fsres[@]}" | sort -u); do
+      run pcs constraint order start "$r" then "$vm"
+      run pcs constraint colocation add "$vm" with "$r"
+    done
+    [ -n "${OPT[prefer]:-}" ] && run pcs constraint location "$vm" prefers "${OPT[prefer]}"
+    if ((NOSTART)); then msg "$vm created (stopped). Start with: $PROG -startvm $vm"
+    else run pcs resource enable "$vm" --wait="$WAIT"; fi
+  done
+}
+
+act_removevm() {
+  need_args 1 "Usage: $PROG -removevm vm [-purge]"
+  require_running
+  local vm n
+  for vm in "${ARGS[@]}"; do
+    res_exists "$vm" || ((DRYRUN)) || die "No cluster resource $vm"
+    if ((PURGE)); then
+      confirm "Stop $vm and remove it from the cluster and all VM definitions? (disk images are kept)" "$vm"
+    else
+      confirm "Stop $vm and remove it from the cluster? It will be re-defined (stopped) in libvirt on $(hostname -s)."
+    fi
+    run pcs resource disable "$vm" --wait="$WAIT"
+    run pcs resource delete "$vm"
+    if ! ((PURGE)) && [ -f "$VM_DIR/$vm.xml" ]; then run virsh define "$VM_DIR/$vm.xml"; fi
+    for n in "${NODES[@]}"; do rrun "$n" rm -f "$VM_DIR/$vm.xml" || true; done
+  done
+}
+
+act_startvm()   { need_args 1 "Usage: $PROG -startvm vm ...";   require_running; local v; for v in "${ARGS[@]}"; do run pcs resource enable "$v" --wait="$WAIT"; done; }
+act_stopvm()    { need_args 1 "Usage: $PROG -stopvm vm ...";    require_running; local v; for v in "${ARGS[@]}"; do run pcs resource disable "$v" --wait="$WAIT"; done; }
+act_restartvm() { need_args 1 "Usage: $PROG -restartvm vm ..."; require_running; local v; for v in "${ARGS[@]}"; do run pcs resource restart "$v" --wait="$WAIT"; done; }
+act_clearvm()   { need_args 1 "Usage: $PROG -clearvm vm ...";   require_running; local v; for v in "${ARGS[@]}"; do run pcs resource clear "$v"; done; }
+
+act_migratevm() {
+  need_args 1 "Usage: $PROG -migratevm vm [-to node]"
+  require_running; load_state
+  [ -n "${OPT[to]:-}" ] && OPT[to]=$(to_name "${OPT[to]}")
+  local vm
+  for vm in "${ARGS[@]}"; do
+    if [ -n "${OPT[to]:-}" ]; then run pcs resource move "$vm" "${OPT[to]}" --wait="$WAIT"
+    else run pcs resource move "$vm" --wait="$WAIT"; fi
+  done
+}
+
+act_listvms() {
+  require_cluster
+  local ids id
+  mapfile -t ids < <(cibadmin --query --scope resources 2>/dev/null \
+    | grep -oP '<primitive [^>]*type="VirtualDomain"[^>]*>' | grep -oP ' id="\K[^"]+' | sort)
+  ((${#ids[@]})) || { msg "No clustered VMs (add with: $PROG -addvm <vm>)"; return 0; }
+  printf '%-25s %s\n' "VM" "STATUS"
+  for id in "${ids[@]}"; do
+    printf '%-25s %s\n' "$id" "$(crm_resource --resource "$id" --locate 2>&1 | sed 's/^resource [^ ]* //' | paste -sd ';')"
+  done
+}
+
+act_vmstatus() {
+  need_args 1 "Usage: $PROG -vmstatus vm"
+  require_cluster
+  local vm=${ARGS[0]}
+  pcs resource status "$vm" || true; echo
+  pcs resource config "$vm" || true; echo
+  pcs constraint ref "$vm" || true; echo
+  crm_resource --resource "$vm" --locate || true
+}
+
+act_syncvm() {
+  require_cluster
+  local vms=() vm f
+  if [ -n "${OPT[xml]:-}" ]; then
+    need_args 1 "Usage: $PROG -syncvm vm -xml FILE"
+    [ -f "${OPT[xml]}" ] || die "${OPT[xml]} not found"
+    run cp -f "${OPT[xml]}" "$VM_DIR/${ARGS[0]}.xml"
+  fi
+  if ((${#ARGS[@]})); then vms=("${ARGS[@]}")
+  else for f in "$VM_DIR"/*.xml; do [ -e "$f" ] && vms+=("$(basename "$f" .xml)"); done; fi
+  ((${#vms[@]})) || die "No VM definitions in $VM_DIR"
+  for vm in "${vms[@]}"; do
+    [ -f "$VM_DIR/$vm.xml" ] || ((DRYRUN)) || die "$VM_DIR/$vm.xml not found"
+    step "Syncing $vm"
+    push_vm_xml "$vm"
+  done
+  msg "Changes take effect on next VM start: $PROG -restartvm <vm>"
+}
+
+# ---------------------------------------------------------------------------
+# Operations
+# ---------------------------------------------------------------------------
+act_verify()  { require_cluster; pcs cluster verify --full; msg "Configuration OK"; }
+act_cleanup() { require_running; if ((${#ARGS[@]})); then run pcs resource cleanup "${ARGS[@]}"; else run pcs resource cleanup; fi; }
+act_config()  { require_cluster; pcs config; echo; load_state; msg "# vmexcluster state ($STATE_FILE)"; cat "$STATE_FILE" 2>/dev/null || true; }
+
+act_backup() {
+  require_cluster
+  local base=${ARGS[0]:-/root/vmexcluster-${CL}-$(date +%Y%m%d-%H%M)}
+  base=${base%.tar.bz2}
+  run pcs config backup "$base"
+  run tar czf "${base}-vms.tar.gz" -C / "${CONF_DIR#/}" "${VM_DIR#/}"
+  msg "Backup: ${base}.tar.bz2 (cluster config) and ${base}-vms.tar.gz (VM definitions)"
+}
+
+act_restore() {
+  need_args 1 "Usage: $PROG -restore file.tar.bz2"
+  local file=${ARGS[0]} vms
+  [ -f "$file" ] || die "$file not found"
+  if ! ((DRYRUN)) && crm_mon -1 >/dev/null 2>&1; then
+    die "Stop the cluster on all nodes first: $PROG -stop"
+  fi
+  confirm "Overwrite the cluster configuration on all nodes with $file?"
+  run pcs config restore "$file"
+  vms="${file%.tar.bz2}-vms.tar.gz"
+  if [ -f "$vms" ]; then
+    run tar xzf "$vms" -C /
+    mapfile -t NODES < <(cluster_nodes)
+    local n f
+    for n in "${NODES[@]}"; do
+      is_local "$n" && continue
+      rrun "$n" mkdir -p "$VM_DIR" "$CONF_DIR"
+      [ -f "$STATE_FILE" ] && rcopy "$STATE_FILE" "$n" "$STATE_FILE"
+      for f in "$VM_DIR"/*.xml; do [ -e "$f" ] && rcopy "$f" "$n" "$f"; done
+    done
+  fi
+  msg "Restored. Start the cluster with: $PROG -start"
+}
+
+act_report() {
+  require_cluster
+  local dest=${ARGS[0]:-/root/vmexcluster-report-$(date +%Y%m%d-%H%M)}
+  local since=${OPT[since]:-$(date -d '-2 hours' '+%Y-%m-%d %H:%M')}
+  run pcs cluster report --from "$since" "$dest"
+}
+
+act_history() {
+  local n=${ARGS[0]:-${OPT[lines]:-30}}
+  [[ $n =~ ^[0-9]+$ ]] || die "Usage: $PROG -history [N]"
+  [ -f "$HISTORY" ] || { msg "No history yet ($HISTORY)"; return 0; }
+  tail -n "$n" "$HISTORY"
+  msg ""
+  msg "Full output of each run: $LOG_DIR/<command>-ddmmyyyy.log"
+}
+
+act_logs() {
+  local nodes n lines=${OPT[lines]:-200}
+  mapfile -t nodes < <(target_nodes)
+  for n in "${nodes[@]}"; do
+    step "Logs on $n"
+    ssh_check "$n"
+    rq "$n" "journalctl -u corosync -u pacemaker -u pcsd -n $lines --no-pager"
+  done
+}
+
+act_installautocomplete() {
+  local src="" c nodes n
+  if [ -n "${OPT[file]:-}" ]; then
+    src=${OPT[file]}
+  else
+    for c in "$(dirname "$SELF")/$COMPLETION_NAME" "$CONF_DIR/$COMPLETION_NAME" "$PWD/$COMPLETION_NAME"; do
+      [ -f "$c" ] && { src=$c; break; }
+    done
+  fi
+  [ -n "$src" ] && [ -f "$src" ] || die "$COMPLETION_NAME not found. Use: $PROG -installautocomplete -file /path/to/$COMPLETION_NAME"
+  bash -n "$src" || die "$src has syntax errors"
+  msg "Using $src ($(sed -n 's/^#  Version *: *//p' "$src" | head -1))"
+  mapfile -t nodes < <(target_nodes)
+  for n in "${nodes[@]}"; do
+    step "Tab completion on $n"
+    ssh_check "$n"
+    rsh "$n" "rpm -q bash-completion >/dev/null 2>&1 || dnf -y install bash-completion"
+    rrun "$n" mkdir -p "$(dirname "$COMPLETION_DEST")" "$CONF_DIR"
+    rcopy "$src" "$n" "$COMPLETION_DEST"
+    rrun "$n" chmod 0644 "$COMPLETION_DEST"
+    # keep a copy so -installautocomplete also works from the node later
+    rcopy "$src" "$n" "$CONF_DIR/$COMPLETION_NAME"
+  done
+  msg ""
+  msg "Done. Open a NEW bash shell, then type: $PROG -<Tab>"
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+ACTIONS=" installprereq checkprereq validate onboard create destroy start stop enable disable
+  status quorum property addnode removenode listnodes synchosts changeip standby unstandby maintenance
+  addfence removefence listfence testfence bmcstatus
+  iscsilogin iscsilogout listdisks mpathalias setuplocking setupstorage addjournal storagestatus removestorage
+  addvm removevm startvm stopvm restartvm migratevm clearvm listvms vmstatus syncvm
+  verify cleanup config backup restore report logs history installautocomplete help version "
+VALUE_OPTS=" cluster nodes hapass ipaddr user pass agent params delay portal target chapuser
+  chappass wwid alias device vg lv size mount fsname journals xml to prefer since lines file prefix cipher "
+MULTI_OPTS=" nodes params "
+FLAG_OPTS=" all yes force dryrun full nolanplus purge nomigrate nostart nosan wipe "
+
+ORIG_ARGS=("$@")
+declare -A OPT=()
+ACTION=""
+ARGS=()
+current=""
+
+for a in "$@"; do
+  if [[ $a == -* && ! $a =~ ^-[0-9] ]]; then
+    key=${a##-}; key=${key##-}; key=${key,,}
+    case $key in sshtrust) key=onboard ;; node) key=nodes ;; h|"?") key=help ;; dry-run) key=dryrun ;; y) key=yes ;; esac
+    [[ $key =~ ^[a-z]+$ ]] || die "Unknown switch: $a (see $PROG -help)"
+    if [[ " $ACTIONS " =~ [[:space:]]$key[[:space:]] ]]; then
+      [ -n "$ACTION" ] && die "Only one action per command (-$ACTION and -$key given)"
+      ACTION=$key; current=ACTION
+    elif [[ " $VALUE_OPTS " =~ [[:space:]]$key[[:space:]] ]]; then
+      OPT[$key]=""; current=$key
+    elif [[ " $FLAG_OPTS " =~ [[:space:]]$key[[:space:]] ]]; then
+      OPT[$key]=1; current=ACTION
+    else
+      die "Unknown switch: $a (see $PROG -help)"
+    fi
+  else
+    if [ "$current" = ACTION ]; then
+      ARGS+=("$a")
+    elif [ -n "$current" ]; then
+      if [[ " $MULTI_OPTS " =~ [[:space:]]$current[[:space:]] ]]; then
+        OPT[$current]+="${OPT[$current]:+ }$a"
+      else
+        OPT[$current]=$a
+        current=ACTION      # further words are action arguments
+      fi
+    else
+      die "Unexpected argument '$a' (start with an action, see $PROG -help)"
+    fi
+  fi
+done
+
+for k in $VALUE_OPTS; do
+  if [[ -v OPT[$k] && -z ${OPT[$k]} ]]; then die "Switch -$k needs a value"; fi
+done
+
+flag() { [[ -n ${OPT[$1]:-} ]] && echo 1 || echo 0; }
+ALL=$(flag all) YES=$(flag yes) FORCE=$(flag force) DRYRUN=$(flag dryrun) FULL=$(flag full)
+NOLANPLUS=$(flag nolanplus) PURGE=$(flag purge) NOMIGRATE=$(flag nomigrate) NOSTART=$(flag nostart)
+NOSAN=$(flag nosan) WIPE=$(flag wipe)
+HAPASS=""
+CL=""
+NODES=()
+
+[ -z "$ACTION" ] && { usage; exit 1; }
+case $ACTION in
+  help)    usage; exit 0 ;;
+  version) echo "$PROG $VERSION"; exit 0 ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || die "Run as root"
+[ -n "${OPT[hapass]:-}" ] && warn "-hapass is visible in the process list; normally leave it out (cluster authorization is saved)"
+
+# ---------------------------------------------------------------------------
+# Logging: output -> $LOG_DIR/<command>-ddmmyyyy.log, one line -> history.log
+# ---------------------------------------------------------------------------
+masked_cmdline() {
+  local a out="$PROG" mask=0
+  for a in "${ORIG_ARGS[@]}"; do
+    if ((mask)); then out+=" ****"; mask=0; continue; fi
+    out+=" $(printf '%q' "$a")"
+    case ${a,,} in -hapass|--hapass|-pass|--pass|-chappass|--chappass) mask=1 ;; esac
+  done
+  printf '%s' "$out"
+}
+
+log_finish() {
+  local rc=$1 end dur
+  end=$(date +%s%N)
+  dur=$(( (end - START_NS) / 1000000 ))
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') finished: exit=$rc duration=${dur}ms ==="
+  printf '%s  %-10s %-8s %-6s exit=%-3s %7sms  %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$(hostname -s)" \
+    "${SUDO_USER:-$(id -un)}" "$( ((DRYRUN)) && echo dryrun || echo live)" "$rc" "$dur" "$CMDLINE" \
+    >> "$HISTORY" 2>/dev/null || true
+  exec 1>&- 2>&-
+  wait "$TEE_PID" 2>/dev/null || true
+}
+
+if [ "$ACTION" = history ]; then
+  :   # viewing the history is not logged
+elif mkdir -p "$LOG_DIR" 2>/dev/null && chmod 0750 "$LOG_DIR" 2>/dev/null; then
+  LOGFILE="$LOG_DIR/${ACTION}-$(date +%d%m%Y).log"
+  CMDLINE=$(masked_cmdline)
+  START_NS=$(date +%s%N)
+  touch "$LOGFILE" "$HISTORY" && chmod 0640 "$LOGFILE" "$HISTORY"
+  exec > >(tee -a "$LOGFILE") 2>&1
+  TEE_PID=$!
+  echo ""
+  echo "=== $(date '+%Y-%m-%d %H:%M:%S') $(hostname -s) user=${SUDO_USER:-$(id -un)}: $CMDLINE ($( ((DRYRUN)) && echo dry-run || echo live)) ==="
+  trap 'log_finish $?' EXIT
+else
+  warn "Cannot write to $LOG_DIR - running without a log file"
+fi
+
+"act_$ACTION"

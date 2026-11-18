@@ -1,0 +1,3373 @@
+#!/usr/bin/env bash
+#
+# migrate2vmex - Migrate virtual machines from VMware ESXi to VMeX (KVM/libvirt) on Fedora
+#
+# Works directly against a standalone ESXi host over SSH (no vCenter needed).
+#
+# migrate2vmex 3.36 (VMeX Platform 10.5) - edition for Fedora 43
+# (uses the conversion tool shipped with Fedora 43: virt-v2v 2.9.x, shown on screen as V2V)
+#
+# What it does by default (same behaviour as the Fedora 42 edition):
+#   Windows 2012 R2 and older -> disk copy over SSH streamed straight into <pool>/<VM>/<VM>.qcow2,
+#                      then virt-v2v-in-place (virtio drivers) and the VM is defined
+#   Linux guests    -> the method you choose; in-transit conversion (virt-v2v) is available
+#   Other OSes      -> disk copy + emulated hardware (SATA, e1000e, VGA)
+# In-transit methods (-method v2v | vddk | vmfs) convert while copying and copy only used
+# blocks. Windows 2012 R2 converted that way did not boot, so Windows 2012 R2 and older use
+# the copy unless -force-in-transit is given; Windows 2016 and newer follow the chosen method.
+#
+# Safety: whole-plan space check with reserve, never overwrites disks (own folder per VM:
+# <name>, <name>-02, -03 ...), interrupted copies resume, source VM untouched on errors,
+# read-only SAN access removed on exit, per-VM isolation in batches, full logs.
+#
+# Quick start (as root on Fedora 43):
+#   migrate2vmex -sourcehost 10.0.0.60 -setup     # packages + SSH key on ESXi
+#   migrate2vmex -sourcehost 10.0.0.60 -list      # list VMs
+#   migrate2vmex -sourcehost 10.0.0.60 -dry-run   # menus, inspect and plan only
+#   migrate2vmex -sourcehost 10.0.0.60             # menus, then migrate
+#
+set -Eeuo pipefail
+
+PROG="migrate2vmex"
+SCRIPT_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" 2>/dev/null && pwd || echo /)
+VERSION="3.36"
+TARGET_FEDORA="43"      # this edition of the script is for this Fedora release
+IGNORE_OS=0
+FORCE_IN_TRANSIT=0
+REPAIR_UNCLEAN=0   # -repair-unclean: repair Windows disks that were not shut down cleanly (no question)
+NTFS_FIX=0; DISCARD_COPY=0
+WARM=0             # --warm: copy while the VM runs, shut down only for the final sync
+WARM_CHUNK_MB=64   # final-sync granularity
+WARM_CUTOVER=ask   # ask = confirm before shutting the VM down after pass 1; auto = shut down at once
+WARM_HASH=0; WARM_SNAP=0; NBD_DEV=""
+WARM_CLONE_DIR=""; WARM_SRC=()   # temporary thin copy on the datastore when ESXi locks the base disk
+KEEP_VIRTIO=0      # --keep-virtio: skip the Windows 2012 R2 SATA/e1000e fix-up
+PRODUCT_LABEL="VMeX Platform 10.5"   # shown in the banner and help title
+PLATFORM_NAME="VMeX"   # shown instead of "KVM" in virt-v2v's "Converting ... to run on KVM"
+
+# ----------------------------------------------------------------------------- defaults
+ESXI_HOST=""
+ESXI_USER="root"
+ESXI_PORT="22"
+SSH_KEY="/root/.ssh/migrate2vmex_rsa"
+SSH_KEY_OLD="/root/.ssh/esxi2kvm_rsa"   # key installed by earlier versions (esxi2kvm) - still used if present
+SSH_KEY_FROM_CLI=0
+ACTION=""
+VM_ARGS=()
+MIGRATE_ALL=0
+METHOD="auto"
+METHOD_FROM_CLI=0
+SAN_PORTAL=""
+SAN_TARGET=""
+VDDK_LIBDIR="/opt/vmware-vix-disklib-distrib"
+MIN_FREE_GB=""        # reserve kept free in the pool (default: 5% of the pool, 10..100 GiB)
+SKIP_SPACE=0
+VDDK_THUMB=""
+VDDK_TARBALL=""; VDDK_URL=""; VDDK_DECLINED=0   # --vddk-tarball / --vddk-url: install VDDK on this Fedora host when missing
+VDDK_TRANSPORTS="nbd"   # plain NBD: no TLS overhead on the LAN (nbdssl = encrypted, slower)
+VDDK_CONF=""            # VDDK config file; default: generated with larger NFC AIO buffers
+ESXI_PWFILE=""
+ESXI_PWFILE_TMP=0
+FALLBACK=1
+POOL="default"
+POOL_FROM_CLI=0
+FORMAT="qcow2"
+FORMAT_EXPLICIT=0      # set when the user chose the format (--format or the menu)
+DEF_NET_TYPE="network"
+DEF_NET_NAME="default"
+declare -A NET_MAP=()
+KEEP_MAC=1
+TARGET_NAME=""
+TARGET_DIR=""
+DO_SHUTDOWN=0
+FORCE_OFF=0
+SHUTDOWN_TIMEOUT=300
+CONSOLIDATE=0
+SKIP_RDM=0
+COMPRESS=1
+VERIFY=0
+START_VM=0
+AUTOSTART=0
+DRY_RUN=0
+ASSUME_YES=0
+YES_CLI=0          # -yes on the command line (unattended); ASSUME_YES is also set after the menu
+LOG_DIR="/var/log/vmex/migrate2vmex"
+RUN_ID=""
+DEBUG=0
+LIBVIRT_URI="qemu:///system"
+VIRTIO_WIN_DIR="/usr/share/virtio-win"
+VIRTIO_CUSTOM=0    # 1 = -virtio-win given: an older ISO with drivers for Windows 2012 R2 (no SATA fix-up)
+VMEX_CONF="/etc/vmex/migrate2vmex.conf"   # remembers the virtio-win ISO entered at the prompt
+V2V_EXTRA=()
+HAVE_TTY=0
+[[ -t 1 ]] && HAVE_TTY=1 || true
+
+# ----------------------------------------------------------------------------- helpers
+ts()   { date '+%F %T'; }
+# Never fails: after Ctrl+C the screen/log copier (tee) may be gone - then write to the
+# log file and the terminal directly, so clean-up messages are not lost and clean-up continues.
+log()  {
+  local line; line=$(printf '%s [%-5s] %s' "$(ts)" "$1" "${*:2}")
+  if ! printf '%s\n' "$line" 2>/dev/null; then
+    [[ -n ${LOG_FILE-} ]] && printf '%s\n' "$line" >>"$LOG_FILE" 2>/dev/null || true
+    ((HAVE_TTY)) && printf '%s\n' "$line" >/dev/tty 2>/dev/null || true
+  fi
+  return 0
+}
+info() { log INFO "$@"; }
+logfile_only() { [[ -n ${LOG_FILE-} ]] && log INFO "$@" >>"$LOG_FILE" || true; }   # log file, not the screen
+warn() { log WARN "$@"; }
+err()  { log ERROR "$@"; }
+die()  { err "$@"; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+# a terminal we can really read from (not just a /dev/tty node: cron, systemd, setsid have none)
+can_prompt() { { : </dev/tty; } 2>/dev/null; }
+# "AJL-EXCH01 (vmid 7)" for a vmid or name given on the command line / chosen in the menu
+vm_label() {
+  local k
+  for k in "${!INV_ID[@]}"; do
+    if [[ ${INV_ID[k]} == "$1" || ${INV_NAME[k]} == "$1" ]]; then printf '%s (vmid %s)' "${INV_NAME[k]}" "${INV_ID[k]}"; return; fi
+  done
+  printf '%s' "$1"
+}
+# log file name of a VM: its target name on VMeX (same as its folder), e.g. AJL-SQL-1.22
+vm_log_name() {
+  local k
+  for k in "${!INV_ID[@]}"; do
+    if [[ ${INV_ID[k]} == "$1" || ${INV_NAME[k]} == "$1" ]]; then
+      printf '%s' "${TARGET_NAME:-${TNAME_MAP[${INV_ID[k]}]:-$(sanitize_name "${INV_NAME[k]}")}}"; return
+    fi
+  done
+  sanitize_name "$1"
+}
+mname() { [[ $1 == vddk ]] && echo stream || echo "$1"; }   # method names as shown on screen
+duration() { local s=$1; if ((s >= 3600)); then printf '%dh %02dm' $((s / 3600)) $((s % 3600 / 60)); else printf '%dm %02ds' $((s / 60)) $((s % 60)); fi; }
+hr()   { printf '%s\n' "------------------------------------------------------------------------"; }
+
+on_err() { local rc=$?; err "Unexpected error (exit $rc) at line ${BASH_LINENO[0]}: $BASH_COMMAND"; }
+trap on_err ERR
+
+confirm() {
+  ((ASSUME_YES)) && return 0
+  local a
+  read -r -p "$1 [y/N] " a </dev/tty || return 1
+  [[ $a == [yY]* ]]
+}
+
+require_root() { [[ $EUID -eq 0 ]] || die "Run this script as root (sudo)."; }
+
+# Quote a string for the remote POSIX shell (ESXi busybox ash)
+q() { local s=${1//\'/\'\\\'\'}; printf "'%s'" "$s"; }
+
+# Percent-encode a path for the virt-v2v ssh:// URL
+urlencode() {
+  local LC_ALL=C s=$1 i c out=""
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    case $c in
+      [A-Za-z0-9._~/-]) out+=$c ;;
+      *) out+=$(printf '%%%02X' "'$c") ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# Decode VMware .vmx |XX escapes
+vmx_decode() {
+  local s=$1 out="" re='^([^|]*)\|([0-9A-Fa-f]{2})(.*)$'
+  while [[ $s =~ $re ]]; do
+    out+="${BASH_REMATCH[1]}$(printf "\\x${BASH_REMATCH[2]}")"
+    s=${BASH_REMATCH[3]}
+  done
+  printf '%s' "$out$s"
+}
+
+sanitize_name() {
+  local n
+  n=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | tr -s '-')
+  n=${n#-}; n=${n%-}
+  printf '%s' "${n:-vm}"
+}
+
+human() { numfmt --to=iec-i --suffix=B "$1" 2>/dev/null || echo "${1}B"; }
+
+# ----------------------------------------------------------------------------- ssh
+SSH_OPTS=()
+pick_ssh_key() {   # keep using the key an earlier version (esxi2kvm) installed on ESXi
+  if ((SSH_KEY_FROM_CLI == 0)) && [[ ! -f $SSH_KEY && -f $SSH_KEY_OLD ]]; then SSH_KEY=$SSH_KEY_OLD; fi
+}
+init_ssh_opts() {
+  SSH_OPTS=(-p "$ESXI_PORT" -o BatchMode=yes -o ConnectTimeout=15
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10
+            -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
+  [[ -f $SSH_KEY ]] && SSH_OPTS+=(-i "$SSH_KEY") || true
+}
+esx()  { ssh "${SSH_OPTS[@]}" "$ESXI_USER@$ESXI_HOST" "$@"; }       # may read stdin
+esxn() { ssh -n "${SSH_OPTS[@]}" "$ESXI_USER@$ESXI_HOST" "$@"; }    # never reads stdin
+
+start_agent() {
+  # virt-v2v (-it ssh) and nbdkit-ssh need non-interactive key auth: use an agent
+  [[ -f $SSH_KEY ]] || die "SSH key $SSH_KEY not found. Run with -setup first."
+  eval "$(ssh-agent -s)" >/dev/null
+  trap on_exit EXIT
+  ssh-add -q "$SSH_KEY" 2>/dev/null || die "Could not add $SSH_KEY to ssh-agent"
+  # nbdkit-ssh (libssh) needs the host key in known_hosts
+  mkdir -p /root/.ssh && chmod 700 /root/.ssh
+  local kh_host="$ESXI_HOST"
+  [[ $ESXI_PORT != 22 ]] && kh_host="[$ESXI_HOST]:$ESXI_PORT" || true
+  if ! ssh-keygen -F "$kh_host" >/dev/null 2>&1; then
+    ssh-keyscan -p "$ESXI_PORT" -H "$ESXI_HOST" >>/root/.ssh/known_hosts 2>/dev/null || true
+  fi
+}
+
+check_esxi() {
+  local v
+  v=$(esxn 'vim-cmd hostsvc/hostsummary 2>/dev/null | grep -i "fullName" | head -n 1' 2>/dev/null) \
+    || die "Cannot run commands on $ESXI_USER@$ESXI_HOST over SSH (key auth). Run -setup, check SSH service / lockdown mode."
+  v=${v#*= }; v=${v//\"/}; v=${v%,}
+  info "Connected to ESXi: ${v:-unknown version}"
+}
+
+# ----------------------------------------------------------------------------- setup
+install_pkgs() {
+  local p missing=()
+  for p in "$@"; do rpm -q "$p" >/dev/null 2>&1 || missing+=("$p"); done
+  ((${#missing[@]})) || return 0
+  local shown=() q
+  for p in "${missing[@]}"; do shown+=("$(pkg_label "$p")"); done
+  info "Installing: ${shown[*]}"
+  q=(); [[ -n ${LOG_FILE-} ]] && q=(-q)
+  if ! dnf -y "${q[@]}" install "${missing[@]}" >>"${LOG_FILE:-/dev/null}" 2>&1; then
+    for p in "${missing[@]}"; do
+      dnf -y "${q[@]}" install "$p" >>"${LOG_FILE:-/dev/null}" 2>&1 || warn "$(pkg_label "$p") could not be installed (details in the log)"
+    done
+  fi
+}
+pkg_label() { case $1 in nbdkit-vddk-plugin) echo "In-Transit Disk Streaming plugin" ;; *) echo "$1" ;; esac; }
+
+# virtio-win = the Windows VirtIO drivers V2V injects into Windows guests
+virtio_present() {
+  if [[ -f $VIRTIO_WIN_DIR ]]; then [[ $(dd if="$VIRTIO_WIN_DIR" bs=1 skip=32769 count=5 2>/dev/null) == CD001 ]]; return; fi
+  [[ -d $VIRTIO_WIN_DIR ]] || return 1
+  compgen -G "$VIRTIO_WIN_DIR/*.iso" >/dev/null && return 0
+  [[ -n $(find "$VIRTIO_WIN_DIR" -maxdepth 6 -iname 'viostor.sys' -print -quit 2>/dev/null) ]]
+}
+
+# Is $1 a usable virtio-win ISO?  Prints the reason when it is not.
+validate_virtio_iso() {
+  local f=$1 magic
+  [[ -n $f ]] || { echo "no path given"; return 1; }
+  [[ $f == /* ]] || { echo "enter the full path (starting with /)"; return 1; }
+  [[ -e $f ]] || { echo "$f does not exist"; return 1; }
+  [[ -f $f ]] || { echo "$f is not a file"; return 1; }
+  [[ -r $f ]] || { echo "$f is not readable"; return 1; }
+  magic=$(dd if="$f" bs=1 skip=32769 count=5 2>/dev/null)
+  [[ $magic == CD001 ]] || { echo "$f is not an ISO image"; return 1; }
+  if have guestfish; then   # the driver folders V2V needs must be inside
+    LIBGUESTFS_BACKEND=direct timeout 120 guestfish --ro -a "$f" run : mount-ro /dev/sda / : is-dir /viostor 2>/dev/null \
+      | grep -qx true || { echo "$f is an ISO but not the virtio-win drivers ISO (no viostor folder)"; return 1; }
+  fi
+}
+
+remember_virtio_iso() {   # next runs use the same ISO without asking
+  mkdir -p "${VMEX_CONF%/*}" 2>/dev/null || return 0
+  { grep -v '^virtio_win_iso=' "$VMEX_CONF" 2>/dev/null; printf 'virtio_win_iso=%s\n' "$1"; } >"$VMEX_CONF.tmp" \
+    && mv -f "$VMEX_CONF.tmp" "$VMEX_CONF" && logfile_only "virtio-win ISO remembered in $VMEX_CONF: $1"
+}
+
+use_virtio_iso() {   # $1 = ISO: validate, use it from where it is, remember it
+  local why
+  if why=$(validate_virtio_iso "$1"); then
+    VIRTIO_WIN_DIR=$1
+    info "Using virtio-win ISO $1"
+    remember_virtio_iso "$1"
+    return 0
+  fi
+  err "virtio-win ISO not usable: $why"
+  return 1
+}
+
+# from the internet (Fedora + virtio-win repositories); output goes to the log, not the screen
+install_virtio_win() {
+  virtio_present && return 0
+  ((VIRTIO_CUSTOM)) && die "virtio-win ISO $VIRTIO_WIN_DIR not usable"
+  ((DRY_RUN)) && { info "[dry-run] would install virtio-win"; return 0; }
+  info "Downloading agent/drivers (required for Windows guests)"
+  if [[ ! -f /etc/yum.repos.d/virtio-win.repo ]]; then
+    curl -fsSL --connect-timeout 15 -o /etc/yum.repos.d/virtio-win.repo \
+      https://fedorapeople.org/groups/virt/virtio-win/virtio-win.repo >>"$LOG_FILE" 2>&1 \
+      || { warn "  No internet access from this host (could not reach fedorapeople.org)"; return 1; }
+  fi
+  if ! dnf -y -q install virtio-win >>"$LOG_FILE" 2>&1; then
+    warn "  Download failed - this host cannot reach the Fedora / virtio-win repositories (no internet or DNS)"
+    return 1
+  fi
+  virtio_present
+}
+
+# from a file: virtio-win-*.noarch.rpm or virtio-win*.iso
+install_virtio_from_file() {
+  local f=$1 mnt need_kb free_kb rc=0
+  [[ -r $f ]] || { err "File not found: $f"; return 1; }
+  ((DRY_RUN)) && { info "[dry-run] would install virtio-win from $f"; return 0; }
+  need_kb=$(( $(stat -c %s "$f") / 1024 * 2 + 102400 ))
+  free_kb=$(df -Pk /usr/share | awk 'NR == 2 { print $4 }')
+  if ((free_kb < need_kb)); then
+    err "Not enough free space in /usr/share for virtio-win: needs $(human $((need_kb * 1024))), free $(human $((free_kb * 1024)))"
+    return 1
+  fi
+  case ${f,,} in
+    *.rpm)
+      info "Installing virtio-win from ${f##*/}"
+      rpm -Uvh --replacepkgs "$f" >>"$LOG_FILE" 2>&1 || { err "Installing $f failed (see the log)"; return 1; } ;;
+    *.iso)
+      info "Installing virtio-win from ${f##*/} into /usr/share/virtio-win"
+      mnt=$(mktemp -d /run/migrate2vmex-iso.XXXXXX)
+      if mount -o loop,ro "$f" "$mnt" 2>>"$LOG_FILE"; then
+        mkdir -p /usr/share/virtio-win
+        cp -a "$mnt"/. /usr/share/virtio-win/ 2>>"$LOG_FILE" || rc=1
+        umount "$mnt" 2>/dev/null || true
+        ((rc == 0)) && cp -f "$f" /usr/share/virtio-win/virtio-win.iso 2>>"$LOG_FILE" || rc=1
+      else
+        rc=1
+      fi
+      rmdir "$mnt" 2>/dev/null || true
+      ((rc == 0)) || { err "Could not unpack $f (is it the virtio-win ISO?)"; return 1; }
+      have restorecon && restorecon -R /usr/share/virtio-win 2>/dev/null || true ;;
+    *) err "$f is neither a virtio-win .rpm nor an .iso"; return 1 ;;
+  esac
+  VIRTIO_WIN_DIR=/usr/share/virtio-win
+  virtio_present || { err "virtio-win drivers not found after installing $f"; return 1; }
+  info "  virtio-win installed"
+}
+
+enable_libvirt() {
+  if systemctl cat virtqemud.socket >/dev/null 2>&1; then
+    local s
+    for s in virtqemud virtnetworkd virtstoraged virtnodedevd virtsecretd virtinterfaced; do
+      systemctl enable --now "$s.socket" >/dev/null 2>&1 || true
+    done
+  else
+    systemctl enable --now libvirtd
+  fi
+}
+
+do_setup() {
+  require_root
+  [[ -n $ESXI_HOST ]] || die "-sourcehost is required (the ESXi host to migrate from)"
+  pick_ssh_key
+  info "Installing migration tooling"
+  install_pkgs virt-v2v libguestfs-tools qemu-img virt-install libvirt-daemon-kvm \
+               libvirt-client nbdkit nbdkit-ssh-plugin edk2-ovmf swtpm swtpm-tools \
+               pv libosinfo osinfo-db osinfo-db-tools openssh-clients policycoreutils
+  install_pkgs nbdkit-vddk-plugin || true
+  install_pkgs mingw-srvany-redistributable || true
+  install_pkgs hivex perl-hivex || true      # registry edits for the Windows 2012 R2 boot fix   # first-boot helper for Windows conversions
+  ( ensure_vmfs_tools ) || warn "SAN method (-method vmfs) not available: could not build vmfs-fuse"
+  install_virtio_win || warn "virtio-win not installed; Windows guests will need it"
+  enable_libvirt
+  [[ -e /dev/kvm ]] || warn "/dev/kvm missing: enable VT-x/AMD-V in firmware and load kvm modules"
+
+  mkdir -p /root/.ssh && chmod 700 /root/.ssh
+  if [[ ! -f $SSH_KEY ]]; then
+    info "Creating SSH key $SSH_KEY (RSA 4096 works on ESXi 6.x-8.x)"
+    ssh-keygen -q -t rsa -b 4096 -N "" -f "$SSH_KEY" -C "migrate2vmex@$(hostname -s)"
+  fi
+  init_ssh_opts
+  local pub authf
+  pub=$(<"$SSH_KEY.pub")
+  authf="/etc/ssh/keys-$ESXI_USER/authorized_keys"
+  info "Installing public key on ESXi ($authf) - enter the ESXi $ESXI_USER password if asked"
+  ssh -p "$ESXI_PORT" -o StrictHostKeyChecking=accept-new -o PubkeyAuthentication=no \
+      -o PreferredAuthentications=keyboard-interactive,password "$ESXI_USER@$ESXI_HOST" \
+      "mkdir -p $(q "${authf%/*}"); touch $(q "$authf"); grep -qxF $(q "$pub") $(q "$authf") || echo $(q "$pub") >> $(q "$authf"); chmod 600 $(q "$authf")" \
+      || die "Could not install key on ESXi"
+  check_esxi
+  info "Setup complete."
+}
+
+# ----------------------------------------------------------------------------- inventory
+INV_ID=(); INV_STATE=(); INV_VMX=(); INV_NAME=(); INV_OS=(); INV_SIZE=(); INV_GOS=()
+load_inventory() {
+  local out id st f dn
+  out=$(esx 'sh -s' <<'EOF'
+for id in $(vim-cmd vmsvc/getallvms </dev/null 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}'); do
+  vp=$(vim-cmd vmsvc/get.filelayout "$id" </dev/null 2>/dev/null | sed -n 's/.*vmPathName = "\(.*\)".*/\1/p' | head -n 1)
+  [ -n "$vp" ] || continue
+  st=$(vim-cmd vmsvc/power.getstate "$id" </dev/null 2>/dev/null | tail -n 1)
+  ds=${vp#\[}; ds=${ds%%\]*}; rel=${vp#*\] }
+  f="/vmfs/volumes/$ds/$rel"
+  dn=$(grep -i '^[[:space:]]*displayName[[:space:]]*=' "$f" 2>/dev/null </dev/null | head -n 1 | sed 's/^[^"]*"\(.*\)"[[:space:]]*$/\1/')
+  go=$(grep -i '^[[:space:]]*guestOS[[:space:]]*=' "$f" 2>/dev/null </dev/null | head -n 1 | sed 's/^[^"]*"\(.*\)"[[:space:]]*$/\1/')
+  gf=""; gu=0
+  case $st in *"Powered on"*)
+    g=$(vim-cmd vmsvc/get.guest "$id" </dev/null 2>/dev/null)
+    gf=$(echo "$g" | sed -n 's/^ *guestFullName = "\([^"]*\)".*/\1/p' | head -n 1)
+    gu=$(echo "$g" | awk '/ capacity = / { v = $3; gsub(/[^0-9]/, "", v); c = v }
+                          / freeSpace = / { v = $3; gsub(/[^0-9]/, "", v); if (c != "") { u += c - v; n++ }; c = "" }
+                          END { if (n) printf "%.0f\n", u / 1024; else print 0 }') ;;
+  esac
+  pv=$(vim-cmd vmsvc/device.getdevices "$id" </dev/null 2>/dev/null | awk '/capacityInKB = / { v = $3; gsub(/[^0-9]/, "", v); s += v } END { printf "%.0f\n", s }')
+  cm=$(vim-cmd vmsvc/get.summary "$id" </dev/null 2>/dev/null | awk '/^ *committed = / { v = $3; gsub(/[^0-9]/, "", v); printf "%.0f\n", v / 1024; exit }')
+  printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' "$id" "$st" "$f" "$dn" "$go" "$gf" "${pv:-0}" "${cm:-0}" "${gu:-0}"
+done
+EOF
+) || die "Failed to read VM inventory from ESXi"
+  local go gf os pv cm gu
+  while IFS=$'\037' read -r id st f dn go gf pv cm gu; do   # \037 separator: empty fields stay in place
+    [[ -n $id ]] || continue
+    INV_ID+=("$id"); INV_STATE+=("$st"); INV_VMX+=("$f"); INV_NAME+=("$(vmx_decode "$dn")")
+    if [[ -n $gf ]]; then   # reported by VMware Tools inside the running guest: the real OS
+      os=${gf#Microsoft }; os=${os% (64-bit)}; os=${os% (32-bit)}
+    else                    # from the VM settings (VM off / no Tools): can be outdated
+      os=$(guest_os_name "$go"); [[ -n $os ]] || os=${go%-64}; os="${os:-unknown}*"
+    fi
+    INV_OS+=("$os"); INV_GOS+=("$go")
+    # disk size: provisioned / used (inside the guest via VMware Tools, else allocated on ESXi, marked ~)
+    [[ $pv =~ ^[0-9]+$ ]] || pv=0; [[ $cm =~ ^[0-9]+$ ]] || cm=0; [[ $gu =~ ^[0-9]+$ ]] || gu=0
+    if ((gu > 0)); then INV_SIZE+=("$(gb_kb "$pv")/$(gb_kb "$gu")")
+    else ((cm > pv && pv > 0)) && cm=$pv; INV_SIZE+=("$(gb_kb "$pv")/$(gb_kb "$cm")~"); fi
+  done <<<"$out"
+  ((${#INV_ID[@]})) || warn "No VMs found on $ESXI_HOST"
+}
+
+# KiB -> short size: 950GB, 1.5TB, 8.5GB
+gb_kb() {
+  awk -v k="$1" 'BEGIN { g = k / 1048576
+    if (g >= 1024) printf "%.1fTB", g / 1024; else if (g >= 10) printf "%.0fGB", g; else printf "%.1fGB", g }'
+}
+
+list_vms() {
+  load_inventory
+  printf '%-6s %-14s %-30s %-16s %-34s %s\n' "VMID" "STATE" "NAME" "PROV/USED" "GUEST OS" "VMX"
+  local i
+  for i in "${!INV_ID[@]}"; do
+    printf '%-6s %-14s %-30s %-16s %-34s %s\n' "${INV_ID[i]}" "${INV_STATE[i]}" "${INV_NAME[i]}" "${INV_SIZE[i]}" "${INV_OS[i]}" "${INV_VMX[i]}"
+  done
+  echo "Used = data inside the VM (VMware Tools); ~ = VM off or no Tools: space allocated on ESXi instead (thick disks = full size)"
+  echo "* = OS from the VM settings (VM off or no VMware Tools) - may be outdated"
+}
+
+find_vm() {   # echo inventory index for a name or vmid
+  local key=$1 i hits=()
+  for i in "${!INV_ID[@]}"; do [[ ${INV_NAME[i]} == "$key" ]] && hits+=("$i"); done
+  if ((${#hits[@]} == 0)) && [[ $key =~ ^[0-9]+$ ]]; then
+    for i in "${!INV_ID[@]}"; do [[ ${INV_ID[i]} == "$key" ]] && hits+=("$i"); done
+  fi
+  ((${#hits[@]} == 1)) && { echo "${hits[0]}"; return 0; }
+  ((${#hits[@]} > 1)) && { err "Several VMs are named '$key'; use the VMID instead (see -list)"; return 1; }
+  err "VM '$key' not found on $ESXI_HOST (see -list)"; return 1
+}
+
+# ----------------------------------------------------------------------------- VM inspection
+declare -A VMX=()
+vmx() { printf '%s' "${VMX[${1,,}]-}"; }
+is_true() { [[ ${1,,} == true || $1 == 1 ]]; }
+
+VMID=""; VM_NAME=""; VMX_PATH=""; VMDIR=""; VM_STATE=""
+GUEST_OS=""; GUEST_FAMILY=""; MEM_MB=0; VCPUS=1; CORES=1
+FIRMWARE="bios"; SECUREBOOT=0; VTPM=0; ENCRYPTED=0; PASSTHRU=0; SHARED=0
+SNAP_COUNT=0; HAS_DELTA=0; USED_KB=0; GUEST_USED_KB=0
+D_DEV=(); D_VMDK=(); D_KIND=(); D_EXTENTS=(); D_BYTES=(); D_MODE=(); D_RAW_HEAD=""
+N_IDX=(); N_MAC=(); N_SRC=(); N_TTYPE=(); N_TNAME=()
+
+parse_vmx() {
+  VMX=()
+  local line re='^[[:space:]]*([^=#[:space:]]+)[[:space:]]*=[[:space:]]*"(.*)"[[:space:]]*$'
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    [[ $line =~ $re ]] && VMX[${BASH_REMATCH[1],,}]=${BASH_REMATCH[2]} || true
+  done <<<"$1"
+}
+
+# VMware's guest-type ids are not the product names (e.g. Server 2022 = windows2019srvNext)
+guest_os_name() {   # $1 = ESXi guest type (default: this VM's)
+  local g=${1:-$GUEST_OS}; g=${g,,}
+  case $g in
+    windows2022srvnext*) echo "Windows Server 2025" ;;
+    windows2019srvnext*) echo "Windows Server 2022" ;;
+    windows2019srv*)     echo "Windows Server 2019" ;;
+    windows9srv*)        echo "Windows Server 2016" ;;
+    windows8srv*)        echo "Windows Server 2012 / 2012 R2" ;;
+    windows7srv*)        echo "Windows Server 2008 R2" ;;
+    winlonghorn*)        echo "Windows Server 2008" ;;
+    winnet*)             echo "Windows Server 2003" ;;
+    windows11*)          echo "Windows 11" ;;
+    windows9*)           echo "Windows 10" ;;
+    windows8*)           echo "Windows 8 / 8.1" ;;
+    windows7*)           echo "Windows 7" ;;
+    rhel*)               g=${g#rhel}; echo "Red Hat Enterprise Linux ${g%%[-_]*}" ;;
+    centos*)             g=${g#centos}; echo "CentOS ${g%%[-_]*}" ;;
+    almalinux*)          echo "AlmaLinux" ;;
+    rockylinux*)         echo "Rocky Linux" ;;
+    oraclelinux*)        g=${g#oraclelinux}; echo "Oracle Linux ${g%%[-_]*}" ;;
+    ubuntu*)             echo "Ubuntu Linux" ;;
+    debian*)             g=${g#debian}; echo "Debian ${g%%[-_]*}" ;;
+    sles*)               g=${g#sles}; echo "SUSE Linux Enterprise ${g%%[-_]*}" ;;
+    *linux*)             echo "Linux (other)" ;;
+    freebsd*)            echo "FreeBSD" ;;
+    *)                   echo "" ;;
+  esac
+}
+
+guest_family() {
+  local g=${1,,}
+  case $g in
+    win*) echo windows ;;
+    *linux*|rhel*|centos*|ubuntu*|debian*|sles*|suse*|opensuse*|fedora*|oracle*|almalinux*|rocky*|\
+    amazonlinux*|vmware-photon*|photon*|asianux*|mandrake*|mandriva*|turbolinux*|redhat*|novell*|coreos*|flatcar*)
+      echo linux ;;
+    *) echo other ;;
+  esac
+}
+
+# Parse a VMDK descriptor -> sets P_CTYPE P_PARENT P_KIND P_BYTES P_EXT (newline list)
+parse_descriptor() {
+  local text=$1 dir=$2 line sectors=0 ext="" types=""
+  local re_ct='^createType="([^"]*)"' re_par='^parentFileNameHint="([^"]*)"'
+  local re_ext='^(RW|RDONLY|NOACCESS)[[:space:]]+([0-9]+)[[:space:]]+([A-Za-z]+)[[:space:]]+"([^"]*)"'
+  P_CTYPE=""; P_PARENT=""; P_KIND="unknown"; P_BYTES=0; P_EXT=""
+  if [[ $text != *createType* ]]; then return 0; fi
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    if [[ $line =~ $re_ct ]]; then P_CTYPE=${BASH_REMATCH[1]}
+    elif [[ $line =~ $re_par ]]; then P_PARENT=${BASH_REMATCH[1]}
+    elif [[ $line =~ $re_ext ]]; then
+      sectors=$((sectors + BASH_REMATCH[2]))
+      types+=" ${BASH_REMATCH[3]^^}"
+      local f=${BASH_REMATCH[4]}
+      [[ $f == /* || $f == *://* ]] || f="$dir/$f"
+      ext+="$f"$'\n'
+    fi
+  done <<<"$text"
+  P_BYTES=$((sectors * 512))
+  P_EXT=${ext%$'\n'}
+  local ct=${P_CTYPE,,}
+  if [[ $ct == *rawdevicemap* ]]; then P_KIND="rdm"
+  elif [[ $ct == *vsan* || $P_EXT == *vsan://* ]]; then P_KIND="vsan"
+  elif [[ -n $P_PARENT || $ct == *sparse* || $types == *SPARSE* ]]; then P_KIND="sparse"
+  elif [[ -n $P_EXT && $types =~ ^(\ (VMFS|FLAT))+$ ]]; then P_KIND="flat"
+  fi
+}
+
+inspect_vm() {   # $1 = inventory index
+  local idx=$1 text k dev fn path desc n at mac src order first i
+  VMID=${INV_ID[idx]}; VMX_PATH=${INV_VMX[idx]}; VMDIR=${VMX_PATH%/*}
+  VM_STATE=$(esxn "vim-cmd vmsvc/power.getstate $VMID 2>/dev/null | tail -n 1")
+  text=$(esxn "cat $(q "$VMX_PATH")") || die "Cannot read $VMX_PATH"
+  parse_vmx "$text"
+
+  VM_NAME=$(vmx_decode "$(vmx displayname)"); [[ -n $VM_NAME ]] || VM_NAME=${INV_NAME[idx]}
+  GUEST_OS=$(vmx guestos); GUEST_FAMILY=$(guest_family "$GUEST_OS")
+  MEM_MB=$(vmx memsize); MEM_MB=${MEM_MB:-1024}
+  VCPUS=$(vmx numvcpus); VCPUS=${VCPUS:-1}
+  CORES=$(vmx cpuid.corespersocket); CORES=${CORES:-1}
+  ((CORES > 0 && VCPUS % CORES == 0)) || CORES=1
+  [[ $(vmx firmware) == efi ]] && FIRMWARE="efi" || FIRMWARE="bios"
+  is_true "$(vmx uefi.secureboot.enabled)" && SECUREBOOT=1 || SECUREBOOT=0
+  is_true "$(vmx vtpm.present)" && VTPM=1 || VTPM=0
+  [[ -n $(vmx encryption.keysafe) || -n $(vmx encryption.data) ]] && ENCRYPTED=1 || ENCRYPTED=0
+  PASSTHRU=0; SHARED=0
+  for k in "${!VMX[@]}"; do
+    [[ $k =~ ^pcipassthru[0-9]+\.present$ ]] && is_true "${VMX[$k]}" && PASSTHRU=1 || true
+    [[ $k =~ \.sharing$ && ${VMX[$k],,} == multi-writer ]] && SHARED=1 || true
+    [[ $k =~ ^scsi[0-9]+\.sharedbus$ && ${VMX[$k],,} != none ]] && SHARED=1 || true
+  done
+
+  # ---- disks
+  local devs=()
+  for k in "${!VMX[@]}"; do
+    [[ $k =~ ^((scsi|sata|nvme|ide)[0-9]+:[0-9]+)\.filename$ ]] || continue
+    dev=${BASH_REMATCH[1]}
+    [[ -z $(vmx "$dev.present") ]] || is_true "$(vmx "$dev.present")" || continue
+    [[ $(vmx "$dev.devicetype") == *[Cc][Dd][Rr][Oo][Mm]* ]] && continue
+    fn=$(vmx "$dev.filename"); [[ ${fn,,} == *.vmdk ]] || continue
+    devs+=("$dev")
+  done
+  ((${#devs[@]})) && mapfile -t devs < <(printf '%s\n' "${devs[@]}" | sort -V)
+  # honour VMware boot disk order
+  order=$(vmx bios.hddorder); first=${order%%,*}; first=${first,,}
+  if [[ -n $first ]]; then
+    for i in "${!devs[@]}"; do
+      if [[ ${devs[i]} == "$first" ]]; then devs=("$first" "${devs[@]:0:i}" "${devs[@]:i+1}"); break; fi
+    done
+  fi
+
+  D_DEV=(); D_VMDK=(); D_KIND=(); D_EXTENTS=(); D_BYTES=(); D_MODE=(); HAS_DELTA=0
+  for dev in "${devs[@]}"; do
+    fn=$(vmx_decode "$(vmx "$dev.filename")")
+    [[ $fn == /* ]] && path=$fn || path="$VMDIR/$fn"
+    desc=$(esxn "dd if=$(q "$path") bs=1024 count=64 2>/dev/null" 2>/dev/null | tr -d '\000' || true)
+    if [[ $desc != *createType* ]]; then   # last resort: plain cat of a small text descriptor
+      desc=$(esxn "s=\$(ls -l $(q "$path") | awk '{print \$5}'); [ \"\${s:-0}\" -lt 1048576 ] && cat $(q "$path")" 2>/dev/null | tr -d '\000' || true)
+    fi
+    D_RAW_HEAD=${desc:0:200}
+    parse_descriptor "$desc" "${path%/*}"
+    [[ $P_KIND == sparse ]] && HAS_DELTA=1 || true
+    D_DEV+=("$dev"); D_VMDK+=("$path"); D_KIND+=("$P_KIND")
+    D_EXTENTS+=("$P_EXT"); D_BYTES+=("$P_BYTES"); D_MODE+=("$(vmx "$dev.mode")")
+  done
+
+  # ---- snapshots
+  SNAP_COUNT=$(esxn "vim-cmd vmsvc/snapshot.get $VMID 2>/dev/null | grep -c 'Snapshot Name'" || true)
+  SNAP_COUNT=${SNAP_COUNT:-0}
+
+  # ---- data inside the guest, as reported by VMware Tools (only while the VM runs)
+  GUEST_USED_KB=$(esxn "vim-cmd vmsvc/get.guest $VMID 2>/dev/null" | awk '
+      /capacity = /  { v = $3; gsub(/[^0-9]/, "", v); c = v }
+      /freeSpace = / { v = $3; gsub(/[^0-9]/, "", v); if (c != "") { u += c - v; n++ }; c = "" }
+      END { if (n) printf "%d\n", u / 1024; else print 0 }' || echo 0)
+  [[ $GUEST_USED_KB =~ ^[0-9]+$ ]] || GUEST_USED_KB=0
+
+  # ---- allocated size on datastore
+  local files=""
+  for i in "${!D_DEV[@]}"; do
+    [[ ${D_KIND[i]} == rdm || ${D_KIND[i]} == vsan ]] && continue
+    while IFS= read -r f; do [[ -n $f ]] && files+=" $(q "$f")"; done <<<"${D_EXTENTS[i]}"
+  done
+  USED_KB=0
+  [[ -n $files ]] && USED_KB=$(esxn "du -k $files 2>/dev/null | awk '{s+=\$1} END {print s+0}'" || echo 0)
+
+  # ---- NICs
+  N_IDX=(); N_MAC=(); N_SRC=(); N_TTYPE=(); N_TNAME=()
+  local nics=()
+  for k in "${!VMX[@]}"; do
+    [[ $k =~ ^ethernet([0-9]+)\.present$ ]] && is_true "${VMX[$k]}" && nics+=("${BASH_REMATCH[1]}") || true
+  done
+  ((${#nics[@]})) && mapfile -t nics < <(printf '%s\n' "${nics[@]}" | sort -n)
+  for n in "${nics[@]}"; do
+    at=$(vmx "ethernet$n.addresstype")
+    if [[ ${at,,} == static ]]; then mac=$(vmx "ethernet$n.address"); else mac=$(vmx "ethernet$n.generatedaddress"); fi
+    src=$(vmx_decode "$(vmx "ethernet$n.networkname")")
+    [[ -z $src && -n $(vmx "ethernet$n.dvs.portgroupid") ]] && src="dvs:$(vmx "ethernet$n.dvs.portgroupid")" || true
+    local tt=$DEF_NET_TYPE tn=$DEF_NET_NAME
+    if [[ -n $src && -n ${NET_MAP[$src]-} ]]; then tt=${NET_MAP[$src]%%:*}; tn=${NET_MAP[$src]#*:}; fi
+    N_IDX+=("$n"); N_MAC+=("${mac,,}"); N_SRC+=("$src"); N_TTYPE+=("$tt"); N_TNAME+=("$tn")
+  done
+}
+
+# Sizes of the source VM: provisioned (disk size), allocated on the ESXi datastore,
+# and data used inside the guest (VMware Tools, known only while the VM was running)
+size_lines() {
+  local i total=0
+  for i in "${!D_BYTES[@]}"; do total=$((total + D_BYTES[i])); done
+  echo "Disk size (provisioned)   : $(human "$total") in ${#D_DEV[@]} disk(s)"
+  for i in "${!D_DEV[@]}"; do
+    echo "  ${D_DEV[i]} ${D_VMDK[i]##*/}: $(human "${D_BYTES[i]}") [${D_KIND[i]}]"
+  done
+  echo "Allocated on ESXi         : $(human $((USED_KB * 1024)))"
+  if ((GUEST_USED_KB > 0)); then
+    echo "Used inside the guest     : $(human $((GUEST_USED_KB * 1024))) (reported by VMware Tools)"
+  else
+    echo "Used inside the guest     : unknown (VM was off or VMware Tools not running)"
+  fi
+}
+
+# Sizes of the migrated disks: size the VM sees, and space really used in the pool
+result_size_lines() {
+  local f vsz
+  for f in "${TARGET_DISKS[@]}"; do
+    [[ -f $f ]] || continue
+    vsz=$(qemu-img info "$f" 2>/dev/null | sed -n 's/^virtual size: .*(\([0-9]*\) bytes).*/\1/p' | head -n 1)
+    echo "${f##*/}: disk size $(human "${vsz:-0}"), used in the pool $(human $(( $(du -k "$f" | cut -f1) * 1024 )))"
+  done
+}
+
+vm_log_header() {   # written at the top of each per-VM conversion log
+  echo "=== $PROG $VERSION - VM '$VM_NAME' -> '$TNAME' ($(date '+%F %T')) ==="
+  size_lines
+  echo "Target folder             : ${VM_DIR:-pool $POOL}"
+  echo "=================================================================="
+}
+
+print_vm_summary() {
+  local i
+  hr
+  info "VM '$VM_NAME' (vmid $VMID) - $VM_STATE"
+  local osn; osn=$(guest_os_name)
+  local k; for k in "${!INV_ID[@]}"; do   # reported by VMware Tools = the real OS
+    [[ ${INV_ID[k]} == "$VMID" && -n ${INV_OS[k]-} && ${INV_OS[k]} != *"*" ]] && osn=${INV_OS[k]} || true
+  done
+  info "  Guest OS : ${osn:+$osn  }(ESXi guest type: $GUEST_OS, $GUEST_FAMILY)   Firmware: $FIRMWARE$( ((SECUREBOOT)) && echo ' +SecureBoot')$( ((VTPM)) && echo ' +vTPM')"
+  info "  CPU/RAM  : $VCPUS vCPU ($CORES cores/socket), $MEM_MB MiB"
+  info "  Snapshots: $SNAP_COUNT   Delta disks: $HAS_DELTA"
+  local l; while IFS= read -r l; do info "  $l"; done < <(size_lines)
+  for i in "${!N_IDX[@]}"; do
+    info "  NIC ethernet${N_IDX[i]}: '${N_SRC[i]}' ${N_MAC[i]} -> ${N_TTYPE[i]}:${N_TNAME[i]}"
+  done
+}
+
+# ----------------------------------------------------------------------------- remediation
+power_off_source() {
+  case $VM_STATE in
+    *"Powered off"*) return 0 ;;
+  esac
+  ((DO_SHUTDOWN)) || die "VM is '$VM_STATE'. Shut it down first or pass -shutdown [-force-off]."
+  if ((DRY_RUN)); then info "[dry-run] would shut down '$VM_NAME'"; return 0; fi
+  confirm "Shut down source VM '$VM_NAME' on ESXi now?" || die "Aborted by user"
+
+  if [[ $VM_STATE == *Suspended* ]]; then
+    info "VM is suspended - resuming so it can be shut down cleanly"
+    esxn "vim-cmd vmsvc/power.on $VMID" >/dev/null
+    sleep 20
+  fi
+  local waited=0 limit=$SHUTDOWN_TIMEOUT tools
+  tools=$(esxn "vim-cmd vmsvc/get.guest $VMID 2>/dev/null | sed -n 's/.*toolsRunningStatus = \"\\(.*\\)\".*/\\1/p' | head -n 1" 2>/dev/null) || tools=""
+  if [[ $tools != guestToolsNotRunning ]]; then   # running, or status unknown: ask VMware Tools
+    info "Requesting graceful guest shutdown (VMware Tools)"
+    esxn "vim-cmd vmsvc/power.shutdown $VMID" >/dev/null 2>&1 || warn "Graceful shutdown request failed"
+  else
+    # without VMware Tools ESXi can only cut the power - Windows would not be shut down cleanly
+    limit=$(( SHUTDOWN_TIMEOUT > 3600 ? SHUTDOWN_TIMEOUT : 3600 ))
+    warn "VMware Tools are not running in '$VM_NAME' - ESXi cannot shut it down cleanly."
+    info "  Shut it down from inside now (console or RDP):  shutdown /s /t 0   (Linux: poweroff)"
+    info "  Waiting until the VM is powered off (up to $((limit / 60)) min; press Cancel to stop the migration)..."
+  fi
+  while ((waited < limit)); do
+    VM_STATE=$(esxn "vim-cmd vmsvc/power.getstate $VMID | tail -n 1")
+    [[ $VM_STATE == *"Powered off"* ]] && { info "VM is powered off"; return 0; }
+    sleep 5; waited=$((waited + 5))
+    ((waited % 300 == 0)) && info "  Still waiting for '$VM_NAME' to power off ($((waited / 60)) min)" || true
+  done
+  if ((FORCE_OFF)) && [[ $GUEST_FAMILY == windows ]] && can_prompt && ((!YES_CLI)); then
+    ask_yn "Cut the power of '$VM_NAME' anyway? Windows will NOT be shut down cleanly and its disk must then be repaired" n \
+      || die "VM did not power off. Shut it down from inside Windows and run the migration again."
+  fi
+  if ((FORCE_OFF)); then
+    warn "Shutdown timed out after $((limit / 60)) min - forcing power off (not a clean shutdown)"
+    esxn "vim-cmd vmsvc/power.off $VMID" >/dev/null
+    sleep 3
+    VM_STATE=$(esxn "vim-cmd vmsvc/power.getstate $VMID | tail -n 1")
+    [[ $VM_STATE == *"Powered off"* ]] || die "VM still not powered off"
+  else
+    die "VM did not power off within $((limit / 60)) min. Shut it down from inside the guest and run again."
+  fi
+}
+
+consolidate_source() {
+  ((SNAP_COUNT > 0 || HAS_DELTA)) || return 0
+  if ((!CONSOLIDATE)); then
+    die "VM has $SNAP_COUNT snapshot(s) / delta disks. Re-run with -consolidate to merge them into the base disks (snapshots are deleted), or remove them in the ESXi UI."
+  fi
+  if ((DRY_RUN)); then info "[dry-run] would delete/consolidate snapshots of '$VM_NAME'"; return 0; fi
+  confirm "Delete all $SNAP_COUNT snapshot(s) of '$VM_NAME' (changes merged into base disks)?" || die "Aborted by user"
+  if ((SNAP_COUNT == 0)); then
+    info "Orphaned delta disks found - creating a temporary snapshot to force consolidation"
+    esxn "vim-cmd vmsvc/snapshot.create $VMID migrate2vmex-consolidate migrate2vmex 0 0" >/dev/null
+  fi
+  info "Removing all snapshots (this can take a long time for large deltas)"
+  esxn "vim-cmd vmsvc/snapshot.removeall $VMID" >/dev/null
+  local gu=$GUEST_USED_KB
+  inspect_vm "$INV_INDEX"
+  ((GUEST_USED_KB > 0)) || GUEST_USED_KB=$gu   # measured while the VM was still running
+  ((HAS_DELTA == 0)) || die "Delta disks still present after consolidation; consolidate in the ESXi UI."
+  info "Snapshots consolidated"
+}
+
+# ----------------------------------------------------------------------------- target side
+POOL_DIR=""; POOL_TYPE=""
+pool_path() { virsh -c "$LIBVIRT_URI" pool-dumpxml "$1" 2>/dev/null | sed -n 's:.*<path>\(.*\)</path>.*:\1:p' | head -n 1; }
+
+# -target-dir: use (or create) a directory storage pool for an arbitrary folder
+resolve_target_dir() {
+  [[ -n $TARGET_DIR ]] || return 0
+  TARGET_DIR=$(realpath -m "$TARGET_DIR")
+  local p
+  for p in $(virsh -c "$LIBVIRT_URI" pool-list --all --name); do
+    if [[ $(pool_path "$p") == "$TARGET_DIR" ]]; then POOL=$p; info "Using existing pool '$POOL' for $TARGET_DIR"; return 0; fi
+  done
+  POOL="migrate2vmex-$(sanitize_name "${TARGET_DIR##*/}")"
+  info "Creating storage pool '$POOL' at $TARGET_DIR"
+  mkdir -p "$TARGET_DIR"
+  virsh -c "$LIBVIRT_URI" pool-define-as "$POOL" dir --target "$TARGET_DIR" >/dev/null
+  virsh -c "$LIBVIRT_URI" pool-build "$POOL" >/dev/null 2>&1 || true
+  virsh -c "$LIBVIRT_URI" pool-autostart "$POOL" >/dev/null
+  # SELinux: QEMU may only open files labelled virt_image_t
+  if have selinuxenabled && selinuxenabled; then
+    if have semanage; then
+      semanage fcontext -a -t virt_image_t "$TARGET_DIR(/.*)?" 2>/dev/null || true
+      restorecon -R "$TARGET_DIR" || true
+    else
+      chcon -R -t virt_image_t "$TARGET_DIR" || warn "Could not set SELinux label on $TARGET_DIR"
+    fi
+  fi
+}
+
+# A target storage pool is required: stop before anything is done on ESXi if there is none.
+POOL_LIST=""   # existing storage pools, read once by check_storage_pools
+check_storage_pools() {
+  [[ -n $TARGET_DIR ]] && return 0   # --target-dir creates its own pool
+  local pools raw
+  raw=$(virsh -c "$LIBVIRT_URI" pool-list --all 2>&1) || true
+  logfile_only "Storage pools on this host (virsh pool-list --all):"$'\n'"$raw"
+  pools=$(virsh -c "$LIBVIRT_URI" pool-list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d') || pools=""
+  POOL_LIST=$pools
+  if [[ -z $pools ]]; then
+    warn "No storage pools available. A target storage pool is required for migration."
+    exit 1
+  fi
+  if ((POOL_FROM_CLI)) && ! grep -qxF -- "$POOL" <<<"$pools"; then
+    die "Storage pool '$POOL' does not exist. Available: $(tr '\n' ' ' <<<"$pools")"
+  fi
+  if ((!POOL_FROM_CLI)) && [[ $ACTION != interactive ]] && ! grep -qxF -- "$POOL" <<<"$pools"; then
+    POOL=$(head -n 1 <<<"$pools")   # no --pool given: use the first existing pool
+    info "No -pool given: using storage pool '$POOL'"
+  fi
+}
+
+ensure_pool() {
+  if ! virsh -c "$LIBVIRT_URI" pool-info "$POOL" >/dev/null 2>&1; then
+    die "Storage pool '$POOL' does not exist. A target storage pool is required for migration."
+  fi
+  local pinfo; pinfo=$(virsh -c "$LIBVIRT_URI" pool-info "$POOL" 2>/dev/null || true)
+  if [[ $pinfo != *running* ]]; then
+    virsh -c "$LIBVIRT_URI" pool-start "$POOL" >/dev/null 2>&1 || true
+    pinfo=$(virsh -c "$LIBVIRT_URI" pool-info "$POOL" 2>/dev/null || true)
+    [[ $pinfo == *running* ]] || die "Storage pool '$POOL' could not be started"
+  fi
+  local xml; xml=$(virsh -c "$LIBVIRT_URI" pool-dumpxml "$POOL")
+  POOL_DIR=$(sed -n 's:.*<path>\(.*\)</path>.*:\1:p' <<<"$xml" | head -n 1)
+  POOL_TYPE=$(sed -n "s:.*<pool type=['\"]\([^'\"]*\)['\"].*:\1:p" <<<"$xml" | head -n 1)
+}
+
+ensure_networks() {
+  local i
+  for i in "${!N_IDX[@]}"; do
+    if [[ ${N_TTYPE[i]} == bridge ]]; then
+      ip link show "${N_TNAME[i]}" >/dev/null 2>&1 || die "Bridge '${N_TNAME[i]}' does not exist on this host"
+    else
+      virsh -c "$LIBVIRT_URI" net-info "${N_TNAME[i]}" >/dev/null 2>&1 || die "libvirt network '${N_TNAME[i]}' does not exist"
+      local ninfo; ninfo=$(virsh -c "$LIBVIRT_URI" net-info "${N_TNAME[i]}" 2>/dev/null || true)
+      if ! [[ $ninfo =~ Active:[[:space:]]+yes ]]; then
+        ((DRY_RUN)) || virsh -c "$LIBVIRT_URI" net-start "${N_TNAME[i]}" >/dev/null 2>&1 || true
+      fi
+      ((DRY_RUN)) || virsh -c "$LIBVIRT_URI" net-autostart "${N_TNAME[i]}" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
+map_osinfo() {
+  local g=${GUEST_OS,,} id="" fb=""
+  case $g in
+    windows11*|windows12*)                  id=win11 ;;
+    windows2022srvnext*)                    id=win2k25; fb=win2k22 ;;
+    windows2019srvnext*|windows2022srv*)    id=win2k22 ;;
+    windows2019srv*)                        id=win2k19 ;;
+    windows9srv*|windows9server*)           id=win2k16 ;;
+    windows9*)                              id=win10 ;;
+    windows8srv*|windows8server*)           id=win2k12r2 ;;
+    windows8*)                              id=win8.1 ;;
+    windows7srv*|windows7server*)           id=win2k8r2 ;;
+    windows7*)                              id=win7 ;;
+    win*)                                   id=win10 ;;
+    rhel10*|almalinux*10*|rocky*10*)        id=rhel10.0; fb=rhel9.0 ;;
+    rhel9*|centos9*|almalinux*|rocky*)      id=rhel9.0 ;;
+    rhel8*|centos8*)                        id=rhel8.0 ;;
+    rhel7*|centos7*)                        id=rhel7.0 ;;
+    rhel6*|centos6*)                        id=rhel6.10 ;;
+    ubuntu*)                                id=ubuntu22.04 ;;
+    debian1[2-9]*)                          id=debian12 ;;
+    debian11*)                              id=debian11 ;;
+    debian10*)                              id=debian10 ;;
+    sles16*|sles15*)                        id=sle15 ;;
+    sles12*)                                id=sles12sp5 ;;
+    freebsd*)                               id=freebsd13.0 ;;
+    solaris*)                               id=solaris11 ;;
+  esac
+  [[ -z $id && $GUEST_FAMILY == linux ]] && id=linux2022 || true
+  local c
+  for c in $id $fb linux2022 linux2020; do
+    [[ $GUEST_FAMILY != linux && $c == linux20* ]] && continue
+    if have osinfo-query && [[ $(osinfo-query os "short-id=$c" 2>/dev/null || true) =~ (^|[[:space:]|])$c([[:space:]|]|$) ]]; then echo "$c"; return; fi
+  done
+  echo "detect=on,require=off"
+}
+
+# Boot firmware from the copied disk itself: GPT -> UEFI, MBR -> BIOS. The ESXi setting is only
+# a hint (it can disagree with how the guest was installed), and virt-install on Fedora 42
+# picks UEFI by itself when nothing is said - a BIOS/MBR guest then cannot boot.
+FW_CHECKED=""
+resolve_firmware() {
+  local d=${TARGET_DISKS[0]-} pt fw=""
+  [[ $FW_CHECKED == "$d" ]] && return 0
+  FW_CHECKED=$d
+  [[ -n $d && -f $d ]] && have guestfish || { info "  Boot firmware: ${FIRMWARE^^} (from the ESXi configuration)"; return 0; }
+  pt=$(LIBGUESTFS_BACKEND=direct guestfish --ro --format="$FORMAT" -a "$d" run : part-get-parttype /dev/sda 2>/dev/null | tr -d '[:space:]') || pt=""
+  case $pt in gpt) fw=efi; pt=GPT ;; msdos) fw=bios; pt=MBR ;; esac
+  if [[ -z $fw ]]; then
+    warn "Could not read the partition table of ${d##*/} - using the ESXi firmware setting ($FIRMWARE)"
+  elif [[ $fw != "$FIRMWARE" ]]; then
+    warn "ESXi says firmware '$FIRMWARE' but the disk's partition table is $pt - booting with $([[ $fw == efi ]] && echo UEFI || echo BIOS) instead"
+    FIRMWARE=$fw; [[ $fw == bios ]] && SECUREBOOT=0 || true
+  else
+    info "  Boot firmware: $([[ $fw == efi ]] && echo UEFI || echo BIOS) ($pt partition table, matches ESXi)"
+  fi
+}
+
+force_bios_xml() {   # remove any UEFI setup virt-install added on its own
+  python3 - "$1" <<'PYX'
+import sys, xml.etree.ElementTree as ET
+f = sys.argv[1]; t = ET.parse(f); changed = False
+for os_ in t.getroot().iter("os"):
+    if os_.attrib.pop("firmware", None):
+        changed = True
+    for tag in ("loader", "nvram", "firmware"):
+        for e in os_.findall(tag):
+            os_.remove(e); changed = True
+if changed:
+    t.write(f)
+PYX
+}
+
+build_domain_xml() {   # $1 = virtio|compat  $2 = output file
+  local mode=$1 out=$2 bus nic video i net args
+  resolve_firmware
+  if [[ $mode == virtio ]]; then bus=virtio; nic=virtio; video=virtio; else bus=sata; nic=e1000e; video=vga; fi
+  args=(--connect "$LIBVIRT_URI" --name "$TNAME" --memory "$MEM_MB"
+        --vcpus "$VCPUS,sockets=$((VCPUS / CORES)),cores=$CORES,threads=1"
+        --cpu host-passthrough --osinfo "$(map_osinfo)" --import --noautoconsole
+        --graphics vnc,listen=127.0.0.1 --video "$video" --print-xml)
+  for i in "${!TARGET_DISKS[@]}"; do
+    args+=(--disk "path=${TARGET_DISKS[i]},format=$FORMAT,bus=$bus")
+  done
+  if ((${#N_IDX[@]} == 0)); then
+    args+=(--network none)
+  else
+    for i in "${!N_IDX[@]}"; do
+      net="${N_TTYPE[i]}=${N_TNAME[i]},model=$nic"
+      ((KEEP_MAC)) && [[ -n ${N_MAC[i]} ]] && net+=",mac=${N_MAC[i]}" || true
+      args+=(--network "$net")
+    done
+  fi
+  if [[ $FIRMWARE == efi ]]; then
+    if ((SECUREBOOT)); then
+      args+=(--boot "uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=yes,firmware.feature1.name=enrolled-keys,firmware.feature1.enabled=yes")
+    else
+      args+=(--boot uefi)
+    fi
+  fi
+  ((VTPM)) && args+=(--tpm emulator,model=tpm-crb,version=2.0) || true
+  [[ $mode == virtio ]] && args+=(--rng /dev/urandom) || true
+  virt-install "${args[@]}" >"$out" || { err "virt-install could not build the domain XML"; return 1; }
+  if [[ $FIRMWARE != efi ]]; then
+    force_bios_xml "$out" || { err "Could not set BIOS boot in $out"; return 1; }
+  fi
+}
+
+define_domain() {
+  virsh -c "$LIBVIRT_URI" define "$1" >/dev/null || { err "virsh define failed for $1"; return 1; }
+  info "Domain '$TNAME' defined"
+}
+
+# ---- per-VM folder:  <pool>/<name>/<name>.qcow2  (or <name>-02, -03, ... if taken)
+VM_DIR=""; VM_DIR_RESUMED=0
+RESUME_MARK=".migrate2vmex-resume"
+RESUME_MARK_OLD=".esxi2kvm-resume"   # written by earlier versions
+
+disk_file() {   # disk index, extension -> file name inside VM_DIR
+  if (($1 == 0)); then echo "$TNAME.$2"; else echo "$TNAME-disk$(($1 + 1)).$2"; fi
+}
+
+choose_vm_dir() {
+  local base="$POOL_DIR/$TNAME" d n
+  # an interrupted SSH copy of this same VM left its finished transfers here: continue there
+  for d in "$base" "$base"-[0-9][0-9]; do
+    local mk
+    for mk in "$d/$RESUME_MARK" "$d/$RESUME_MARK_OLD"; do
+      if [[ -f $mk && $(<"$mk") == "$ESXI_HOST $VMX_PATH" ]]; then
+        [[ $mk == "$d/$RESUME_MARK" ]] || mv -f -- "$mk" "$d/$RESUME_MARK"
+        VM_DIR=$d; VM_DIR_RESUMED=1; return 0
+      fi
+    done
+  done
+  VM_DIR_RESUMED=0
+  if [[ ! -e $base ]]; then VM_DIR=$base; return 0; fi
+  for ((n = 2; n <= 99; n++)); do
+    d=$(printf '%s-%02d' "$base" "$n")
+    if [[ ! -e $d ]]; then VM_DIR=$d; return 0; fi
+  done
+  die "No free folder name left for $base (-02 .. -99 all exist)"
+}
+
+cleanup_target() {   # remove anything a failed attempt left behind
+  local f b n
+  trap '' PIPE   # a closed output pipe (after Ctrl+C) must not stop the clean-up
+  nbd_detach 2>/dev/null || true
+  warm_remove_snapshot 2>/dev/null || true
+  if virsh -c "$LIBVIRT_URI" dominfo "$TNAME" >/dev/null 2>&1; then
+    virsh -c "$LIBVIRT_URI" undefine "$TNAME" --nvram >/dev/null 2>&1 || true
+  fi
+  if [[ -n $VM_DIR && -d $VM_DIR ]]; then
+    # disks fully copied by the SSH copy go back to their transfer name so a re-run reuses them
+    if ((DISCARD_COPY)); then
+      info "Deleting the copy in $VM_DIR - it holds the not-cleanly-shut-down state; the next run copies again"
+    elif [[ ${CUR_METHOD-} == copy || ${CUR_METHOD-} == raw ]]; then
+      for f in "$VM_DIR/$TNAME".{img,qcow2} "$VM_DIR/$TNAME"-disk[0-9]*.{img,qcow2}; do
+        [[ -f $f ]] || continue
+        b=${f##*/}; x=${b##*.}; b=${b%.*}
+        if [[ $b == "$TNAME" ]]; then n=0; else n=${b#"$TNAME"-disk}; n=$((n - 1)); fi
+        mv -f -- "$f" "$VM_DIR/.transfer-disk$n.$x"
+      done
+    fi
+    ((DISCARD_COPY)) && rm -f -- "$VM_DIR"/.transfer-disk*
+    rm -f -- "$VM_DIR/$TNAME"-sd[a-z] "$VM_DIR/$TNAME"-sd[a-z][a-z] "$VM_DIR/$TNAME.xml" "$VM_DIR"/.*.part \
+             "$VM_DIR/$TNAME".{img,qcow2} "$VM_DIR/$TNAME"-disk[0-9]*.{img,qcow2} "$VM_DIR"/.warm-disk*
+    if compgen -G "$VM_DIR/.transfer-disk*" >/dev/null; then
+      printf '%s %s\n' "$ESXI_HOST" "$VMX_PATH" >"$VM_DIR/$RESUME_MARK"
+      info "Finished disk transfers kept in $VM_DIR - a re-run of this VM continues from them"
+    else
+      rm -f -- "$VM_DIR/$RESUME_MARK"
+      rmdir -- "$VM_DIR" 2>/dev/null || true
+    fi
+  elif [[ -n $POOL_DIR ]]; then
+    rm -f -- "$POOL_DIR/$TNAME"-sd[a-z] "$POOL_DIR/$TNAME"-sd[a-z][a-z]
+  fi
+  virsh -c "$LIBVIRT_URI" pool-refresh "$POOL" >/dev/null 2>&1 || true
+}
+
+# ----------------------------------------------------------------------------- Windows clean-shutdown check
+# A Windows disk can only be converted if Windows was shut down cleanly. ntfs-3g reports per
+# NTFS volume: 0 = clean, 14 = hibernated / Fast Startup, 15 = not cleanly shut down.
+# $@ = guestfish drive options (-a ...). Prints "device code" for every NTFS volume.
+ntfs_probe() {
+  local fs devs dev out cmds=(run)
+  fs=$(LIBGUESTFS_BACKEND=direct timeout 600 guestfish --ro "$@" run : list-filesystems 2>>"$LOG_FILE") || return 1
+  devs=$(awk -F': ' '$2 == "ntfs" { print $1 }' <<<"$fs")
+  [[ -n $devs ]] || return 0
+  for dev in $devs; do cmds+=(: ntfs-3g-probe true "$dev"); done
+  out=$(LIBGUESTFS_BACKEND=direct timeout 600 guestfish --ro "$@" "${cmds[@]}" 2>>"$LOG_FILE") || return 1
+  paste -d' ' <(echo "$devs") <(echo "$out")
+}
+
+ntfs_label() { local d=${1#/dev/sd}; printf 'disk %d partition %s' $(( $(printf '%d' "'${d:0:1}") - 96 )) "${d:1}"; }
+
+# Probe the source disks on ESXi (read-only, a few MB are read) before anything is copied.
+NTFS_BAD=""
+source_ntfs_check() {
+  local i f sock pid socks=() pids=() drives=() res rc=0
+  NTFS_BAD=""
+  have guestfish && nbdkit ssh --dump-plugin >/dev/null 2>&1 || { logfile_only "clean-shutdown check skipped (guestfish/nbdkit-ssh missing)"; return 0; }
+  for i in "${!D_DEV[@]}"; do
+    [[ ${D_KIND[i]} == flat && $(grep -c . <<<"${D_EXTENTS[i]}") == 1 ]] || { logfile_only "clean-shutdown check skipped for disk $i (${D_KIND[i]})"; return 0; }
+  done
+  info "Checking that Windows on '$VM_NAME' was shut down cleanly"
+  for i in "${!D_DEV[@]}"; do
+    f=$(head -n 1 <<<"${D_EXTENTS[i]}")
+    sock=$(mktemp -u /run/migrate2vmex-ntfs.XXXXXX); pid=$sock.pid
+    nbdkit -r -U "$sock" -P "$pid" ssh host="$ESXI_HOST" port="$ESXI_PORT" user="$ESXI_USER" \
+      identity="$SSH_KEY" verify-remote-host=false path="$f" >>"$LOG_FILE" 2>&1 || { rc=1; break; }
+    socks+=("$sock"); pids+=("$pid"); drives+=(--format=raw -a "nbd+unix:///?socket=$sock")
+  done
+  ((rc == 0)) && { res=$(ntfs_probe "${drives[@]}") || rc=1; }
+  for pid in "${pids[@]}"; do [[ -f $pid ]] && kill "$(cat "$pid")" 2>/dev/null; rm -f -- "$pid"; done
+  rm -f -- "${socks[@]}"
+  if ((rc)); then warn "  Could not check the Windows disks (details in the log) - continuing"; return 0; fi
+  logfile_only "NTFS volumes (device ntfs-3g.probe code): ${res:-none}"
+  NTFS_BAD=$(awk '$2 == 14 || $2 == 15' <<<"$res")
+  [[ -z $NTFS_BAD ]] && { info "  OK - Windows was shut down cleanly"; return 0; }
+  ntfs_decide before
+}
+
+# Windows was not shut down cleanly: explain, then stop or (if allowed) repair the copy.
+# $1 = before (nothing copied yet) | after (the copy exists). Returns 0 = repair and continue.
+ntfs_decide() {
+  local d c hib=0 i
+  while read -r d c; do
+    [[ -n $d ]] || continue
+    if ((c == 14)); then hib=1; err "  $(ntfs_label "$d"): Windows is hibernated / uses Fast Startup"
+    else err "  $(ntfs_label "$d"): Windows was not shut down cleanly (switched off, crashed or a copy of a running VM)"; fi
+  done <<<"$NTFS_BAD"
+  err "A disk in this state cannot be converted. Fix it on ESXi, then run the migration again:"
+  err "  1. Power on '$VM_NAME' in ESXi and let Windows start completely (let disk checks / updates finish)"
+  err "     - if it is a copy of another running server, disconnect its network card first"
+  ((hib)) && err "  2. Log in and run as Administrator:  powercfg /h off" \
+          || err "  2. Log in to Windows"
+  err "  3. Shut it down from Windows:  shutdown /s /t 0   (not 'Power off' in ESXi)"
+  ((hib)) && return 1   # a hibernated disk can only be fixed on the source
+  if ((REPAIR_UNCLEAN)); then
+    warn "-repair-unclean: continuing - the copy is repaired and Windows checks the disk at its first start on VMeX"
+    NTFS_FIX=1; return 0
+  fi
+  can_prompt && ((!YES_CLI)) || { err "(or re-run with -repair-unclean to repair the copy instead)"; return 1; }
+  echo >&2
+  i=$(choose "What should be done?" 1 \
+      "Stop - fix the source VM as described above (recommended)" \
+      "Continue - repair the copy; Windows checks the disk at first start (data that was being written when it went off is lost)")
+  ((i == 1)) && { NTFS_FIX=1; return 0; }
+  return 1
+}
+
+# Repair the copied disks: clear the "not cleanly shut down" state; Windows runs chkdsk at first start.
+repair_target_ntfs() {
+  local drives=() d res bad dev
+  for d in "${TARGET_DISKS[@]}"; do drives+=(--format="$FORMAT" -a "$d"); done
+  res=$(ntfs_probe "${drives[@]}") || { err "Could not check the copied disks"; return 1; }
+  bad=$(awk '$2 == 15 { print $1 }' <<<"$res")
+  [[ -n $bad ]] || return 0
+  for dev in $bad; do
+    info "Repairing $(ntfs_label "$dev") of the copy (Windows will check this disk at its first start)"
+    LIBGUESTFS_BACKEND=direct guestfish "${drives[@]}" run : ntfsfix "$dev" >>"$LOG_FILE" 2>&1 \
+      || { err "Repair of $(ntfs_label "$dev") failed (see the log)"; return 1; }
+  done
+}
+
+check_v2v_log() {   # returns 2 for errors no fallback can fix
+  local log=$1
+  if grep -qi 'mounted read-only, even though' "$log"; then
+    err "Windows on '$VM_NAME' was not shut down cleanly (or is hibernated) - its disk cannot be converted."
+    return 2
+  fi
+  if grep -qiE 'hibernat|fast restart|fast startup' "$log"; then
+    err "Windows was hibernated or uses Fast Startup - its disks cannot be converted safely."
+    err "Fix: power on the source VM, run 'powercfg /h off' as Administrator, shut down from Windows, re-run."
+    return 2
+  fi
+  if grep -qi 'bitlocker' "$log"; then
+    err "BitLocker-encrypted volume detected. Re-run with e.g. -v2v-arg=--key -v2v-arg=all:key:RECOVERYKEY"
+    return 2
+  fi
+  return 0
+}
+
+# ----------------------------------------------------------------------------- methods
+# Run a virt-v2v tool with its own log. On a terminal it runs under `script`
+# so virt-v2v sees a TTY and shows its disk-copy progress bar.
+# Rewrites "to run on KVM" -> "to run on $PLATFORM_NAME" on screen. Unbuffered
+# (raw chunks, not lines) so virt-v2v's \r progress bar keeps updating live.
+brand_filter() {
+  python3 -u -c '
+import os, sys
+old, new = b"to run on KVM", ("to run on " + sys.argv[1]).encode()
+while True:
+    b = os.read(0, 65536)
+    if not b:
+        break
+    os.write(1, b.replace(old, new).replace(b"virt-v2v", b"V2V").replace(b"VDDK", b"streaming").replace(b"vddk", b"stream"))
+' "$PLATFORM_NAME"
+}
+
+run_logged() {
+  local log=$1; shift
+  local cmd=(env "VIRTIO_WIN=$VIRTIO_WIN_DIR" LIBGUESTFS_BACKEND=direct "$@") rc rcf
+  rcf=$(mktemp)
+  if ((HAVE_TTY)) && have script; then
+    # `script` gives virt-v2v a terminal (progress bar) even though we pipe its output
+    { script -q -a -e -f -c "$(printf '%q ' "${cmd[@]}")" "$log" </dev/tty && echo 0 >"$rcf" || echo $? >"$rcf"; } \
+      | brand_filter || true
+  else
+    { "${cmd[@]}" 2>&1 && echo 0 >"$rcf" || echo $? >"$rcf"; } | tee -a "$log" | brand_filter || true
+  fi
+  rc=$(<"$rcf"); rm -f -- "$rcf"
+  return "${rc:-1}"
+}
+TARGET_DISKS=()
+
+# virt-v2v output side (shared by the ssh and vmfs inputs) -> global V2V_OUT
+V2V_OUT=()
+build_v2v_out() {
+  local i
+  if [[ -n $VM_DIR ]]; then   # write into the VM's own folder; renamed + defined afterwards
+    V2V_OUT=(-o local -os "$VM_DIR" -of "$FORMAT" -oa sparse -on "$TNAME")
+  else
+    V2V_OUT=(-o libvirt -oc "$LIBVIRT_URI" -os "$POOL" -of "$FORMAT" -oa sparse -on "$TNAME")
+  fi
+  if [[ $DEF_NET_TYPE == bridge ]]; then V2V_OUT+=(--bridge "$DEF_NET_NAME"); else V2V_OUT+=(--network "$DEF_NET_NAME"); fi
+  for i in "${!N_IDX[@]}"; do
+    [[ -n ${N_SRC[i]} && -n ${NET_MAP[${N_SRC[i]}]-} ]] && V2V_OUT+=("--${N_TTYPE[i]}" "${N_SRC[i]}:${N_TNAME[i]}") || true
+    ((KEEP_MAC)) && [[ -n ${N_MAC[i]} ]] && V2V_OUT+=(--mac "${N_MAC[i]}:${N_TTYPE[i]}:${N_TNAME[i]}") || true
+  done
+  V2V_OUT+=("${V2V_EXTRA[@]}")
+}
+
+# ---- host checks ---------------------------------------------------------------------
+os_check() {
+  local id ver
+  id=$(. /etc/os-release 2>/dev/null; echo "${ID:-unknown}")
+  ver=$(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-unknown}")
+  if [[ $id != fedora || $ver != "$TARGET_FEDORA" ]]; then
+    if ((IGNORE_OS)); then
+      warn "This edition is for Fedora $TARGET_FEDORA, host runs $id $ver (continuing: -ignore-os)"
+    else
+      die "This edition of the script is for Fedora $TARGET_FEDORA, but this host runs $id $ver. Use the $PROG edition for Fedora $ver or pass -ignore-os."
+    fi
+  fi
+}
+
+V2V_HELP=""; V2V_VERSION=""; V2V_HAS_NO_FSTRIM=0
+v2v_features() {
+  have virt-v2v || return 0
+  V2V_HELP=$(virt-v2v --help 2>&1 || true)
+  V2V_VERSION=$(virt-v2v --version 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)
+  grep -q -- '--no-fstrim' <<<"$V2V_HELP" && V2V_HAS_NO_FSTRIM=1 || true
+}
+
+# Reject --v2v-arg options this virt-v2v does not know - before any VM is touched.
+validate_v2v_extra() {
+  local a o bad=0
+  for a in "${V2V_EXTRA[@]}"; do
+    [[ $a == --* ]] || continue
+    o=${a%%=*}
+    if ! grep -qF -- "$o" <<<"$V2V_HELP"; then
+      err "V2V $V2V_VERSION does not support option '$o' (given with -v2v-arg)"
+      [[ $o == --no-fstrim ]] && err "  --no-fstrim needs V2V 2.12 or newer." || true
+      bad=1
+    fi
+  done
+  ((bad == 0)) || die "Remove the unsupported -v2v-arg option(s) and run again."
+}
+
+run_v2v() {   # run virt-v2v with the given input args + V2V_OUT; 0 ok, 1 retryable, 2 fatal
+  local log rc=0
+  [[ $GUEST_FAMILY == windows ]] && { install_virtio_win || die "virtio-win is required for Windows guests"; }
+  build_v2v_out
+  if [[ $GUEST_FAMILY == windows ]]; then
+    if ((V2V_HAS_NO_FSTRIM)); then
+      [[ " ${V2V_OUT[*]} " == *" --no-fstrim "* ]] || V2V_OUT+=(--no-fstrim)
+      info "Windows guest: NTFS trimming disabled (--no-fstrim) - all allocated blocks are copied"
+    else
+      warn "V2V $V2V_VERSION cannot skip NTFS trimming (needs 2.12+). A Windows 2012 R2 VM converted"
+      warn "  this way did not boot. If this VM does not boot either, use -method copy for it."
+    fi
+  fi
+  log="$LOG_DIR/$TNAME-v2v.log"; VM_LOG=$log
+  info "Running V2V (log: $log)"
+  info "  V2V $* ${V2V_OUT[*]}"
+  ((DRY_RUN)) && return 0
+  [[ -z $VM_DIR ]] || mkdir -p -- "$VM_DIR"
+  vm_log_header >>"$log"
+  local dbg=(); ((DEBUG)) && dbg=(-v -x)
+  run_logged "$log" virt-v2v "${dbg[@]}" "$@" "${V2V_OUT[@]}" || rc=$?
+  if ((rc != 0)); then
+    check_v2v_log "$log" || return 2
+    return 1
+  fi
+  if [[ -n $VM_DIR ]]; then v2v_local_finalize || return 1; fi
+  post_v2v_fixups
+  return 0
+}
+
+method_v2v() {
+  run_v2v -i vmx -it ssh "ssh://$ESXI_USER@$ESXI_HOST:$ESXI_PORT$(urlencode "$VMX_PATH")"
+}
+
+# Read the VM straight from the SAN: the ESXi datastore is mounted read-only
+# at the same /vmfs/volumes/... path ESXi uses, so every path in the .vmx works.
+method_vmfs() {
+  local i e missing=0
+  [[ -f $SAN_STATE/state ]] || { warn "SAN datastores are not attached"; return 1; }
+  if [[ ! -r $VMX_PATH ]]; then
+    warn "This VM's datastore is not on the attached SAN volume(s): $VMX_PATH"
+    return 1
+  fi
+  for i in "${!D_VMDK[@]}"; do
+    [[ -r ${D_VMDK[i]} ]] || { warn "Disk not on an attached SAN datastore: ${D_VMDK[i]}"; missing=1; }
+    while IFS= read -r e; do
+      [[ -z $e || -r $e ]] || { warn "Disk data file not readable: $e"; missing=1; }
+    done <<<"${D_EXTENTS[i]}"
+  done
+  ((missing)) && return 1
+  info "Reading '$VM_NAME' from the SAN (read-only) - converted in transit, only used blocks are copied"
+  run_v2v -i vmx "$VMX_PATH"
+}
+
+# ----------------------------------------------------------------------------- VDDK (VMware's disk library)
+esxi_thumbprint() {
+  echo | timeout 15 openssl s_client -connect "$ESXI_HOST:443" 2>/dev/null \
+    | openssl x509 -noout -fingerprint -sha1 2>/dev/null | sed 's/.*=//'
+}
+
+vddk_present() { compgen -G "$VDDK_LIBDIR/lib64/libvixDiskLib.so*" >/dev/null; }
+
+# VDDK tarballs already on this host (newest first)
+vddk_find_tarballs() {
+  local d f
+  for d in "$PWD" "$SCRIPT_DIR" /root /root/Downloads /var/tmp /tmp /opt /home/*/ /home/*/Downloads; do
+    [[ -d $d ]] || continue
+    for f in "$d"/VMware-vix-disklib-*.tar.gz; do [[ -f $f ]] && printf '%s\n' "$(readlink -f "$f")"; done
+  done | awk '!seen[$0]++' | xargs -r -d '\n' ls -t 2>/dev/null
+}
+
+# Install VDDK on THIS Fedora host (it is never installed on ESXi). $1 = tarball path or http(s) URL
+install_vddk() {
+  local src=$1 tgz tmp top parent free_kb
+  if ((DRY_RUN)); then info "[dry-run] would install the streaming component from $src into $VDDK_LIBDIR"; return 0; fi
+  if [[ $src == http://* || $src == https://* ]]; then
+    have curl || install_pkgs curl
+    tgz=$(mktemp /var/tmp/vddk-XXXXXX.tar.gz)
+    info "Downloading the streaming component: ${src%%\?*}"
+    if ! curl -fL --retry 3 --connect-timeout 20 -o "$tgz" "$src"; then
+      rm -f -- "$tgz"
+      err "Download failed. Broadcom's portal needs a login: download VMware-vix-disklib-8.x for Linux in a browser,"
+      err "  copy the .tar.gz to this host (e.g. with WinSCP to /root) and choose it here or use -stream-tarball FILE"
+      return 1
+    fi
+  else
+    tgz=$src
+    [[ -r $tgz ]] || { err "File not found: $tgz"; return 1; }
+  fi
+  top=$(tar -tzf "$tgz" 2>/dev/null | grep -m1 '/lib64/libvixDiskLib\.so' | cut -d/ -f1)
+  if [[ -z $top ]]; then
+    err "$tgz is not VMware-vix-disklib for Linux (no lib64/libvixDiskLib.so inside)"
+    [[ $src == http* ]] && rm -f -- "$tgz"
+    return 1
+  fi
+  parent=${VDDK_LIBDIR%/*}; [[ -n $parent ]] || parent=/
+  mkdir -p "$parent" || { err "Cannot create $parent"; return 1; }
+  # space needed = unpacked size of the archive + 10% (VDDK 8 unpacks to roughly 100-200 MiB)
+  local need_kb
+  need_kb=$(tar -tzvf "$tgz" 2>/dev/null | awk '{ s += $3 } END { printf "%.0f\n", s / 1024 * 1.1 + 10240 }')
+  [[ $need_kb =~ ^[0-9]+$ && $need_kb -gt 0 ]] || need_kb=307200
+  free_kb=$(df -Pk "$parent" | awk 'NR == 2 { print $4 }')
+  logfile_only "Streaming component install: $parent free ${free_kb} KiB, needed ${need_kb} KiB"
+  if ((free_kb < need_kb)); then
+    err "Not enough free space in $parent for the streaming component: needs $(human $((need_kb * 1024))), free $(human $((free_kb * 1024)))"
+    err "  Free up space there (df -h $parent), or install it on another disk with -stream-libdir DIR"
+    [[ $src == http* ]] && rm -f -- "$tgz"
+    return 1
+  fi
+  tmp=$(mktemp -d "$parent/.vddk-install.XXXXXX")
+  info "Installing the streaming component on this host into $VDDK_LIBDIR"
+  if ! tar -xzf "$tgz" -C "$tmp" --no-same-owner; then
+    rm -rf -- "$tmp"; [[ $src == http* ]] && rm -f -- "$tgz"
+    err "Extracting $tgz failed"; return 1
+  fi
+  [[ -e $VDDK_LIBDIR ]] && mv -- "$VDDK_LIBDIR" "$VDDK_LIBDIR.old-$RUN_ID" && info "  Previous version kept as $VDDK_LIBDIR.old-$RUN_ID"
+  mv -- "$tmp/$top" "$VDDK_LIBDIR" && rm -rf -- "$tmp"
+  [[ $src == http* ]] && rm -f -- "$tgz"
+  chown -R root:root "$VDDK_LIBDIR" 2>/dev/null || true
+  have restorecon && restorecon -R "$VDDK_LIBDIR" 2>/dev/null || true
+  vddk_present || { err "Installing the streaming component in $VDDK_LIBDIR failed"; return 1; }
+  info "  Streaming component $(sed -n 's/.*libvixDiskLib\.so\.\([0-9.]*\).*/\1/p' <<<"$(ls "$VDDK_LIBDIR"/lib64/libvixDiskLib.so.* 2>/dev/null | sort | tail -n 1)") installed"
+  install_pkgs nbdkit-vddk-plugin
+}
+
+# ssh to any ESXi host (key first; if the key is not installed there, ask for the password)
+esxi_at() {   # $1 = host, rest = remote command
+  local h=$1 rc=0; shift
+  # one shared connection per host, so a password is typed only once
+  local cm=(-o ControlMaster=auto -o "ControlPath=/run/migrate2vmex-$$-%r@%h:%p" -o ControlPersist=300)
+  ssh -n "${SSH_OPTS[@]}" "${cm[@]}" "$ESXI_USER@$h" "$@" 2>/dev/null || rc=$?
+  ((rc == 255)) || return "$rc"   # 255 = could not log in; anything else is the command's own result
+  can_prompt || return 1
+  echo "  (SSH key not accepted by $h - enter the ESXi root password)" >&2
+  ssh "${SSH_OPTS[@]}" "${cm[@]}" -o BatchMode=no -o PubkeyAuthentication=no "$ESXI_USER@$h" "$@" </dev/tty
+}
+
+# VDDK tarballs already uploaded to ESXi (/tmp, /scratch, datastore roots)
+vddk_find_on_esxi() {
+  esxn 'ls -1t /tmp/VMware-vix-disklib-*.tar.gz /scratch/VMware-vix-disklib-*.tar.gz /vmfs/volumes/*/VMware-vix-disklib-*.tar.gz 2>/dev/null' 2>/dev/null \
+    | awk '!seen[$0]++' || true
+}
+
+# Copy a VDDK tarball from an ESXi host to this Fedora host and install it here.
+# $1 = host, $2 = file or folder on that host
+# Copy a file from an ESXi host to /var/tmp here.  $1 host  $2 file or folder  $3 file pattern
+# (newest match in a folder)  $4 what (for messages).  Sets FETCHED (local) and FETCHED_FROM (remote).
+FETCHED=""; FETCHED_FROM=""
+fetch_from_esxi() {
+  local h=$1 p=$2 pat=$3 what=$4 f rsize lsize out rc=0 ext free_kb
+  FETCHED=""; FETCHED_FROM=""
+  [[ -n $p ]] || return 1
+  # one call: newest match in the folder (or the file itself) and its size
+  out=$(esxi_at "$h" "p=$(q "${p%/}"); if [ -d \"\$p\" ]; then f=\$(ls -1t \"\$p\"/$pat 2>/dev/null | head -n 1); else f=\$p; fi; [ -n \"\$f\" ] && [ -f \"\$f\" ] && echo \"\$(ls -l \"\$f\" | awk '{ print \$5 }') \$f\"") || out=""
+  rsize=${out%% *}; f=${out#* }
+  [[ $rsize =~ ^[0-9]+$ ]] || { err "No $pat found at $p on $h"; return 1; }
+  local fdir=${FETCH_DIR:-/var/tmp}
+  mkdir -p "$fdir" || { err "Cannot create $fdir"; return 1; }
+  free_kb=$(df -Pk "$fdir" | awk 'NR == 2 { print $4 }')
+  if ((free_kb < rsize / 1024 + 51200)); then
+    err "Not enough free space in $fdir to copy $what ($(human "$rsize")): free $(human $((free_kb * 1024)))"; return 1
+  fi
+  ext=${f##*/}; ext=${ext#*.}
+  FETCHED=$(mktemp "$fdir/migrate2vmex-XXXXXX.$ext")
+  info "Copying $what from ESXi $h:$f ($(human "$rsize")) to this host"
+  esxi_at "$h" "cat $(q "$f")" >"$FETCHED" || rc=1
+  lsize=$(stat -c %s "$FETCHED" 2>/dev/null || echo 0)
+  if ((rc)) || [[ $lsize != "$rsize" ]]; then
+    rm -f -- "$FETCHED"; FETCHED=""; err "Copy from $h failed ($lsize of $rsize bytes)"; return 1
+  fi
+  FETCHED_FROM=$f
+}
+
+offer_delete_on_esxi() {   # $1 host  $2 file
+  if [[ $2 == /tmp/* || $2 == /scratch/* ]] && can_prompt \
+     && ask_yn "Delete $2 from ESXi $1 now (it is no longer needed there; /tmp on ESXi is small)?" y; then
+    esxi_at "$1" "rm -f $(q "$2")" >/dev/null && info "  Deleted $2 on $1" || warn "Could not delete $2 on $1"
+  fi
+}
+
+vddk_from_esxi() {
+  local h=$1 rc=0
+  fetch_from_esxi "$h" "$2" 'VMware-vix-disklib-*.tar.gz' 'the streaming component' || return 1
+  install_vddk "$FETCHED" || rc=1
+  rm -f -- "$FETCHED"
+  ((rc == 0)) || return 1
+  offer_delete_on_esxi "$h" "$FETCHED_FROM"
+}
+
+# virtio-win files already on this host / on the source ESXi host
+virtio_find_local() {
+  local d f
+  for d in "$PWD" "$SCRIPT_DIR" /root /root/Downloads /var/tmp /tmp /opt /home/*/ /home/*/Downloads; do
+    [[ -d $d ]] || continue
+    for f in "$d"/virtio-win*.rpm "$d"/virtio-win*.iso; do [[ -f $f ]] && printf '%s\n' "$(readlink -f "$f")"; done
+  done | awk '!seen[$0]++'
+}
+virtio_find_on_esxi() {
+  esxn 'ls -1t /tmp/virtio-win*.iso /tmp/virtio-win*.rpm /vmfs/volumes/*/virtio-win*.iso /vmfs/volumes/*/*/virtio-win*.iso 2>/dev/null' 2>/dev/null \
+    | awk '!seen[$0]++' || true
+}
+
+# Windows guests need virtio-win. Offer the ways to get it; return 1 if it is still missing.
+offer_virtio_win() {
+  virtio_present && return 0
+  local saved why
+  # an ISO entered in an earlier run
+  saved=$(sed -n 's/^virtio_win_iso=//p' "$VMEX_CONF" 2>/dev/null | tail -n 1)
+  if ((!VIRTIO_CUSTOM)) && [[ -n $saved ]]; then
+    if why=$(validate_virtio_iso "$saved"); then VIRTIO_WIN_DIR=$saved; info "Using virtio-win ISO $saved"; return 0; fi
+    warn "The virtio-win ISO used before is no longer usable: $why"
+  fi
+  if ((VIRTIO_CUSTOM)); then
+    why=$(validate_virtio_iso "$VIRTIO_WIN_DIR") && return 0
+    err "-virtio-win: $why"
+    can_prompt && ((!YES_CLI)) || return 1
+  fi
+  if ! can_prompt || ((YES_CLI)); then install_virtio_win; return; fi
+  local found=() rfound=() opts=() i a h p nl nr
+  mapfile -t found < <(virtio_find_local)
+  [[ -n $ESXI_HOST ]] && mapfile -t rfound < <(virtio_find_on_esxi)
+  echo >&2
+  echo "The Windows VirtIO drivers ISO (virtio-win) was not found on this host - Windows VMs need it." >&2
+  echo "  Download virtio-win.iso from https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/" >&2
+  echo "  and copy it to this host (e.g. into a storage pool folder) or to an ESXi datastore." >&2
+  for a in "${found[@]}"; do
+    case ${a,,} in *.iso) opts+=("Use $a") ;; *) opts+=("Install $a") ;; esac
+  done
+  for a in "${rfound[@]}"; do opts+=("Copy from ESXi $ESXI_HOST:$a and use it"); done
+  opts+=("Enter the full path of the virtio-win ISO on this host"
+         "Copy the ISO from a folder or file on an ESXi host"
+         "Download from the internet (dnf, needs ~2.3 GiB on /)"
+         "Cancel - stop here (no VM is changed)")
+  nl=${#found[@]}; nr=${#rfound[@]}
+  while :; do
+    i=$(choose "How should the virtio-win drivers ISO be provided?" 1 "${opts[@]}")
+    if ((i < nl)); then
+      case ${found[i],,} in *.iso) use_virtio_iso "${found[i]}" || true ;; *) install_virtio_from_file "${found[i]}" || true ;; esac
+    elif ((i < nl + nr)); then
+      virtio_from_esxi "$ESXI_HOST" "${rfound[i - nl]}" || true
+    elif ((i == nl + nr)); then
+      a=$(ask "Full path of the virtio-win ISO (e.g. /vmxsps/vmxsp01/iso/virtio-win.iso)" "")
+      use_virtio_iso "$a" || true
+    elif ((i == nl + nr + 1)); then
+      h=$(ask "ESXi host holding the ISO" "$ESXI_HOST")
+      p=$(ask "Folder or file on $h (e.g. /vmfs/volumes/datastore1/ISO)" "/vmfs/volumes")
+      [[ -n $h && -n $p ]] && { virtio_from_esxi "$h" "$p" || true; }
+    elif ((i == nl + nr + 2)); then
+      install_virtio_win || true
+    else
+      return 1
+    fi
+    virtio_present && return 0
+    echo "  virtio-win is still not available - choose another option, or the last one to cancel." >&2
+  done
+}
+
+# Copy the virtio-win ISO from ESXi into the storage pool folder with the most free space
+# (the root filesystem is often small), then use it from there.
+virtio_from_esxi() {
+  local h=$1 p=$2 dir="" d best=0 free pool dest
+  while IFS= read -r pool; do
+    [[ -n $pool ]] || continue
+    d=$(pool_path "$pool" </dev/null); [[ -d $d ]] || continue
+    free=$(df -Pk "$d" | awk 'NR == 2 { print $4 }')
+    ((free > best)) && { best=$free; dir=$d; }
+  done <<<"$POOL_LIST"
+  [[ -n $dir ]] || dir=/var/tmp
+  FETCH_DIR="$dir/.vmex" fetch_from_esxi "$h" "$p" 'virtio-win*.iso' 'the virtio-win ISO' || return 1
+  dest="$dir/.vmex/virtio-win.iso"
+  mv -f -- "$FETCHED" "$dest" || { rm -f -- "$FETCHED"; err "Could not save $dest"; return 1; }
+  use_virtio_iso "$dest" || return 1
+  offer_delete_on_esxi "$h" "$FETCHED_FROM"
+}
+
+# Before any VM is touched: Windows VMs in this run need virtio-win on this host.
+check_windows_prereqs() {
+  local t k wins=()
+  for t in "$@"; do
+    for k in "${!INV_ID[@]}"; do
+      [[ ${INV_ID[k]} == "$t" || ${INV_NAME[k]} == "$t" ]] || continue
+      [[ $(guest_family "${INV_GOS[k]-}") == windows ]] && wins+=("${INV_NAME[k]}")
+      break
+    done
+  done
+  ((${#wins[@]})) || return 0
+  ((DRY_RUN)) && { virtio_present || info "[dry-run] virtio-win would be installed (needed for: ${wins[*]})"; return 0; }
+  offer_virtio_win && return 0
+  die "virtio-win is not installed on this host. It is required for the Windows VM(s): ${wins[*]}. No VM was changed."
+}
+
+# Make sure VDDK is installed on this Fedora host; offer to install it when it is missing.
+# Returns 1 if it is still missing (the run then uses the next method).
+offer_vddk() {
+  vddk_present && return 0
+  ((VDDK_DECLINED)) && return 1   # asked once per run is enough
+  local found=() opts=() i a
+  if [[ -n $VDDK_TARBALL || -n $VDDK_URL ]]; then
+    install_vddk "${VDDK_TARBALL:-$VDDK_URL}" && return 0
+  elif can_prompt; then
+    local rfound=() h p
+    mapfile -t found < <(vddk_find_tarballs)
+    [[ -n $ESXI_HOST ]] && mapfile -t rfound < <(vddk_find_on_esxi)
+    echo >&2
+    echo "In-Transit Disk Streaming needs VMware-vix-disklib for Linux, which is not installed on this host ($VDDK_LIBDIR)." >&2
+    echo "  (It runs here and reads the disks from ESXi over the network - nothing is installed on ESXi.)" >&2
+    for a in "${found[@]}"; do opts+=("Install from $a"); done
+    for a in "${rfound[@]}"; do opts+=("Copy from ESXi $ESXI_HOST:$a and install here"); done
+    opts+=("Copy from a folder or file on an ESXi host (e.g. /tmp) and install here"
+           "Install from another .tar.gz file on this host" "Download from a URL (your own web server or a Broadcom download link)" "Do not install - use the SSH copy instead")
+    local nl=${#found[@]} nr=${#rfound[@]}
+    while :; do
+      i=$(choose "Install it now?" 1 "${opts[@]}")
+      if ((i < nl)); then
+        install_vddk "${found[i]}" || true
+      elif ((i < nl + nr)); then
+        vddk_from_esxi "$ESXI_HOST" "${rfound[i - nl]}" || true
+      elif ((i == nl + nr)); then
+        h=$(ask "ESXi host holding the file" "$ESXI_HOST")
+        p=$(ask "Folder or file on $h" "/tmp")
+        [[ -n $h && -n $p ]] && { vddk_from_esxi "$h" "$p" || true; }
+      elif ((i == nl + nr + 1)); then
+        a=$(ask "Path of VMware-vix-disklib-*.tar.gz" "")
+        [[ -n $a ]] && { install_vddk "$a" || true; }
+      elif ((i == nl + nr + 2)); then
+        a=$(ask "URL of VMware-vix-disklib-*.tar.gz" "")
+        [[ -n $a ]] && { install_vddk "$a" || true; }
+      else
+        break
+      fi
+      vddk_present && return 0
+      echo "  It is still not installed - choose another source, or the last option to continue without it." >&2
+    done
+  fi
+  VDDK_DECLINED=1
+  [[ $METHOD == vddk ]] && { METHOD=copy; info "In-Transit Disk Streaming not available - using the SSH copy for this run"; }
+  return 1
+}
+
+# ask once for the ESXi password (VDDK logs in to ESXi with it; the SSH key is not enough)
+get_esxi_password() {
+  [[ -n $ESXI_PWFILE ]] && { [[ -s $ESXI_PWFILE ]] || die "Password file $ESXI_PWFILE is empty or missing"; return 0; }
+  can_prompt || die "-method stream needs -esxi-password-file when run without a terminal"
+  local pw xt=0
+  [[ $- == *x* ]] && { xt=1; set +x; }   # never write the password to the trace log
+  read -r -s -p "ESXi password for $ESXI_USER@$ESXI_HOST (used for In-Transit Disk Streaming, not stored): " pw </dev/tty; echo
+  [[ -n $pw ]] || die "No password entered"
+  ESXI_PWFILE=$(mktemp /run/migrate2vmex-pw.XXXXXX); chmod 600 "$ESXI_PWFILE"; ESXI_PWFILE_TMP=1
+  printf '%s' "$pw" >"$ESXI_PWFILE"
+  pw=""
+  ((xt)) && set -x || true
+}
+
+ensure_vddk() {
+  vddk_present || offer_vddk || { err "Streaming component not found in $VDDK_LIBDIR (see -help: In-Transit Disk Streaming)"; return 1; }
+  rpm -q nbdkit-vddk-plugin >/dev/null 2>&1 || install_pkgs nbdkit-vddk-plugin
+  rpm -q nbdkit-vddk-plugin >/dev/null 2>&1 || { err "A package needed for In-Transit Disk Streaming (nbdkit plugin) is not available"; return 1; }
+  if ! nbdkit vddk libdir="$VDDK_LIBDIR" --dump-plugin 2>/dev/null | grep -q '^vddk_library_version='; then
+    warn "nbdkit could not confirm the streaming library in $VDDK_LIBDIR - trying anyway"
+  fi
+  [[ -n $VDDK_THUMB ]] || VDDK_THUMB=$(esxi_thumbprint)
+  [[ -n $VDDK_THUMB ]] || { err "Could not read the TLS certificate of $ESXI_HOST:443 (use -stream-thumbprint)"; return 1; }
+  [[ -s $ESXI_PWFILE ]] || { err "ESXi password not available"; return 1; }
+  return 0
+}
+
+# VMware's recommended NFC AIO buffers (VDDK 7.0.3+): 1 MB x 4 instead of the default 64 KB x 4.
+# The defaults limit a single NBD stream to roughly 15-20 MB/s (Broadcom KB 313937).
+vddk_config_file() {
+  if [[ -n $VDDK_CONF ]]; then
+    [[ -r $VDDK_CONF ]] || { err "Streaming config file $VDDK_CONF not readable"; return 1; }
+    echo "$VDDK_CONF"; return 0
+  fi
+  local f="$LOG_DIR/$PROG-$RUN_ID-stream.conf"
+  printf '%s\n' 'vixDiskLib.nfcAio.Session.BufSizeIn64KB=16' 'vixDiskLib.nfcAio.Session.BufCount=4' >"$f"
+  echo "$f"
+}
+
+method_vddk() {
+  local conf
+  ensure_vddk || return 1
+  conf=$(vddk_config_file) || return 1
+  info "Reading '$VM_NAME' with In-Transit Disk Streaming - converted in transit, only used blocks are copied"
+  info "  Transport: $VDDK_TRANSPORTS   NFC buffers: $(grep -c . "$conf") settings from ${conf##*/}"
+  run_v2v -ic "esx://$ESXI_USER@$ESXI_HOST?no_verify=1" -ip "$ESXI_PWFILE" \
+          -it vddk -io "vddk-libdir=$VDDK_LIBDIR" -io "vddk-thumbprint=$VDDK_THUMB" \
+          -io "vddk-transports=$VDDK_TRANSPORTS" -io "vddk-config=$conf" "$VM_NAME"
+}
+
+# virt-v2v -o local wrote <dir>/<name>-sda, -sdb ... and <dir>/<name>.xml:
+# rename the disks to <name>.qcow2, <name>-disk2.qcow2 ..., fix the XML, define the VM
+v2v_local_finalize() {
+  local xml="$VM_DIR/$TNAME.xml" ext=$FORMAT f new i=0
+  [[ $FORMAT == raw ]] && ext=img
+  [[ -f $xml ]] || { err "V2V did not create $xml"; return 1; }
+  TARGET_DISKS=()
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    new="$VM_DIR/$(disk_file "$i" "$ext")"
+    mv -- "$f" "$new" || return 1
+    python3 - "$xml" "$f" "$new" <<'PY' || { err "Could not update the disk path in $xml"; return 1; }
+import sys
+path, old, new = sys.argv[1:]
+text = open(path).read()
+if old not in text:
+    sys.exit(1)
+open(path, "w").write(text.replace(old, new))
+PY
+    TARGET_DISKS+=("$new"); i=$((i + 1))
+  done < <(for f in "$VM_DIR/$TNAME"-sd*; do [[ -e $f ]] && printf '%s\t%s\n' "${#f}" "$f"; done \
+            | sort -t$'\t' -k1,1n -k2,2 | cut -f2-)
+  ((i > 0)) || { err "V2V produced no disk in $VM_DIR"; return 1; }
+  have restorecon && restorecon -R "$VM_DIR" 2>/dev/null || true
+  define_domain "$xml" || return 1
+  mv -f -- "$xml" "$LOG_DIR/$TNAME-domain.xml" 2>/dev/null || true
+  info "Disks: ${TARGET_DISKS[*]}"
+}
+
+post_v2v_fixups() {
+  # vTPM is not carried over by virt-v2v: add an emulated TPM 2.0
+  if ((VTPM)) && have virt-xml; then
+    virt-xml -c "$LIBVIRT_URI" "$TNAME" --add-device --tpm emulator,model=tpm-crb,version=2.0 >/dev/null \
+      && info "Added emulated TPM 2.0 (contents of the VMware vTPM are not migrated)"
+  fi
+  ((SECUREBOOT)) && warn "Source used Secure Boot; check that the converted domain's firmware has it enabled if you need it." || true
+  return 0
+}
+
+# ----------------------------------------------------------------------------- old Windows fix-up
+# Windows Server 2012 R2 / 8.1 and older cannot verify the signature of the VirtIO
+# drivers in current virtio-win releases (boot fails: viostor.sys, 0xc0000428).
+# Fix applied offline after any method, before the first boot:
+#   * registry: storahci (built-in SATA/AHCI driver) set to boot start, StartOverride
+#     cleared; viostor / vioscsi disabled - in every control set Windows may boot from
+#   * domain:   disks virtio -> SATA, NICs virtio -> e1000e, video virtio -> VGA,
+#               BIOS/UEFI kept as on ESXi, <genid/> added (protects AD domain controllers)
+OLD_WIN_FIX=0   # set per VM by migrate_vm
+
+# Windows Server 2012 R2 / 8.1 and older by ESXi's guest OS label (often even older than the real OS)
+old_windows_label() {
+  local g=${GUEST_OS,,}
+  [[ $GUEST_FAMILY == windows ]] || return 1
+  [[ $g =~ ^windows(9|1[0-9]|20[1-9][0-9]) ]] && return 1   # 2016, 10, 11, 2019, 2022, 2025 ...
+  return 0
+}
+
+old_windows_needs_fix() {
+  ((KEEP_VIRTIO)) && return 1
+  ((VIRTIO_CUSTOM)) && return 1   # -virtio-win: user supplied an older ISO with 2k12R2 drivers
+  old_windows_label
+}
+
+win_reg() {   # virt-win-reg against the defined (powered-off) domain
+  env LIBGUESTFS_BACKEND=direct virt-win-reg -c "$LIBVIRT_URI" "$@"
+}
+
+old_windows_registry_fix() {
+  local sel sets=() v cs reg rc=0
+  have virt-win-reg || install_pkgs libguestfs-tools
+  have hivexregedit || install_pkgs hivex perl-hivex
+  have virt-win-reg && have hivexregedit || { err "virt-win-reg / hivexregedit missing (packages libguestfs-tools hivex perl-hivex)"; return 1; }
+
+  sel=$(win_reg "$TNAME" 'HKLM\SYSTEM\Select' 2>/dev/null) || { err "Could not read the Windows SYSTEM hive of '$TNAME'"; return 1; }
+  while IFS= read -r v; do
+    v=$((16#$v)); ((v > 0)) || continue
+    cs=$(printf 'ControlSet%03d' "$v")
+    [[ " ${sets[*]-} " == *" $cs "* ]] || sets+=("$cs")
+  done < <(sed -n 's/^"\(Current\|Default\|LastKnownGood\)"=dword:\([0-9a-fA-F]*\).*/\2/p' <<<"$sel" | tr -d '\r')
+  ((${#sets[@]})) || sets=(ControlSet001)
+
+  reg=$(mktemp "$LOG_DIR/$TNAME-oldwin-XXXXXX.reg")
+  echo 'Windows Registry Editor Version 5.00' >"$reg"
+  for cs in "${sets[@]}"; do
+    local base="HKEY_LOCAL_MACHINE\\SYSTEM\\$cs\\Services" short="HKLM\\SYSTEM\\$cs\\Services"
+    win_reg "$TNAME" "$short\\storahci" >/dev/null 2>&1 || { warn "  $cs has no storahci service - skipped"; continue; }
+    printf '\n[%s\\storahci]\n"Start"=dword:00000000\n' "$base" >>"$reg"
+    if win_reg "$TNAME" "$short\\storahci\\StartOverride" >/dev/null 2>&1; then
+      printf '\n[%s\\storahci\\StartOverride]\n"0"=dword:00000000\n' "$base" >>"$reg"
+    fi
+    for v in viostor vioscsi; do
+      win_reg "$TNAME" "$short\\$v" >/dev/null 2>&1 && printf '\n[%s\\%s]\n"Start"=dword:00000004\n' "$base" "$v" >>"$reg" || true
+    done
+  done
+  info "  Registry ($(IFS=,; echo "${sets[*]}")): storahci boot-start, viostor/vioscsi disabled"
+  win_reg --merge "$TNAME" "$reg" || rc=$?
+  ((rc == 0)) || { err "virt-win-reg --merge failed (reg file kept: $reg)"; return 1; }
+
+  # verify on the current control set
+  v=$(win_reg "$TNAME" "HKLM\\SYSTEM\\${sets[0]}\\Services\\storahci" Start 2>/dev/null | tr -d '\r' || true)
+  [[ $v =~ ^(dword:)?0+$ ]] || { err "storahci Start is '$v' after merge - expected 0"; return 1; }
+  info "  Registry changes kept for reference: $reg"
+}
+
+old_windows_domain_fix() {
+  local xml rc=0
+  xml=$(mktemp "$LOG_DIR/$TNAME-oldwin-XXXXXX.xml")
+  virsh -c "$LIBVIRT_URI" dumpxml --inactive "$TNAME" >"$xml" || return 1
+  python3 -I - "$xml" <<'PY' || rc=$?
+import sys, xml.etree.ElementTree as ET
+path = sys.argv[1]
+for _, (pfx, uri) in ET.iterparse(path, events=["start-ns"]):
+    ET.register_namespace(pfx, uri)
+tree = ET.parse(path); dom = tree.getroot(); devs = dom.find("devices")
+def drop_addr(el):
+    a = el.find("address")
+    if a is not None: el.remove(a)
+used = {d.find("target").get("dev") for d in devs.findall("disk")
+        if d.find("target") is not None and d.find("target").get("bus") == "sata"}
+def next_sd():
+    i = 0
+    while True:
+        n, k = "", i
+        while True:
+            n = chr(97 + k % 26) + n; k = k // 26 - 1
+            if k < 0: break
+        name = "sd" + n
+        if name not in used:
+            used.add(name); return name
+        i += 1
+changed = 0
+for d in devs.findall("disk"):
+    t = d.find("target")
+    if d.get("device") == "disk" and t is not None and t.get("bus") in ("virtio", "scsi"):
+        t.set("bus", "sata"); t.set("dev", next_sd()); drop_addr(d); changed += 1
+for i in devs.findall("interface"):
+    m = i.find("model")
+    if m is not None and m.get("type") == "virtio":
+        m.set("type", "e1000e"); drop_addr(i); changed += 1
+for v in devs.findall("video"):
+    m = v.find("model")
+    if m is not None and m.get("type") == "virtio":
+        for k in list(m.attrib):
+            if k not in ("type", "primary"): del m.attrib[k]
+        m.set("type", "vga"); m.set("vram", "16384"); drop_addr(v)
+if dom.find("genid") is None:
+    ET.SubElement(dom, "genid")
+tree.write(path, encoding="unicode")
+PY
+  ((rc == 0)) || { err "Could not rewrite the domain XML ($xml kept)"; return 1; }
+  virsh -c "$LIBVIRT_URI" define "$xml" >/dev/null || { err "virsh define of the adjusted XML failed ($xml kept)"; return 1; }
+  info "  Domain: disks -> SATA, NICs -> e1000e, video -> VGA, <genid/> added"
+  info "  Adjusted definition kept for reference: $xml"
+}
+
+old_windows_fixup() {
+  hr
+  info "Windows 2012 R2 or older: applying boot fix (current virtio-win drivers are not accepted by this Windows)"
+  old_windows_registry_fix || return 1
+  old_windows_domain_fix || return 1
+  info "Old-Windows fix-up done"
+}
+
+# ----------------------------------------------------------------------------- SAN: read-only VMFS access
+VMFS_FUSE="/usr/local/sbin/vmfs-fuse-ro"
+VMFS_TOOLS_REPO="https://github.com/glandium/vmfs-tools.git"
+VMFS_TOOLS_COMMIT="4ab76ef5b074bdf06e4b518ff6d50439de05ae7f"
+BYID_DIR="/dev/disk/by-id"
+SAN_STATE="/run/migrate2vmex-san"   # records exactly what we attached, so it can always be removed
+
+ensure_vmfs_tools() {
+  have iscsiadm || install_pkgs iscsi-initiator-utils
+  have iscsiadm || die "iscsiadm not available (package iscsi-initiator-utils)"
+  [[ -x $VMFS_FUSE ]] && return 0
+  info "Building the read-only VMFS reader (vmfs-tools, supports VMFS3/VMFS5)"
+  install_pkgs gcc git fuse fuse-devel libuuid-devel pkgconf-pkg-config
+  local d rc=0
+  d=$(mktemp -d)
+  if git clone -q "$VMFS_TOOLS_REPO" "$d/src" && git -C "$d/src" checkout -q "$VMFS_TOOLS_COMMIT"; then
+    # Built WITHOUT -DVMFS_WRITE: the device is opened O_RDONLY and the tool cannot write.
+    ( cd "$d/src" && gcc -O2 -Ilibvmfs -I. -I/usr/include/uuid $(pkg-config --cflags fuse) \
+        libvmfs/*.c vmfs-fuse/vmfs-fuse.c -o "$VMFS_FUSE" $(pkg-config --libs fuse) -luuid ) || rc=1
+  else
+    rc=1
+  fi
+  rm -rf "$d"
+  ((rc == 0)) && [[ -x $VMFS_FUSE ]] || die "Could not build vmfs-fuse (needs access to github.com)"
+  info "Installed $VMFS_FUSE"
+}
+
+# All VMFS extents known to ESXi: name<TAB>uuid<TAB>extent<TAB>device<TAB>partition
+esxi_extents() {
+  esxn "esxcli --formatter=csv storage vmfs extent list" | tr -d '\r' | awk -F, '
+    NR == 1 { for (i = 1; i <= NF; i++) col[$i] = i; next }
+    NF > 1  { gsub(/"/, "")
+              printf "%s\t%s\t%s\t%s\t%s\n", $col["VolumeName"], $col["VMFSUUID"],
+                     $col["ExtentNumber"], $col["DeviceName"], $col["Partition"] }'
+}
+
+lun_path() {   # naa.<id> [partition] -> /dev/disk/by-id path on this host
+  local id=${1#naa.} n=${2-} p
+  [[ $1 == naa.* ]] || return 1
+  for p in "$BYID_DIR/wwn-0x$id" "$BYID_DIR/scsi-3$id"; do
+    [[ -n $n ]] && p="$p-part$n"
+    [[ -e $p ]] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+san_state_get() { sed -n "s/^$1=//p" "$SAN_STATE/state" 2>/dev/null | tail -n 1; }
+
+san_attach() {
+  local portal=$SAN_PORTAL out iqns n_iqn t had_nodes=0 had_disc=0 logged_in=0
+  [[ -n $portal ]] || die "-method vmfs needs -san-portal <IP of the storage's iSCSI port>"
+  [[ $portal == *:* ]] || portal="$portal:3260"
+  ensure_vmfs_tools
+  [[ -f $SAN_STATE/state ]] && { warn "Cleaning up SAN access left by an earlier run"; san_detach; }
+  mkdir -p "$SAN_STATE"
+
+  info "SAN: discovering iSCSI targets on $portal"
+  local nodes_before; nodes_before=$(iscsiadm -m node 2>/dev/null || true)
+  iscsiadm -m discoverydb -t sendtargets -p "$portal" >/dev/null 2>&1 && had_disc=1 || true
+  out=$(timeout 30 iscsiadm -m discovery -t sendtargets -p "$portal" 2>&1) \
+    || { rm -rf "$SAN_STATE"; die "iSCSI discovery on $portal failed: $out"; }
+  iqns=$(awk '{print $2}' <<<"$out" | sort -u)
+  if [[ -n $SAN_TARGET ]]; then
+    grep -qxF "$SAN_TARGET" <<<"$iqns" || { rm -rf "$SAN_STATE"; die "Target $SAN_TARGET not offered by $portal. Offered: $iqns"; }
+    t=$SAN_TARGET
+  else
+    n_iqn=$(grep -c . <<<"$iqns")
+    ((n_iqn == 1)) || { rm -rf "$SAN_STATE"; die "Several targets on $portal - choose one with -san-target:"$'\n'"$iqns"; }
+    t=$iqns
+  fi
+  # did node records / a session for this target exist before us? then leave them alone
+  grep -qF " $t" <<<"$nodes_before" && had_nodes=1 || true
+  {
+    echo "target=$t"; echo "portal=$portal"; echo "had_disc=$had_disc"; echo "had_nodes=$had_nodes"
+  } >"$SAN_STATE/state"
+  # never log in to this storage automatically at boot
+  iscsiadm -m node -T "$t" -o update -n node.startup -v manual >/dev/null 2>&1 || true
+
+  if iscsiadm -m session 2>/dev/null | grep -qF " $t "; then
+    info "SAN: already logged in to $t (session kept as is)"
+  else
+    info "SAN: logging in to $t via $portal"
+    iscsiadm -m node -T "$t" -p "$portal" --login >/dev/null || { san_detach; die "iSCSI login to $t failed"; }
+    logged_in=1
+    echo "logged_in=1" >>"$SAN_STATE/state"
+  fi
+  udevadm settle 2>/dev/null || true
+
+  # ---- find ESXi datastores whose LUN is now visible, block-level read-only, mount
+  local ext name uuid num dev part n mounted=0 waited=0
+  ext=$(esxi_extents) || true
+  [[ -n $ext ]] || { san_detach; die "Could not read the datastore list from ESXi"; }
+  while ((waited < 30)); do          # LUNs can take a few seconds to appear
+    while IFS=$'\t' read -r name uuid num dev part; do lun_path "$dev" "$part" >/dev/null && break 2; done <<<"$ext"
+    sleep 2; waited=$((waited + 2)); udevadm settle 2>/dev/null || true
+  done
+
+  [[ -d /vmfs ]] || { mkdir -p /vmfs/volumes; echo "created_vmfs=1" >>"$SAN_STATE/state"; }
+  mkdir -p /vmfs/volumes
+  for uuid in $(cut -f2 <<<"$ext" | sort -u); do
+    local parts=() missing=0
+    while IFS=$'\t' read -r name _ num dev part; do
+      if p=$(lun_path "$dev" "$part"); then parts+=("$p"); else missing=1; fi
+    done < <(awk -F'\t' -v u="$uuid" '$2 == u' <<<"$ext" | sort -t$'\t' -k3,3n)
+    name=$(awk -F'\t' -v u="$uuid" '$2 == u {print $1; exit}' <<<"$ext")
+    if ((missing)); then
+      ((${#parts[@]})) && warn "SAN: datastore '$name' is only partly visible - skipped" \
+                       || info "SAN: datastore '$name' is not visible from this host (local disk or not mapped) - skipped"
+      continue
+    fi
+    for p in "${parts[@]}"; do      # block-level read-only: the kernel refuses any write
+      blockdev --setro "$(readlink -f "$p")" 2>/dev/null || true
+      dev=$(lsblk -no PKNAME "$(readlink -f "$p")" 2>/dev/null | head -n 1)
+      [[ -n $dev ]] && blockdev --setro "/dev/$dev" 2>/dev/null || true
+    done
+    mkdir -p "/vmfs/volumes/$uuid"
+    if "$VMFS_FUSE" "${parts[@]}" "/vmfs/volumes/$uuid" -o ro,allow_other 2>"$SAN_STATE/mount.err" \
+        && mountpoint -q "/vmfs/volumes/$uuid"; then
+      [[ $name != "$uuid" ]] && ln -sfn "$uuid" "/vmfs/volumes/$name"
+      printf '%s\t%s\n' "$uuid" "$name" >>"$SAN_STATE/mounts"
+      info "SAN: datastore '$name' mounted READ-ONLY at /vmfs/volumes/$name"
+      mounted=$((mounted + 1))
+    else
+      warn "SAN: could not mount datastore '$name': $(tr '\n' ' ' <"$SAN_STATE/mount.err")"
+      grep -qi 'version 6' "$SAN_STATE/mount.err" && warn "  It is VMFS6, which this reader does not support." || true
+      rmdir "/vmfs/volumes/$uuid" 2>/dev/null || true
+    fi
+  done
+  if ((mounted == 0)); then
+    err "SAN: no ESXi datastore could be mounted from $t."
+    err "  On the storage, map the datastore volume to this host's initiator (read-only if offered):"
+    err "  $(sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi 2>/dev/null)"
+    san_detach
+    die "SAN access not available"
+  fi
+}
+
+san_detach() {
+  [[ -f $SAN_STATE/state ]] || return 0
+  local uuid name t portal li
+  info "SAN: removing read-only access (unmount, logout, delete iSCSI records)"
+  if [[ -f $SAN_STATE/mounts ]]; then
+    while IFS=$'\t' read -r uuid name; do
+      [[ -n $uuid ]] || continue
+      umount "/vmfs/volumes/$uuid" 2>/dev/null \
+        || { sleep 3; umount "/vmfs/volumes/$uuid" 2>/dev/null; } \
+        || umount -l "/vmfs/volumes/$uuid" 2>/dev/null \
+        || warn "Could not unmount /vmfs/volumes/$uuid"
+      [[ -L "/vmfs/volumes/$name" ]] && rm -f "/vmfs/volumes/$name"
+      rmdir "/vmfs/volumes/$uuid" 2>/dev/null || true
+    done <"$SAN_STATE/mounts"
+  fi
+  [[ $(san_state_get created_vmfs) == 1 ]] && { rmdir /vmfs/volumes /vmfs 2>/dev/null || true; }
+  t=$(san_state_get target); portal=$(san_state_get portal); li=$(san_state_get logged_in)
+  if [[ -n $t ]]; then
+    if [[ $li == 1 ]]; then
+      iscsiadm -m node -T "$t" -p "$portal" --logout >/dev/null 2>&1 || warn "iSCSI logout from $t failed"
+    fi
+    [[ $(san_state_get had_nodes) == 1 ]] || iscsiadm -m node -T "$t" -o delete >/dev/null 2>&1 || true
+    [[ $(san_state_get had_disc) == 1 ]] || iscsiadm -m discoverydb -t sendtargets -p "$portal" -o delete >/dev/null 2>&1 || true
+  fi
+  rm -rf "$SAN_STATE"
+  if [[ $li == 1 ]] && iscsiadm -m session 2>/dev/null | grep -qF " $t "; then
+    warn "An iSCSI session to $t is still open - log out with: iscsiadm -m node -T $t -u"
+  else
+    info "SAN: access removed"
+  fi
+}
+
+on_exit() {
+  trap '' PIPE
+  san_detach || true
+  ((ESXI_PWFILE_TMP)) && rm -f -- "$ESXI_PWFILE" || true
+  [[ -n ${SSH_AGENT_PID-} ]] && ssh-agent -k >/dev/null 2>&1 || true
+}
+
+# One-time self-test on this host: stream 8 MiB of random data through nbdcopy/qemu-nbd into a
+# qcow2, read it back and compare. Only if identical are real disks streamed straight into qcow2.
+STREAM_OK=""
+stream_selftest() {
+  if [[ -z $STREAM_OK ]]; then
+    local d; d=$(mktemp -d)
+    head -c 8388608 /dev/urandom >"$d/src"
+    if qemu-img create -q -f qcow2 "$d/t.qcow2" 8388608 \
+       && nbdcopy --destination-is-zero --flush -- - '[' qemu-nbd -f qcow2 "$d/t.qcow2" ']' <"$d/src" \
+       && qemu-img convert -f qcow2 -O raw "$d/t.qcow2" "$d/back" && cmp -s "$d/src" "$d/back"; then
+      STREAM_OK=0; info "qcow2 streaming self-test passed (nbdcopy + qemu-nbd)"
+    else
+      STREAM_OK=1; warn "qcow2 streaming self-test FAILED - disks will be copied as raw and then converted"
+    fi
+    rm -rf -- "$d"
+  fi
+  return "$STREAM_OK"
+}
+can_stream_qcow2() { have nbdcopy && have qemu-nbd && stream_selftest; }
+
+# Stream each disk from ESXi over SSH straight into its final file in the VM's folder.
+#   qcow2 (default): ssh cat | nbdcopy -> qemu-nbd -> <name>.qcow2  (one pass, zero blocks skipped)
+#   raw            : ssh cat | dd conv=sparse -> <name>.img
+# Every byte is counted and every step's exit status checked; a short or failed stream is an error.
+copy_disks() {
+  local i bytes tmp final xfer cmd e prog=/dev/null ext cntf got rsum lsum
+  local sshc meter writer st raw_tmp
+  ((HAVE_TTY)) && prog=/dev/tty || true
+  ext=$FORMAT; [[ $FORMAT == raw ]] && ext=img
+  ((DRY_RUN)) || mkdir -p -- "$VM_DIR"
+  TARGET_DISKS=()
+  for i in "${!D_DEV[@]}"; do
+    final="$VM_DIR/$(disk_file "$i" "$ext")"
+    xfer="$VM_DIR/.transfer-disk$i.$ext"     # finished transfer kept by an interrupted run
+    TARGET_DISKS+=("$final")
+    if [[ -f $final ]]; then info "Disk $i already present, reusing: ${final##*/}"; continue; fi
+    if [[ -f $xfer ]]; then
+      info "Disk $i was already transferred by an earlier run, reusing it"
+      mv -- "$xfer" "$final" || return 1
+      continue
+    fi
+    if [[ $ext == qcow2 && -f $VM_DIR/.transfer-disk$i.img ]]; then   # raw transfer from an older version
+      info "Disk $i was already transferred as raw by an earlier run - converting it to qcow2"
+      qemu-img convert -p -W -f raw -O qcow2 "$VM_DIR/.transfer-disk$i.img" "$VM_DIR/.disk$i.qcow2.part" >"$prog" \
+        || { rm -f -- "$VM_DIR/.disk$i.qcow2.part"; err "qcow2 conversion of disk $i failed"; return 1; }
+      mv -- "$VM_DIR/.disk$i.qcow2.part" "$final" && rm -f -- "$VM_DIR/.transfer-disk$i.img" || return 1
+      continue
+    fi
+    [[ ${D_KIND[i]} == flat ]] || die "Disk ${D_DEV[i]} is '${D_KIND[i]}' - copy method needs flat disks (consolidate snapshots)"
+    bytes=${D_BYTES[i]}
+    cmd="cat"
+    if [[ -n ${WARM_SRC[i]-} ]]; then
+      cmd+=" $(q "${WARM_SRC[i]}")"
+    else
+      while IFS= read -r e; do [[ -n $e ]] && cmd+=" $(q "$e")"; done <<<"${D_EXTENTS[i]}"
+    fi
+    sshc=(ssh -n "${SSH_OPTS[@]}")
+    ((COMPRESS)) && sshc+=(-o Compression=yes) || true
+    tmp="$VM_DIR/.disk$i.$ext.part"; raw_tmp=""
+    if [[ $ext == qcow2 ]] && can_stream_qcow2; then
+      # '[' and ']' quoted: unquoted, bash would read "[ ... ]" inside an array as ONE word
+      writer=(nbdcopy --destination-is-zero --flush -- - '[' qemu-nbd -f qcow2 "$tmp" ']')
+      info "Copying disk $i (${D_DEV[i]}, $(human "$bytes")) from ESXi straight into ${final##*/}"
+    elif [[ $ext == qcow2 ]]; then
+      raw_tmp="$VM_DIR/.disk$i.img.part"
+      writer=(dd of="$raw_tmp" bs=4M iflag=fullblock conv=sparse status=none)
+      warn "Direct qcow2 streaming not available (nbdcopy/qemu-nbd missing or self-test failed): copying as raw first, then converting to qcow2 (extra pass)"
+      info "Copying disk $i (${D_DEV[i]}, $(human "$bytes")) from ESXi"
+    else
+      writer=(dd of="$tmp" bs=4M iflag=fullblock conv=sparse status=none)
+      info "Copying disk $i (${D_DEV[i]}, $(human "$bytes")) from ESXi into ${final##*/}"
+    fi
+    if ((DRY_RUN)); then info "[dry-run] ssh $ESXI_HOST $cmd | ${writer[*]}"; continue; fi
+    rm -f -- "$tmp" "${raw_tmp:-/nonexistent}"
+    [[ $ext == qcow2 && -z $raw_tmp ]] && { qemu-img create -q -f qcow2 "$tmp" "$bytes" || return 1; }
+    meter=(cat); have pv && meter=(pv -pterab -s "$bytes")
+    local hasher=(cat) x bad=0
+    ((WARM_HASH)) && hasher=(python3 -u -c "$CHUNK_HASHER_PY" "$((WARM_CHUNK_MB * 1048576))" "$VM_DIR/.warm-disk$i.md5")
+    cntf=$(mktemp)
+    "${sshc[@]}" "$ESXI_USER@$ESXI_HOST" "$cmd" | "${meter[@]}" 2>"$prog" \
+      | LC_ALL=C dd bs=4M iflag=fullblock 2>"$cntf" | "${hasher[@]}" | "${writer[@]}"
+    st=("${PIPESTATUS[@]}")
+    got=$(sed -n 's/^\([0-9][0-9]*\) bytes.*/\1/p' "$cntf" | tail -n 1); rm -f -- "$cntf"
+    for x in "${st[@]}"; do ((x == 0)) || bad=1; done
+    if ((bad)) || [[ ${got:-0} != "$bytes" ]]; then
+      err "Transfer of disk $i failed (exit status ssh/meter/count/checksum/write: ${st[*]}; received ${got:-0} of $bytes bytes)"
+      rm -f -- "$tmp" "${raw_tmp:-/nonexistent}"
+      return 1
+    fi
+    if [[ -n $raw_tmp ]]; then
+      info "Converting disk $i to qcow2"
+      qemu-img convert -p -W -f raw -O qcow2 "$raw_tmp" "$tmp" >"$prog" \
+        || { rm -f -- "$tmp" "$raw_tmp"; err "qcow2 conversion of disk $i failed"; return 1; }
+      rm -f -- "$raw_tmp"
+    fi
+    if ((VERIFY)); then
+      info "Verifying checksum of disk $i (reads the disk again on both sides)"
+      rsum=$(esxn "$cmd | md5sum" | awk '{print $1}')
+      if [[ $ext == qcow2 ]]; then
+        lsum=$(qemu-img convert -f qcow2 -O raw "$tmp" /dev/stdout 2>/dev/null | md5sum | awk '{print $1}')
+      else
+        lsum=$(md5sum "$tmp" | awk '{print $1}')
+      fi
+      [[ $rsum == "$lsum" ]] || { rm -f -- "$tmp"; die "Checksum mismatch on disk $i ($rsum vs $lsum)"; }
+      info "Checksum OK ($lsum)"
+    fi
+    mv -- "$tmp" "$final" || return 1
+    info "Disk $i done: ${final##*/} ($(du -h "$final" | cut -f1) used on disk)"
+  done
+  have restorecon && restorecon -F "${TARGET_DISKS[@]}" 2>/dev/null || true
+  virsh -c "$LIBVIRT_URI" pool-refresh "$POOL" >/dev/null 2>&1 || true
+}
+
+method_copy() {
+  have virt-v2v-in-place || { warn "V2V-in-place not available"; return 1; }
+  [[ $GUEST_FAMILY == windows ]] && { install_virtio_win || die "virtio-win is required for Windows guests"; }
+  copy_disks || return 1
+  convert_and_define
+}
+
+convert_and_define() {   # V2V-in-place on the copied disks, then define the VM
+  local xml log rc=0
+  xml="$LOG_DIR/$TNAME-domain.xml"
+  ((DRY_RUN)) && { info "[dry-run] would run V2V-in-place and define '$TNAME' with virtio devices"; return 0; }
+  build_domain_xml virtio "$xml" || return 1
+  log="$LOG_DIR/$TNAME-v2v-in-place.log"; VM_LOG=$log
+  vm_log_header >>"$log"
+  info "Converting guest in place (log: $log)"
+  local dbg=(); ((DEBUG)) && dbg=(-v -x)
+  ((NTFS_FIX)) && { repair_target_ntfs || return 2; }
+  run_logged "$log" virt-v2v-in-place "${dbg[@]}" -i libvirtxml "$xml" "${V2V_EXTRA[@]}" || rc=$?
+  if ((rc != 0)) && ((!NTFS_FIX)) && grep -qi 'mounted read-only, even though' "$log"; then
+    # the copy is complete but Windows was not shut down cleanly: decide now instead of failing
+    local drv=() d
+    for d in "${TARGET_DISKS[@]}"; do drv+=(--format="$FORMAT" -a "$d"); done
+    NTFS_BAD=$(ntfs_probe "${drv[@]}" 2>/dev/null | awk '$2 == 14 || $2 == 15')
+    [[ -n $NTFS_BAD ]] || NTFS_BAD="/dev/sda1 15"
+    if ntfs_decide after; then
+      repair_target_ntfs || return 2
+      rc=0; run_logged "$log" virt-v2v-in-place "${dbg[@]}" -i libvirtxml "$xml" "${V2V_EXTRA[@]}" || rc=$?
+    else
+      DISCARD_COPY=1   # the copy holds the unclean state - a re-run must copy again from the fixed source
+      return 2
+    fi
+  fi
+  if ((rc != 0)); then
+    check_v2v_log "$log" || return 2
+    return 1
+  fi
+  define_domain "$xml" || return 1
+}
+
+method_raw() {
+  local xml
+  [[ $FIRMWARE == bios || $FIRMWARE == efi ]] || true
+  copy_disks || return 1
+  ((DRY_RUN)) && { info "[dry-run] would define '$TNAME' with SATA/e1000e/VGA devices"; return 0; }
+  xml="$LOG_DIR/$TNAME-domain-compat.xml"
+  build_domain_xml compat "$xml" || return 1
+  define_domain "$xml" || return 1
+  warn "Guest was NOT modified: it runs on emulated SATA/e1000e hardware. Install virtio drivers inside the guest later for better performance."
+}
+
+# ----------------------------------------------------------------------------- space checks
+space_reserve_kb() {   # always keep this much free in the pool (other VMs' thin disks grow)
+  if [[ -n $MIN_FREE_GB ]]; then echo $((MIN_FREE_GB * 1024 * 1024)); return; fi
+  local size_kb r
+  size_kb=$(df -Pk "$POOL_DIR" | awk 'NR==2 {print $2}')
+  r=$((size_kb / 20))                                  # 5 % of the pool ...
+  ((r < 10485760)) && r=10485760 || true               # ... at least 10 GiB
+  ((r > 104857600)) && r=104857600 || true             # ... at most 100 GiB
+  echo "$r"
+}
+
+EST_KB=0; EST_SRC=""; EST_UPPER=0
+# With virt-v2v < 2.12 (Fedora 42: 2.8.1, Fedora 43: 2.9.x) NTFS trimming cannot be switched off, and Windows
+# guests converted in transit did not boot. The SSH copy + in-place conversion did boot, so
+# every Windows guest uses it unless -force-in-transit is given.
+windows_needs_copy() {   # only Windows 2012 R2 and older (the versions that did not boot)
+  old_windows_label && ((V2V_HAS_NO_FSTRIM == 0 && FORCE_IN_TRANSIT == 0))
+}
+
+effective_method() {   # the primary method actually used for the inspected VM
+  if [[ $METHOD =~ ^(auto|v2v|vddk|vmfs)$ ]] && windows_needs_copy; then
+    echo copy
+  else
+    echo "$METHOD"
+  fi
+}
+
+effective_format() { echo "$FORMAT"; }
+
+estimate_need() {   # space this VM will take in the pool, for the chosen method
+  local m
+  m=$(effective_method)
+  ((WARM)) && m=copy || true
+  [[ $GUEST_FAMILY == other ]] && m=raw
+  EST_UPPER=0
+  case $m in
+    vmfs|vddk|v2v|auto)   # converted in transit: only blocks in use are written
+      if ((GUEST_USED_KB > 0)); then
+        EST_KB=$((GUEST_USED_KB * 110 / 100 + 2097152)); EST_SRC="data in the guest (VMware Tools) + 10%"
+      else
+        EST_KB=$((USED_KB * 105 / 100)); EST_UPPER=1
+        EST_SRC="allocated on ESXi - upper bound (guest data unknown: VM off or no VMware Tools)"
+      fi ;;
+    *)                    # full disk copy (+ qcow2 conversion needs both at once)
+      EST_KB=$((USED_KB * 105 / 100)); EST_SRC="full disk copy"
+      if [[ $(effective_format) == qcow2 ]] && ! can_stream_qcow2; then EST_KB=$((EST_KB * 2)); EST_SRC="full disk copy + qcow2 conversion (peak)"; fi ;;
+  esac
+}
+
+# Whole-plan check before anything is touched: all selected VMs must fit together.
+plan_space_check() {
+  [[ -n $POOL_DIR ]] || { info "Space check skipped: pool '$POOL' is not a directory pool"; return 0; }
+  ((SKIP_SPACE)) && { warn "Space check skipped (-skip-space-check)"; return 0; }
+  local t idx total=0 upper=0 free reserve usable lines=() l
+  for t in "$@"; do
+    idx=$(find_vm "$t") || return 1
+    inspect_vm "$idx"; estimate_need
+    total=$((total + EST_KB)); ((EST_UPPER)) && upper=1 || true
+    lines+=("$(printf '  %-32s %9s  %s' "$VM_NAME" "~$(human $((EST_KB * 1024)))" "$EST_SRC")")
+  done
+  free=$(df -Pk "$POOL_DIR" | awk 'NR==2 {print $4}')
+  reserve=$(space_reserve_kb)
+  usable=$((free - reserve)); ((usable < 0)) && usable=0 || true
+  hr
+  info "Space check - pool '$POOL' ($POOL_DIR)"
+  for l in "${lines[@]}"; do info "$l"; done
+  info "  Needed: ~$(human $((total * 1024)))   Free: $(human $((free * 1024)))   Kept in reserve: $(human $((reserve * 1024)))   Usable: $(human $((usable * 1024)))"
+  if ((total > usable)); then
+    err "Not enough space in pool '$POOL': the selected VMs need ~$(human $((total * 1024))), only $(human $((usable * 1024))) can be used."
+    ((upper)) && err "  Some sizes are upper bounds. Power those VMs on (VMware Tools running) for their real data size, or use -skip-space-check if you are sure they fit." || true
+    die "Free up space, choose another pool, or migrate fewer VMs at once (reserve: -min-free GB)."
+  fi
+  info "  Space OK"
+}
+
+# ----------------------------------------------------------------------------- warm migration
+# Pass 1 copies the disk while the VM runs (an ESXi snapshot freezes the base disk) and records
+# an md5 per chunk. At cut-over the VM is shut down, the snapshot merged, ESXi checksums every
+# chunk on its own storage and only the chunks that differ are transferred and written.
+
+# stdin -> stdout unchanged; writes "<chunk> <md5>" per chunk of argv[1] bytes to argv[2]
+CHUNK_HASHER_PY='
+import sys, hashlib
+ch, out = int(sys.argv[1]), open(sys.argv[2], "w")
+r, w, i = sys.stdin.buffer, sys.stdout.buffer, 0
+while True:
+    buf = bytearray()
+    while len(buf) < ch:
+        b = r.read(ch - len(buf))
+        if not b:
+            break
+        buf += b
+    if not buf:
+        break
+    w.write(buf)
+    out.write("%d %s\n" % (i, hashlib.md5(buf).hexdigest()))
+    i += 1
+    if len(buf) < ch:
+        break
+w.flush(); out.close()
+'
+
+# stdin = the changed chunks in list order; writes each at its offset after checking its md5
+CHUNK_WRITER_PY='
+import sys, os, hashlib
+tgt, ch, lst = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+fd, r, n = os.open(tgt, os.O_WRONLY), sys.stdin.buffer, 0
+for line in open(lst):
+    i, ln, h = line.split(); i, ln = int(i), int(ln)
+    buf = bytearray()
+    while len(buf) < ln:
+        b = r.read(ln - len(buf))
+        if not b:
+            sys.exit("stream ended early at chunk %d" % i)
+        buf += b
+    if hashlib.md5(buf).hexdigest() != h:
+        sys.exit("checksum mismatch in chunk %d" % i)
+    os.pwrite(fd, bytes(buf), i * ch)
+    n += 1
+os.fsync(fd); os.close(fd)
+'
+
+warm_preflight() {
+  local i
+  have python3 || { err "Warm migration needs python3"; return 1; }
+  for i in "${!D_DEV[@]}"; do
+    [[ ${D_KIND[i]} == flat ]] || { err "Warm migration: disk ${D_DEV[i]} is '${D_KIND[i]}' (needs flat disks)"; return 1; }
+    [[ $(grep -c . <<<"${D_EXTENTS[i]}") == 1 ]] || { err "Warm migration: disk ${D_DEV[i]} has several extents"; return 1; }
+  done
+  if [[ $FORMAT == qcow2 ]]; then
+    have qemu-nbd || { err "Warm migration to qcow2 needs qemu-nbd (or use -format raw)"; return 1; }
+    modprobe nbd max_part=0 2>/dev/null || true
+    compgen -G '/sys/block/nbd*' >/dev/null || { err "Kernel module nbd not available (needed to update qcow2 disks; or use -format raw)"; return 1; }
+    warm_nbd_selftest || { err "Updating qcow2 disks through qemu-nbd does not work on this host - use -format raw for warm migrations"; return 1; }
+  fi
+}
+
+# Before the VM is touched: write a test chunk into a small qcow2 through qemu-nbd exactly as the
+# final sync does, read it back and compare.
+warm_nbd_selftest() {
+  local d rc=0
+  d=$(mktemp -d)
+  head -c 3145728 /dev/urandom >"$d/chunk"
+  printf '1 3145728 %s\n' "$(md5sum <"$d/chunk" | cut -c1-32)" >"$d/lst"
+  qemu-img create -q -f qcow2 "$d/t.qcow2" 8M || rc=1
+  if ((rc == 0)) && nbd_attach "$d/t.qcow2"; then
+    python3 -c "$CHUNK_WRITER_PY" "$NBD_DEV" 1048576 "$d/lst" <"$d/chunk" || rc=1
+    nbd_detach
+  else
+    rc=1
+  fi
+  ((rc == 0)) && qemu-img convert -f qcow2 -O raw "$d/t.qcow2" "$d/back" \
+    && cmp -s <(dd if="$d/back" bs=1048576 skip=1 count=3 2>/dev/null) "$d/chunk" || rc=1
+  rm -rf -- "$d"
+  ((rc == 0)) && info "qcow2 update self-test passed (qemu-nbd)" || true
+  return "$rc"
+}
+
+warm_snapshot_create() {
+  local out f
+  out=$(esxn "vim-cmd vmsvc/snapshot.create $VMID migrate2vmex-warm-$RUN_ID 'migrate2vmex warm migration' 0 0" 2>&1) \
+    || { err "Could not create the warm-migration snapshot: $out"; return 1; }
+  WARM_SNAP=1
+  info "Snapshot created: the base disk is frozen for the copy, the VM keeps running"
+  local i locked=0
+  for i in "${!D_DEV[@]}"; do
+    f=$(head -n 1 <<<"${D_EXTENTS[i]}")
+    if [[ $(esxn "dd if=$(q "$f") bs=1048576 count=1 2>/dev/null | wc -c" 2>/dev/null | tr -d ' ') != 1048576 ]]; then
+      locked=1
+      logfile_only "Direct read of ${f##*/} refused: $(esxn "dd if=$(q "$f") of=/dev/null bs=1048576 count=1 2>&1" 2>&1 | head -n 2 | tr '\n' ' ')"
+    fi
+  done
+  if ((locked)); then
+    info "ESXi locks the base disk while the VM runs - making a temporary thin copy on the datastore (vmkfstools)"
+    warm_clone_base || { warm_remove_snapshot || true; return 1; }
+  fi
+}
+
+# Datastore free space in KiB for a /vmfs/volumes/<datastore>/... path (esxcli), empty if unknown
+datastore_free_kb() {
+  local ds=${1#/vmfs/volumes/}; ds=${ds%%/*}
+  esxn "esxcli --formatter=csv storage filesystem list" 2>/dev/null | tr -d '\r' | awk -F, -v d="$ds" '
+    NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next }
+    { gsub(/"/, "") } $c["VolumeName"] == d || $c["UUID"] == d { printf "%d\n", $c["Free"] / 1024; exit }'
+}
+
+warm_clone_base() {
+  local i need_kb free_kb src dst f
+  # thin copy holds only non-zero blocks: about the guest's data (VMware Tools), else allocated size
+  if ((GUEST_USED_KB > 0)); then need_kb=$((GUEST_USED_KB * 110 / 100 + 10485760)); else need_kb=$((USED_KB * 105 / 100)); fi
+  free_kb=$(datastore_free_kb "$VMX_PATH")
+  if [[ -z $free_kb ]]; then
+    warn "Could not read the datastore's free space - continuing"
+  elif ((free_kb < need_kb)); then
+    err "Not enough free space on the ESXi datastore for the temporary copy: need ~$(human $((need_kb * 1024))), free $(human $((free_kb * 1024)))"
+    err "  Use a normal (cold) migration for this VM, or free space on the datastore."
+    return 1
+  else
+    info "  Datastore free: $(human $((free_kb * 1024))), temporary copy needs ~$(human $((need_kb * 1024)))"
+  fi
+  WARM_CLONE_DIR="$VMDIR/migrate2vmex-warm-$RUN_ID"
+  esxn "mkdir -p $(q "$WARM_CLONE_DIR")" || { err "Could not create $WARM_CLONE_DIR on ESXi"; return 1; }
+  WARM_SRC=()
+  for i in "${!D_DEV[@]}"; do
+    src=${D_VMDK[i]}; dst="$WARM_CLONE_DIR/disk$i.vmdk"
+    info "  Copying disk $i on ESXi (thin, VM keeps running): ${src##*/}"
+    esxn "vmkfstools -i $(q "$src") $(q "$dst") -d thin" 2>&1 | tr '\r' '\n' \
+      | awk '/[0-9]+% done/ { p = $0; sub(/.*: */, "", p); n = p + 0; if (n >= last + 10) { last = n - n % 10; print "    " p; fflush() } next }
+             /[Ee]rror|[Ff]ailed/ { print "    " $0; fflush() }' \
+      | while IFS= read -r f; do info "$f"; done || true
+    f="$WARM_CLONE_DIR/disk$i-flat.vmdk"
+    if [[ $(esxn "dd if=$(q "$f") bs=1048576 count=1 2>/dev/null | wc -c" 2>/dev/null | tr -d ' ') != 1048576 ]]; then
+      err "The temporary copy of disk $i could not be made or read on ESXi"
+      warm_remove_clone
+      return 1
+    fi
+    WARM_SRC[i]=$f
+  done
+}
+
+warm_remove_clone() {
+  [[ -n $WARM_CLONE_DIR ]] || return 0
+  info "Deleting the temporary copy on the ESXi datastore"
+  esxn "for d in $(q "$WARM_CLONE_DIR")/disk*.vmdk; do case \$d in *-flat.vmdk) ;; *) vmkfstools -U \"\$d\" 2>/dev/null ;; esac; done; rm -rf $(q "$WARM_CLONE_DIR")" >/dev/null 2>&1 \
+    || warn "Could not delete $WARM_CLONE_DIR on ESXi - delete it in the datastore browser"
+  WARM_CLONE_DIR=""; WARM_SRC=()
+}
+
+warm_remove_snapshot() {
+  warm_remove_clone || true
+  ((WARM_SNAP)) || return 0
+  local name="migrate2vmex-warm-$RUN_ID" id n
+  info "Removing the warm-migration snapshot $name (ESXi merges the changes back into the base disk)"
+  # remove only our own snapshot (by id); removeall only if ours is the VM's only snapshot
+  id=$(esxn "vim-cmd vmsvc/snapshot.get $VMID" 2>/dev/null | awk -v n="$name" '/Snapshot Name/ { f = (index($0, n) > 0) } f && /Snapshot Id/ { print $NF; exit }')
+  n=$(esxn "vim-cmd vmsvc/snapshot.get $VMID 2>/dev/null | grep -c 'Snapshot Name'" 2>/dev/null || true)
+  if [[ -n $id ]] && esxn "vim-cmd vmsvc/snapshot.remove $VMID $id" >/dev/null 2>&1; then
+    :
+  elif [[ ${n:-0} == 1 ]] && esxn "vim-cmd vmsvc/snapshot.removeall $VMID" >/dev/null 2>&1; then
+    :
+  else
+    warn "Could not remove snapshot $name on ESXi - delete it in the ESXi client (Snapshots > Manage)"; return 1
+  fi
+  WARM_SNAP=0
+}
+
+nbd_attach() {   # $1 = qcow2 file -> NBD_DEV
+  local d n
+  NBD_DEV=""
+  modprobe nbd max_part=0 2>/dev/null || true
+  for d in /sys/block/nbd*; do [[ -e $d/pid ]] && continue; NBD_DEV=/dev/${d##*/}; break; done
+  [[ -n $NBD_DEV ]] || { err "No free /dev/nbd device"; return 1; }
+  qemu-nbd --connect="$NBD_DEV" -f qcow2 "$1" >/dev/null || { err "qemu-nbd could not attach $1"; NBD_DEV=""; return 1; }
+  for ((n = 0; n < 50; n++)); do [[ -e /sys/block/${NBD_DEV##*/}/pid ]] && return 0; sleep 0.2; done
+  err "$NBD_DEV did not come up"; return 1
+}
+
+nbd_detach() {
+  [[ -n $NBD_DEV ]] || return 0
+  sync; qemu-nbd --disconnect "$NBD_DEV" >/dev/null 2>&1 || warn "Could not detach $NBD_DEV"
+  NBD_DEV=""
+}
+
+warm_final_sync() {
+  local i f bytes n ch=$((WARM_CHUNK_MB * 1048576)) hl rl lst idx changed got tgt line cnt prog=/dev/null rc idxs t1 el eta cb
+  ((HAVE_TTY)) && prog=/dev/tty || true
+  for i in "${!D_DEV[@]}"; do
+    f=$(head -n 1 <<<"${D_EXTENTS[i]}"); bytes=${D_BYTES[i]}; n=$(( (bytes + ch - 1) / ch ))
+    hl="$VM_DIR/.warm-disk$i.md5"; rl="$VM_DIR/.warm-disk$i.esxi.md5"; lst="$VM_DIR/.warm-disk$i.changed"
+    info "Performing delta sync of disk $i ($(human "$bytes")): finding what changed while the VM was running"
+    : >"$rl"; cnt=0; t1=$SECONDS
+    while IFS= read -r line; do
+      echo "$line" >>"$rl"; cnt=$((cnt + 1))
+      if ((cnt % 8 == 0 || cnt == n)); then   # percent and ETA, from the speed so far
+        el=$((SECONDS - t1)); eta=$(( cnt > 0 ? el * (n - cnt) / cnt : 0 ))
+        printf '\r  Performing delta sync: %3d%%   ETA %d:%02d:%02d ' $((cnt * 100 / n)) \
+          $((eta / 3600)) $((eta % 3600 / 60)) $((eta % 60)) >"$prog"
+      fi
+    done < <(esx 'sh -s' <<__REMOTE__
+F=$(q "$f"); M=$WARM_CHUNK_MB; N=$n; i=0
+while [ \$i -lt \$N ]; do
+  h=\$(dd if="\$F" bs=1048576 skip=\$((i * M)) count=\$M 2>/dev/null | md5sum | cut -c1-32)
+  echo "\$i \$h"; i=\$((i + 1))
+done
+__REMOTE__
+)
+    printf '\n' >"$prog"
+    [[ $(grep -c . "$rl") == "$n" ]] || { err "ESXi returned $(grep -c . "$rl") of $n checksums for disk $i"; return 1; }
+    awk 'NR == FNR { a[$1] = $2; next } a[$1] != $2 { print $1, $2 }' "$hl" "$rl" \
+      | while read -r idx line; do
+          got=$(( bytes - idx * ch )); ((got > ch)) && got=$ch
+          echo "$idx $got $line"
+        done >"$lst"
+    changed=$(grep -c . "$lst" || true)
+    if ((changed == 0)); then info "Delta sync of disk $i: no changes"; continue; fi
+    cb=$(awk '{ s += $2 } END { printf "%.0f\n", s }' "$lst")
+    info "Performing delta sync of disk $i: copying $(human "$cb") of changes"
+    if [[ $FORMAT == qcow2 ]]; then nbd_attach "${TARGET_DISKS[i]}" || return 1; tgt=$NBD_DEV; else tgt=${TARGET_DISKS[i]}; fi
+    idxs=$(cut -d' ' -f1 "$lst" | tr '\n' ' ')
+    rc=0
+    esx 'sh -s' <<__REMOTE__ | { if have pv; then pv -N "  Performing delta sync" -petr -s "$cb" 2>"$prog"; else cat; fi; } \
+      | python3 -c "$CHUNK_WRITER_PY" "$tgt" "$ch" "$lst" || rc=$?
+F=$(q "$f"); M=$WARM_CHUNK_MB
+for i in $idxs; do dd if="\$F" bs=1048576 skip=\$((i * M)) count=\$M 2>/dev/null; done
+__REMOTE__
+    [[ $FORMAT == qcow2 ]] && nbd_detach || true
+    ((rc == 0)) || { err "Delta sync of disk $i failed"; return 1; }
+    info "Delta sync of disk $i complete: changes written and verified"
+  done
+  rm -f -- "$VM_DIR"/.warm-disk*
+}
+
+# Wait for the operator before shutting the source VM down (WARM_CUTOVER=ask).
+# Answer on the terminal, or from anywhere: touch <log dir>/cutover-<VM>  (or cancel-<VM>)
+warm_cutover_confirm() {
+  [[ $WARM_CUTOVER == auto ]] && { info "Automatic cut-over (-cutover auto)"; return 0; }
+  local go="$LOG_DIR/cutover-$TNAME" stop="$LOG_DIR/cancel-$TNAME" a rc t=$SECONDS next=1800 prompt
+  rm -f -- "$go" "$stop"
+  prompt="Shut down '$VM_NAME' on ESXi now for the delta sync? (yes/cancel) "
+  info "Waiting for your confirmation before shutting '$VM_NAME' down (downtime starts then)."
+  info "  Answer here, or from another terminal:  touch $go   (or: touch $stop)"
+  info "  While waiting, the VM keeps running and its ESXi snapshot keeps growing."
+  printf '%s' "$prompt" >/dev/tty 2>/dev/null || true
+  while :; do
+    [[ -e $go ]] && { rm -f -- "$go"; echo >/dev/tty 2>/dev/null || true; info "Cut-over confirmed ($go)"; return 0; }
+    [[ -e $stop ]] && { rm -f -- "$stop"; echo >/dev/tty 2>/dev/null || true; return 1; }
+    a=""; rc=0
+    read -r -t 30 a </dev/tty 2>/dev/null || rc=$?
+    if ((rc == 0)); then
+      case ${a,,} in
+        yes|y) logfile_only "Cut-over confirmed on the terminal"; return 0 ;;
+        cancel|c|no|n)
+          read -r -p "Cancel the migration of '$VM_NAME'? The copy made so far is discarded. (yes/no) " a </dev/tty || a=""
+          [[ ${a,,} == y* ]] && return 1 ;;
+      esac
+      printf '%s' "$prompt" >/dev/tty 2>/dev/null || true
+    elif ((rc <= 128)); then
+      sleep 30   # no terminal: wait for the touch file
+    fi
+    if ((SECONDS - t >= next)); then
+      echo >/dev/tty 2>/dev/null || true
+      info "Still waiting for the cut-over confirmation ($(( (SECONDS - t) / 60 )) min)"
+      printf '%s' "$prompt" >/dev/tty 2>/dev/null || true
+      next=$((next + 1800))
+    fi
+  done
+}
+
+method_warm() {
+  local rc=0 t0 i
+  have virt-v2v-in-place || { warn "V2V-in-place not available"; return 1; }
+  [[ $GUEST_FAMILY == windows ]] && { install_virtio_win || die "virtio-win is required for Windows guests"; }
+  warm_preflight || return 1
+  if ((DRY_RUN)); then
+    info "[dry-run] warm: snapshot, copy while '$VM_NAME' runs, shut down, sync changed $WARM_CHUNK_MB MiB chunks, convert, define"
+    return 0
+  fi
+  trap 'trap "" PIPE; nbd_detach; warm_remove_snapshot >/dev/null 2>&1 || true' EXIT   # never leave our snapshot behind
+  warm_snapshot_create || return 1
+  hr; info "Warm migration pass 1: copying while '$VM_NAME' keeps running"
+  WARM_HASH=1; copy_disks || rc=1; WARM_HASH=0
+  if ((rc)); then warm_remove_snapshot || true; return 1; fi
+  warm_remove_clone || true
+  for i in "${!D_DEV[@]}"; do   # a reused copy has no checksums yet: compute them locally (VM still running)
+    [[ -f $VM_DIR/.warm-disk$i.md5 ]] && continue
+    info "Computing checksums of the existing copy of disk $i"
+    qemu-img convert -f "$FORMAT" -O raw "${TARGET_DISKS[i]}" /dev/stdout 2>/dev/null \
+      | python3 -u -c "$CHUNK_HASHER_PY" "$((WARM_CHUNK_MB * 1048576))" "$VM_DIR/.warm-disk$i.md5" >/dev/null \
+      || { warm_remove_snapshot || true; return 1; }
+  done
+  hr; info "Pass 1 done. '$VM_NAME' is still running on ESXi."
+  if ! warm_cutover_confirm; then
+    warm_remove_snapshot || true
+    err "Cut-over cancelled: '$VM_NAME' keeps running on ESXi; the warm-migration snapshot was removed."
+    return 1
+  fi
+  info "Cut-over: '$VM_NAME' is shut down now for the delta sync."
+  t0=$SECONDS
+  VM_STATE=$(esxn "vim-cmd vmsvc/power.getstate $VMID 2>/dev/null | tail -n 1")
+  power_off_source
+  warm_remove_snapshot || die "Snapshot could not be merged on ESXi; remove it in the ESXi client before retrying."
+  warm_final_sync || { err "The source VM is off and unchanged on ESXi; power it on there to roll back."; return 1; }
+  info "Delta sync complete - took $(duration $((SECONDS - t0)))"
+  convert_and_define
+}
+
+# ----------------------------------------------------------------------------- per-VM flow
+INV_INDEX=""; TNAME=""; CUR_METHOD=""; VM_LOG=""
+declare -A TNAME_MAP=()   # vmid -> target name (interactive mode)
+
+# ----------------------------------------------------------------------------- interactive mode
+ask() {   # ask "prompt" "default" -> answer on stdout
+  local a
+  read -r -p "$1${2:+ [$2]}: " a </dev/tty || a=""
+  printf '%s' "${a:-$2}"
+}
+
+ask_yn() {   # ask_yn "question" y|n
+  local a
+  a=$(ask "$1 (y/n)" "$2")
+  [[ $a == [yY]* ]]
+}
+
+choose() {   # choose "title" default_number option... -> chosen 0-based index on stdout
+  local title=$1 def=$2 i a; shift 2
+  local opts=("$@")
+  { echo; echo "$title"; for i in "${!opts[@]}"; do printf '  %2d) %s\n' $((i + 1)) "${opts[i]}"; done; } >&2
+  while :; do
+    a=$(ask "Choose 1-${#opts[@]}" "$def")
+    if [[ $a =~ ^[0-9]+$ ]] && ((a >= 1 && a <= ${#opts[@]})); then echo $((a - 1)); return; fi
+    echo "  Invalid choice" >&2
+  done
+}
+
+parse_selection() {   # "1 3 5-7" / "all" -> 0-based indices, one per line
+  local in=$1 max=$2 tok i out=()
+  if [[ ${in,,} == all ]]; then seq 0 $((max - 1)); return 0; fi
+  for tok in ${in//,/ }; do
+    if [[ $tok =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      for ((i = BASH_REMATCH[1]; i <= BASH_REMATCH[2]; i++)); do out+=("$i"); done
+    elif [[ $tok =~ ^[0-9]+$ ]]; then out+=("$tok")
+    else return 1; fi
+  done
+  ((${#out[@]})) || return 1
+  for i in "${out[@]}"; do ((i >= 1 && i <= max)) || return 1; done
+  printf '%s\n' "${out[@]}" | sort -un | awk '{print $1-1}'
+}
+
+interactive_select() {
+  can_prompt || die "Interactive mode needs a terminal. Use -vm/-all instead."
+  ((${#INV_ID[@]})) || die "No VMs found on the ESXi host"
+  local i sel=() a p n name names=() running=0 opts=() vals=()
+
+  # 1. VMs
+  echo; echo "VMs on $ESXI_HOST:"
+  printf '      %-30s %-12s %-6s %-16s %s\n' "NAME" "STATE" "VMID" "PROV/USED" "GUEST OS"
+  for i in "${!INV_ID[@]}"; do
+    printf '  %2d) %-30s %-12s %-6s %-16s %s\n' $((i + 1)) "${INV_NAME[i]}" "${INV_STATE[i]}" "${INV_ID[i]}" "${INV_SIZE[i]}" "${INV_OS[i]}"
+  done
+  echo "  PROV/USED: disk size / data inside the VM. ~ = VM off or no VMware Tools: space allocated on ESXi instead"
+  echo "  (thick disks then show their full size). * = OS from the VM settings - may be outdated."
+  while :; do
+    a=$(ask "Select VMs to migrate (e.g. 1 3 5-7, or all)" "")
+    if mapfile -t sel < <(parse_selection "$a" "${#INV_ID[@]}") && ((${#sel[@]})); then break; fi
+    echo "  Invalid selection"
+  done
+
+  # 2. storage
+  opts=(); vals=()
+  [[ -n $POOL_LIST ]] || POOL_LIST=$(virsh -c "$LIBVIRT_URI" pool-list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d') || true
+  while IFS= read -r p; do
+    [[ -n $p ]] || continue
+    local free
+    free=$(virsh -c "$LIBVIRT_URI" pool-info "$p" </dev/null 2>/dev/null | awk -F': *' '/^Available/ {print $2}')
+    opts+=("pool '$p'  ->  $(pool_path "$p" </dev/null)${free:+   ($free free)}"); vals+=("pool:$p")
+  done <<<"$POOL_LIST"
+  ((${#vals[@]})) || die "No storage pools available. A target storage pool is required for migration."
+  i=$(choose "Which storage pool should the VM disks be stored in?" 1 "${opts[@]}")
+  POOL=${vals[i]#pool:}; TARGET_DIR=""
+
+  # 2b. how to read the disks
+  if ((METHOD_FROM_CLI == 0)); then
+    local mdef=1 tnote
+    if ((V2V_HAS_NO_FSTRIM)); then
+      tnote="(Windows: no NTFS trimming)"
+      if vddk_present; then mdef=2; else mdef=4; fi
+    else
+      tnote="- Windows 2012 R2 and older use the SSH copy (proven)"
+    fi
+    echo; echo "V2V on this host: ${V2V_VERSION:-not installed}  (--no-fstrim: $( ((V2V_HAS_NO_FSTRIM)) && echo yes || echo no))"
+    i=$(choose "How should the VM disks be read from ESXi?" "$mdef" \
+      "Disk copy over SSH, then convert (RECOMMENDED - proven to produce bootable VMs)" \
+      "In-Transit Disk Streaming (fast; needs licensed version of ESXi 6.7+) ${tnote}." \
+      "Directly from the SAN, read-only, converted in transit (ESXi 6.x VMFS5 on iSCSI) $tnote" \
+      "V2V over SSH, converted in transit (slow on old ESXi) $tnote" \
+      "Warm migration: SSH copy while the VM keeps running, shut down only for a short delta sync")
+    case $i in 0) METHOD=copy ;; 1) METHOD=vddk ;; 2) METHOD=vmfs ;; 3) METHOD=v2v ;; 4) METHOD=copy; WARM=1; DO_SHUTDOWN=1 ;; esac
+    if ((WARM)); then
+      echo
+      echo "When the first copy is finished, the VM must be shut down for the delta sync (downtime)."
+      ask_yn "Ask me before shutting each VM down? (n = shut down automatically)" y && WARM_CUTOVER=ask || WARM_CUTOVER=auto
+    fi
+    if [[ $METHOD == vddk ]] && ! vddk_present; then
+      offer_vddk || true
+    fi
+  fi
+  if [[ $METHOD == vmfs && -z $SAN_PORTAL ]]; then
+    while :; do
+      SAN_PORTAL=$(ask "iSCSI portal IP of the storage holding the ESXi datastores" "")
+      [[ $SAN_PORTAL =~ ^[0-9a-fA-F:.]+$ ]] && break
+      echo "  Please enter an IP address"
+    done
+  fi
+
+  # 3. network
+  opts=(); vals=()
+  for n in $(ip -o link show type bridge 2>/dev/null | awk -F': ' '{print $2}' | cut -d@ -f1); do
+    [[ $n == virbr* ]] && continue
+    opts+=("bridge $n  (VMs on your LAN, like ESXi 'VM Network')"); vals+=("bridge:$n")
+  done
+  for n in $(virsh -c "$LIBVIRT_URI" net-list --all --name 2>/dev/null); do
+    opts+=("libvirt network '$n'$([[ $n == default ]] && echo '  (NAT - not reachable from LAN)')"); vals+=("network:$n")
+  done
+  ((${#opts[@]})) || die "No libvirt network or bridge found. Create a bridge (e.g. with nmcli) first."
+  i=$(choose "Which network should the VM NICs connect to?" 1 "${opts[@]}")
+  DEF_NET_TYPE=${vals[i]%%:*}; DEF_NET_NAME=${vals[i]#*:}
+  echo "  (Per-portgroup mapping is possible with -net-map 'Portgroup=bridge:brX')"
+
+  # 4. format
+  if [[ $METHOD == copy || $METHOD == raw ]]; then
+    i=$(choose "Disk format?" 1 "qcow2 - <name>/<name>.qcow2, streamed straight from ESXi (recommended)" \
+                               "raw   - <name>/<name>.img, sparse")
+  else
+    i=$(choose "Disk format?" 1 "qcow2 (thin, snapshots supported - recommended)" "raw (slightly faster, no qcow2 snapshots)")
+  fi
+  ((i == 0)) && FORMAT=qcow2 || FORMAT=raw
+  [[ $METHOD =~ ^(copy|raw)$ ]] && FORMAT_EXPLICIT=1 || true
+
+  # 5. names
+  echo; echo "Target VM names (Enter keeps the suggestion):"
+  for i in "${sel[@]}"; do
+    while :; do
+      name=$(sanitize_name "$(ask "  ${INV_NAME[i]} ->" "$(sanitize_name "${INV_NAME[i]}")")")
+      if virsh -c "$LIBVIRT_URI" dominfo "$name" >/dev/null 2>&1; then echo "    A VM named '$name' already exists on this host"; continue; fi
+      if [[ " ${names[*]-} " == *" $name "* ]]; then echo "    Name already used in this run"; continue; fi
+      break
+    done
+    names+=("$name"); TNAME_MAP[${INV_ID[i]}]=$name
+    [[ ${INV_STATE[i]} == *"Powered off"* ]] || running=1
+  done
+
+  # 6. source handling & post actions
+  echo
+  if ((running)); then
+    echo "Some selected VMs are running or suspended on ESXi."
+    if ((WARM)); then   # warm only when chosen as method 5
+      echo "  Warm migration: each one keeps running until its delta sync."
+    elif ask_yn "Shut them down gracefully before migrating?" y; then
+      DO_SHUTDOWN=1
+    fi
+    if ((DO_SHUTDOWN)); then
+      ask_yn "Force power-off if graceful shutdown takes over ${SHUTDOWN_TIMEOUT}s?" n && FORCE_OFF=1 || true
+    fi
+  fi
+  if ((METHOD_FROM_CLI == 0)) && [[ $METHOD == copy || $METHOD == raw ]]; then
+    if ask_yn "Compress the SSH stream? (helps on slow links and empty thick disks; on a fast LAN 'n' is usually faster)" n; then COMPRESS=1; else COMPRESS=0; fi
+  fi
+  if ((WARM)); then
+    CONSOLIDATE=0   # warm migration never deletes the VM's snapshots; it only removes its own after the first sync
+  else
+    ask_yn "If a VM has snapshots, delete them (merging changes into its disks)?" n && CONSOLIDATE=1 || true
+  fi
+  ask_yn "Start the VMs on $PLATFORM_NAME after migration?" n && START_VM=1 || true
+  ask_yn "Start them automatically when this host boots?" n && AUTOSTART=1 || true
+
+  # 7. summary
+  echo; hr
+  echo "Migration plan:"
+  for i in "${!sel[@]}"; do
+    printf '  %-30s -> %s\n' "${INV_NAME[sel[i]]}" "${names[i]}"
+  done
+  echo "  Storage : ${TARGET_DIR:-pool '$POOL' ($(pool_path "$POOL"))}"
+  echo "  Network : $DEF_NET_TYPE $DEF_NET_NAME (MAC addresses kept)"
+  echo "  Format  : $FORMAT"
+  case $METHOD in
+    vmfs) echo "  Source  : SAN read-only via iSCSI portal $SAN_PORTAL (access removed when finished)" ;;
+    vddk) echo "  Source  : In-Transit Disk Streaming" ;;
+    copy) echo "  Source  : disk copy over SSH" ;;
+    *)    echo "  Source  : V2V over SSH" ;;
+  esac
+  ((WARM)) && echo "  Warm     : yes - copied while running, shut down only for the delta sync (uses the SSH copy)" || true
+  ((WARM)) && echo "  Cut-over : $([[ $WARM_CUTOVER == ask ]] && echo 'ask before shutting the VM down' || echo 'automatic shutdown after the first copy')" || true
+  echo "  Shutdown source: $( ((DO_SHUTDOWN)) && echo yes || echo no)$( ((FORCE_OFF)) && echo ', force-off allowed')   Delete snapshots: $( ((WARM)) && echo 'no (warm: own snapshot kept until the first sync is done)' || { ((CONSOLIDATE)) && echo yes || echo no; })"
+  echo "  Start after: $( ((START_VM)) && echo yes || echo no)   Autostart: $( ((AUTOSTART)) && echo yes || echo no)   Dry run: $( ((DRY_RUN)) && echo yes || echo no)"
+  hr
+  ask_yn "Proceed?" n || die "Cancelled by user"
+  ASSUME_YES=1   # everything was confirmed above
+  VM_ARGS=()
+  for i in "${sel[@]}"; do VM_ARGS+=("${INV_ID[i]}"); done
+}
+
+migrate_vm() {
+  local key=$1 i need_kb avail_kb reserve_kb host_mem_mb methods=() m rc used_method=""
+  INV_INDEX=$(find_vm "$key") || exit 1
+  inspect_vm "$INV_INDEX"
+  TNAME=${TARGET_NAME:-${TNAME_MAP[${INV_ID[INV_INDEX]}]-}}
+  [[ -n $TNAME ]] || TNAME=$(sanitize_name "$VM_NAME")
+  print_vm_summary
+
+  # ---- hard blockers
+  ((${#D_DEV[@]})) || die "VM has no virtual disks"
+  ((ENCRYPTED)) && die "VM is encrypted with VMware VM Encryption. Decrypt it in vSphere first."
+  for i in "${!D_DEV[@]}"; do
+    case ${D_KIND[i]} in
+      vsan) die "Disk ${D_DEV[i]} is on vSAN. Clone it to a VMFS/NFS datastore first (vmkfstools -i or Storage vMotion)." ;;
+      rdm)
+        ((SKIP_RDM)) || die "Disk ${D_DEV[i]} is a Raw Device Mapping. Attach that LUN to the $PLATFORM_NAME host yourself and re-run with -skip-rdm."
+        warn "Skipping RDM disk ${D_DEV[i]} - attach the LUN to the new VM manually" ;;
+    esac
+  done
+  if ((SKIP_RDM)); then   # drop RDMs from the disk list
+    local nd=() nv=() nk=() ne=() nb=() nm=()
+    for i in "${!D_DEV[@]}"; do
+      [[ ${D_KIND[i]} == rdm ]] && continue
+      nd+=("${D_DEV[i]}"); nv+=("${D_VMDK[i]}"); nk+=("${D_KIND[i]}"); ne+=("${D_EXTENTS[i]}"); nb+=("${D_BYTES[i]}"); nm+=("${D_MODE[i]}")
+    done
+    ((${#nd[@]} < ${#D_DEV[@]})) && [[ $METHOD == auto || $METHOD == v2v ]] && { warn "RDM present: V2V cannot skip disks, using copy method"; METHOD=copy; }
+    D_DEV=("${nd[@]}"); D_VMDK=("${nv[@]}"); D_KIND=("${nk[@]}"); D_EXTENTS=("${ne[@]}"); D_BYTES=("${nb[@]}"); D_MODE=("${nm[@]}")
+  fi
+
+  # ---- warnings
+  case ${GUEST_OS,,} in
+    windows7*|winvista*|windowsvista*|longhorn*|winnetenterprise*|winnetstandard*|winxp*|win2000*)
+      if ((!VIRTIO_CUSTOM)); then
+        warn "ESXi lists this guest as an old Windows ($GUEST_OS). If it really is Windows 7 / 2008 R2, current"
+        warn "  virtio-win has no drivers for it: use -virtio-win /path/to/virtio-win-0.1.173.iso. (ESXi's label is often outdated.)"
+      fi ;;
+  esac
+  ((PASSTHRU)) && warn "VM uses PCI passthrough - those devices are not migrated." || true
+  ((SHARED)) && warn "VM has shared / multi-writer disks (clustering) - review the target configuration." || true
+  ((VTPM)) && warn "VM has a vTPM - TPM contents (e.g. BitLocker TPM protector) are not migrated; have recovery keys ready." || true
+  host_mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+  ((MEM_MB < host_mem_mb)) || warn "VM memory ($MEM_MB MiB) >= host RAM ($host_mem_mb MiB)"
+  for i in "${!D_DEV[@]}"; do
+    if [[ ${D_KIND[i]} == unknown ]]; then
+      warn "Could not parse descriptor of ${D_VMDK[i]} - only V2V may handle it"
+      warn "  Check on ESXi:  ls -l $(q "${D_VMDK[i]%/*}")   and   cat $(q "${D_VMDK[i]}")"
+    fi
+  done
+
+  # ---- target collisions & capacity
+  if virsh -c "$LIBVIRT_URI" dominfo "$TNAME" >/dev/null 2>&1; then
+    die "A libvirt domain named '$TNAME' already exists (use -target-name or remove it)"
+  fi
+  VM_DIR=""
+  if [[ $POOL_TYPE == dir && -n $POOL_DIR ]]; then
+    choose_vm_dir
+    if ((VM_DIR_RESUMED)); then
+      info "Target folder: $VM_DIR (continuing an interrupted transfer of this VM)"
+    else
+      info "Target folder: $VM_DIR"
+    fi
+    # never overwrite an existing disk file (checked before the source VM is touched)
+    local ext=$FORMAT f clash=()
+    [[ $FORMAT == raw ]] && ext=img
+    for i in "${!D_DEV[@]}"; do
+      f="$VM_DIR/$(disk_file "$i" "$ext")"
+      [[ -e $f ]] && clash+=("$f") || true
+    done
+    if ((${#clash[@]})); then
+      for f in "${clash[@]}"; do err "$f already exists."; done
+      die "Please delete or rename it, then run the migration again."
+    fi
+  fi
+  ensure_networks
+
+  # ---- choose method chain
+  case $METHOD in
+    auto) if [[ $GUEST_FAMILY == other ]]; then methods=(raw); else methods=(copy raw); fi ;;
+    vmfs) if [[ $GUEST_FAMILY == other ]]; then methods=(raw); else methods=(vmfs copy raw); fi ;;
+    vddk) if [[ $GUEST_FAMILY == other ]]; then methods=(raw); else methods=(vddk copy raw); fi ;;
+    v2v)  methods=(v2v copy raw) ;;
+    copy) methods=(copy raw) ;;
+    raw)  methods=(raw) ;;
+  esac
+  if [[ $(effective_method) == copy && $METHOD != copy ]]; then
+    FORMAT=$(effective_format)
+    info "Windows 2012 R2 or older: using the SSH copy + in-place conversion (the method proven to boot on this host)."
+    info "  Windows 2012 R2 converted in transit with V2V $V2V_VERSION did not boot."
+    info "  To convert it in transit anyway: -force-in-transit"
+    methods=(copy raw)
+  fi
+  if ((WARM)) && [[ $GUEST_FAMILY != other ]]; then
+    if [[ $VM_STATE == *"Powered on"* ]]; then
+      methods=(warm)
+      info "Warm migration: the disk is copied while the VM runs; it is shut down only for the delta sync."
+    else
+      info "VM is not running - warm migration not needed, using the normal SSH copy."
+      methods=(copy raw)
+    fi
+  fi
+  ((FALLBACK)) || methods=("${methods[0]}")
+  [[ $POOL_TYPE == dir ]] || { methods=(v2v); warn "Pool '$POOL' is type '$POOL_TYPE': only V2V output is supported"; }
+  info "Target name: $TNAME   Pool: $POOL ($FORMAT)   Method order: $(for m in "${methods[@]}"; do mname "$m"; done | paste -sd' ')"
+  if old_windows_needs_fix; then
+    info "Windows 2012 R2 or older: after conversion the VM gets a SATA disk + e1000e NIC and Windows' own SATA"
+    info "  driver is enabled at boot (current virtio-win drivers fail the signature check: viostor.sys 0xc0000428)."
+    info "  To keep VirtIO instead: -keep-virtio"
+  fi
+
+  # ---- capacity (re-checked per VM: earlier VMs of this run used space too)
+  if [[ -n $POOL_DIR ]]; then
+    estimate_need
+    avail_kb=$(df -Pk "$POOL_DIR" | awk 'NR==2 {print $4}')
+    reserve_kb=$(space_reserve_kb)
+    info "Space: need ~$(human $((EST_KB * 1024))) ($EST_SRC), free $(human $((avail_kb * 1024))), reserve $(human $((reserve_kb * 1024)))"
+    if ((EST_KB > avail_kb - reserve_kb)); then
+      if ((SKIP_SPACE)); then
+        warn "Not enough space by this estimate - continuing because of -skip-space-check"
+      else
+        die "Not enough space in pool '$POOL' for '$VM_NAME' (keeping $(human $((reserve_kb * 1024))) free). Free up space or choose another pool."
+      fi
+    fi
+  fi
+
+  # ---- source remediation (a warm migration shuts the VM down only at cut-over)
+  if [[ ${methods[0]} == warm ]]; then
+    if ((SNAP_COUNT > 0 || HAS_DELTA)); then
+      die "'$VM_NAME' already has $SNAP_COUNT snapshot(s) / delta disks. Warm migration does not delete them - remove them in the ESXi client first (the VM keeps running), or use a cold migration with -consolidate."
+    fi
+  else
+    power_off_source
+    consolidate_source
+    # Windows must have been shut down cleanly - check before hours of copying
+    # (a dry run does not shut the VM down - only an already powered-off VM can be checked then)
+    if [[ $GUEST_FAMILY == windows ]] && { ((!DRY_RUN)) || [[ $VM_STATE == *"Powered off"* ]]; }; then
+      source_ntfs_check || die "Migration of '$VM_NAME' stopped before copying - nothing was changed on VMeX."
+    fi
+  fi
+  if ((DRY_RUN)); then
+    for m in "${methods[@]}"; do info "[dry-run] method '$m':"; "method_$m" || true; break; done
+    info "[dry-run] no changes were made"
+    return 0
+  fi
+
+  trap 'cleanup_target' INT TERM
+  for m in "${methods[@]}"; do
+    hr; info "Trying method: $(mname "$m")"
+    CUR_METHOD=$m
+    rc=0; "method_$m" || rc=$?
+    if ((rc == 0)); then used_method=$m; break; fi
+    ((rc == 2)) && { cleanup_target; die "Migration of '$VM_NAME' stopped (see above)."; }
+    warn "Method '$(mname "$m")' failed"
+    [[ $m =~ ^(v2v|vddk|vmfs)$ ]] && cleanup_target || true
+  done
+  trap - INT TERM
+  [[ -n $used_method ]] || { cleanup_target; die "All methods failed for '$VM_NAME'"; }
+
+  # ---- Windows 2012 R2 and older: make it boot on SATA/e1000e (before the first start)
+  OLD_WIN_FIX=0
+  if old_windows_needs_fix; then
+    old_windows_fixup || die "Boot fix-up for '$TNAME' failed. The VM is defined but will not boot until fixed (see above)."
+    OLD_WIN_FIX=1
+  fi
+
+  # ---- post steps
+  [[ -n $VM_DIR ]] && rm -f -- "$VM_DIR/$RESUME_MARK" "$VM_DIR"/.transfer-disk* || true
+  virsh -c "$LIBVIRT_URI" pool-refresh "$POOL" >/dev/null 2>&1 || true
+  ((AUTOSTART)) && virsh -c "$LIBVIRT_URI" autostart "$TNAME" >/dev/null && info "Autostart enabled" || true
+  if ((START_VM)); then
+    virsh -c "$LIBVIRT_URI" start "$TNAME" >/dev/null && info "Domain '$TNAME' started"
+  fi
+
+  hr
+  info "SUCCESS: '$VM_NAME' -> libvirt domain '$TNAME' (method: $(mname "$used_method"))"
+  [[ -n $VM_DIR ]] && info "  Disks in: $VM_DIR" || true
+  local rl
+  while IFS= read -r rl; do info "  $rl"; done < <(result_size_lines)
+  if [[ -n $VM_LOG && -f $VM_LOG ]]; then
+    { echo; echo "=== Result ($(date '+%F %T')) ==="; size_lines | sed 's/^/Source: /'; result_size_lines | sed 's/^/New disk: /'; } >>"$VM_LOG"
+  fi
+  info "Post-migration checklist:"
+  info "  * Keep the ESXi VM powered off to avoid duplicate IP/MAC on the network"
+  info "  * Console: virt-manager, or 'virsh -c $LIBVIRT_URI vncdisplay $TNAME'"
+  if [[ $GUEST_FAMILY == linux ]]; then
+    info "  * NIC names change (e.g. ens192 -> enp1s0): update NetworkManager/netplan/ifcfg if networking is down"
+    info "  * Install qemu-guest-agent inside the guest; remove open-vm-tools if still present"
+  elif [[ $GUEST_FAMILY == windows ]]; then
+    info "  * First boot finishes driver install and may reboot; static IPs may need re-entering"
+    info "  * Uninstall VMware Tools if still present; install qemu-ga from the virtio-win ISO"
+    info "  * Windows may ask for re-activation after the hardware change"
+  fi
+  [[ $used_method == raw ]] && info "  * Guest runs on emulated hardware; switch to virtio after installing drivers" || true
+  if ((OLD_WIN_FIX)); then
+    info "  * Runs on SATA disk + e1000e NIC (VirtIO disabled: current virtio-win is not signed for this Windows)"
+    info "  * Re-enter the static IP on the new adapter; remove the hidden vmxnet3 adapter in Device Manager"
+    info "  * Domain controller? Check with: dcdiag /v  and  repadmin /replsummary"
+    info "  * For VirtIO later: install drivers from an older virtio-win ISO that has 2k12R2 folders, then switch"
+  fi
+}
+
+# ----------------------------------------------------------------------------- CLI
+# ----------------------------------------------------------------------------- Tab completion
+COMPLETION_FILE="/usr/share/bash-completion/completions/$PROG"
+COMPLETION_FILE_OLD="/etc/bash_completion.d/$PROG"   # where earlier copies were put by hand
+completion_script() {
+  cat <<'COMPLETION_EOF'
+# bash completion for migrate2vmex - installed by: migrate2vmex -installautocomplete
+
+# VM names from the ESXi host given with -sourcehost (SSH key login, cached for 5 minutes)
+_migrate2vmex_vms() {
+  local host=$1 user=${2:-root} port=${3:-22} key=$4 cache now
+  [[ -n $host ]] || return 0
+  if [[ -z $key ]]; then
+    for key in /root/.ssh/migrate2vmex_rsa /root/.ssh/esxi2kvm_rsa ~/.ssh/migrate2vmex_rsa; do [[ -r $key ]] && break; done
+  fi
+  [[ -r $key ]] || return 0
+  cache="${TMPDIR:-/tmp}/.migrate2vmex-vms-$UID-$host"
+  now=$(date +%s)
+  if [[ ! -s $cache ]] || (( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) > 300 )); then
+    timeout 8 ssh -n -i "$key" -p "$port" -o BatchMode=yes -o ConnectTimeout=4 \
+        -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR "$user@$host" \
+        'vim-cmd vmsvc/getallvms 2>/dev/null' 2>/dev/null \
+      | awk 'NR > 1 && $1 ~ /^[0-9]+$/ { line = $0; sub(/^[0-9]+[ \t]+/, "", line); sub(/[ \t]+\[.*$/, "", line); print line; print $1 }' \
+      >"$cache.$$" 2>/dev/null && mv -f "$cache.$$" "$cache" 2>/dev/null
+    rm -f "$cache.$$" 2>/dev/null
+  fi
+  [[ -s $cache ]] && cat "$cache"
+}
+
+_migrate2vmex() {
+  local cur prev words cword
+  if declare -F _init_completion >/dev/null; then
+    _init_completion -n = || return
+  else
+    cur=${COMP_WORDS[COMP_CWORD]}; prev=${COMP_WORDS[COMP_CWORD-1]}; words=("${COMP_WORDS[@]}"); cword=$COMP_CWORD
+  fi
+
+  local opts="-interactive -setup -list -vm -all
+    -sourcehost -user -port -key
+    -method -no-fallback -pool -target-dir -format -min-free -skip-space-check
+    -target-name -v2v-arg -virtio-win -keep-virtio -force-in-transit
+    -stream-libdir -stream-thumbprint -stream-transports -stream-config -stream-tarball -stream-url -esxi-password-file
+    -san-portal -san-target -san-cleanup
+    -network -bridge -net-map -no-keep-mac
+    -shutdown -force-off -shutdown-timeout -consolidate -warm -cutover -repair-unclean
+    -skip-rdm -no-compress -verify -start -autostart -dry-run -yes
+    -log-dir -debug -ignore-os -help"
+
+  # host/user/port/key already on the command line (for --vm lookups)
+  # options are written with one dash (-pool); two dashes are accepted too
+  _m2v_opt() { if [[ $1 == -[A-Za-z]?* && $1 != --* ]]; then printf -- '-%s' "$1"; else printf '%s' "$1"; fi; }
+  local i host="" user="" port="" key=""
+  for ((i = 1; i < cword; i++)); do
+    case $(_m2v_opt "${words[i]}") in
+      -sourcehost|--sourcehost|-H|--host) host=${words[i+1]} ;;
+      -u|--user) user=${words[i+1]} ;;
+      -p|--port) port=${words[i+1]} ;;
+      -k|--key)  key=${words[i+1]} ;;
+    esac
+  done
+
+  case $(_m2v_opt "$prev") in
+    --method)            COMPREPLY=($(compgen -W "auto copy stream vmfs v2v raw" -- "$cur")); return ;;
+    --format)            COMPREPLY=($(compgen -W "qcow2 raw" -- "$cur")); return ;;
+    --cutover)           COMPREPLY=($(compgen -W "ask auto" -- "$cur")); return ;;
+    --stream-transports|--vddk-transports) COMPREPLY=($(compgen -W "nbd nbdssl nbd:nbdssl" -- "$cur")); return ;;
+    --pool)
+      COMPREPLY=($(compgen -W "$(virsh -q pool-list --all --name 2>/dev/null)" -- "$cur")); return ;;
+    --network)
+      COMPREPLY=($(compgen -W "$(virsh -q net-list --all --name 2>/dev/null)" -- "$cur")); return ;;
+    --bridge)
+      local b brs=""
+      for b in /sys/class/net/*/bridge; do [[ -e $b ]] && brs+=" $(basename "${b%/bridge}")"; done
+      COMPREPLY=($(compgen -W "$brs" -- "$cur")); return ;;
+    -sourcehost|--sourcehost|-H|--host|--san-portal)
+      local hs
+      hs=$(awk '{ split($1, a, ","); for (i in a) { h = a[i]; sub(/^\[/, "", h); sub(/\]:.*$/, "", h); if (h !~ /^\|/) print h } }' \
+             ~/.ssh/known_hosts /root/.ssh/known_hosts 2>/dev/null | sort -u)
+      COMPREPLY=($(compgen -W "$hs" -- "$cur")); return ;;
+    -u|--user)           COMPREPLY=($(compgen -W "root" -- "$cur")); return ;;
+    -p|--port)           COMPREPLY=($(compgen -W "22" -- "$cur")); return ;;
+    --vm)
+      local n c=${cur//\\/}; c=${c#[\"\']}
+      while IFS= read -r n; do
+        [[ -n $n && $n == "$c"* ]] && COMPREPLY+=("$(printf '%q' "$n")")
+      done < <(_migrate2vmex_vms "$host" "$user" "$port" "$key")
+      return ;;
+    --stream-tarball|--vddk-tarball)
+      COMPREPLY=($(compgen -f -X '!*.tar.gz' -- "$cur") $(compgen -d -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    -k|--key|--stream-config|--vddk-config|--esxi-password-file|--virtio-win)
+      COMPREPLY=($(compgen -f -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    --target-dir|--stream-libdir|--vddk-libdir|--log-dir)
+      COMPREPLY=($(compgen -d -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    --stream-url|--vddk-url|--min-free|--shutdown-timeout|--target-name|--v2v-arg|--stream-thumbprint|--vddk-thumbprint|--san-target|--net-map)
+      return ;;   # free text
+  esac
+
+  if [[ $cur == --* ]]; then   # two dashes typed: offer the same options with two dashes
+    COMPREPLY=($(compgen -W "$(printf -- '-%s ' $opts)" -- "$cur"))
+  else
+    COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+  fi
+}
+
+complete -F _migrate2vmex migrate2vmex
+complete -F _migrate2vmex ./migrate2vmex 2>/dev/null || true
+COMPLETION_EOF
+}
+
+completion_installed() { [[ -s $COMPLETION_FILE ]] && grep -q '_migrate2vmex' "$COMPLETION_FILE" 2>/dev/null; }
+
+install_autocomplete() {
+  [[ $EUID -eq 0 ]] || { echo "Run as root: $PROG -installautocomplete" >&2; exit 1; }
+  if ! rpm -q bash-completion >/dev/null 2>&1; then
+    echo "Installing bash-completion ..."
+    dnf -y -q install bash-completion >/dev/null 2>&1 || { echo "Could not install the bash-completion package (dnf install bash-completion)" >&2; exit 1; }
+  fi
+  mkdir -p "${COMPLETION_FILE%/*}"
+  completion_script >"$COMPLETION_FILE.tmp" && chmod 644 "$COMPLETION_FILE.tmp" && mv -f "$COMPLETION_FILE.tmp" "$COMPLETION_FILE" \
+    || { rm -f "$COMPLETION_FILE.tmp"; echo "Could not write $COMPLETION_FILE" >&2; exit 1; }
+  have restorecon && restorecon "$COMPLETION_FILE" 2>/dev/null || true
+  if [[ -e $COMPLETION_FILE_OLD ]]; then   # an older copy there would be loaded instead of this one
+    rm -f -- "$COMPLETION_FILE_OLD" && echo "Removed the older copy $COMPLETION_FILE_OLD"
+  fi
+  echo "Tab completion for $PROG installed: $COMPLETION_FILE"
+  echo "New shells load it automatically. To load it in this shell, run:"
+  echo
+  echo "  source $COMPLETION_FILE"
+  echo
+}
+
+usage() {
+  local ac=""
+  completion_installed || ac=$'\n  -installautocomplete     Install Tab completion for this command (once, as root)'
+  cat <<EOF
+$PROG $VERSION ($PRODUCT_LABEL) - migrate VMs from VMware ESXi to VMeX
+
+Usage: $PROG -sourcehost ESXI-HOST [options] [ACTION]
+
+Actions:
+  -i, -interactive         Choose VMs, storage, network etc. from menus
+                           (default when only -sourcehost is given)
+  -setup                   Install packages, create SSH key, install it on ESXi
+  -list                    List VMs on the ESXi host
+  -vm NAME|VMID            Migrate a VM (repeatable)
+  -all                     Migrate every VM on the host
+
+Connection:
+  -sourcehost HOST         ESXi host to migrate from: hostname or IP (required)
+  -u, -user USER           ESXi user (default: root)
+  -p, -port PORT           SSH port (default: 22)
+  -k, -key FILE            SSH private key (default: $SSH_KEY)
+
+Conversion:
+  -method auto|stream|vmfs|v2v|copy|raw
+                           stream = In-Transit Disk Streaming: fast, converted in
+                                  transit, only used blocks (licensed ESXi 6.7+)
+                           vmfs = read the VM straight from the ESXi SAN, read-only
+                                  (fastest; Fedora must reach the iSCSI storage)
+                           copy = disk copy over SSH, then convert in place
+                                  (recommended: proven to produce bootable VMs)
+                           v2v  = V2V over SSH, converted in transit (slow on
+                                  old ESXi; Windows 2012 R2 and older use the copy)
+                           auto = copy for Linux/Windows, raw for other OSes (default)
+  -no-fallback             Do not fall back to the next method on failure
+  -pool NAME               libvirt storage pool (must exist; default: the first pool)
+  -target-dir DIR          Store disks in DIR (a storage pool is created for it)
+  -format qcow2|raw        Target disk format (default: qcow2 -> <pool>/<VM>/<VM>.qcow2;
+                           raw -> <VM>.img). The SSH copy streams straight into qcow2.
+  -min-free GB             Space always kept free in the pool (default: 5% of the
+                           pool, at least 10 and at most 100 GiB)
+  -skip-space-check        Migrate even if the space estimate says it does not fit
+  -target-name NAME        Name of the new domain (single VM only)
+  -v2v-arg ARG             Extra argument passed to V2V (repeatable)
+  -virtio-win PATH         virtio-win ISO or directory (default: $VIRTIO_WIN_DIR).
+                           If it is missing, Windows migrations ask for the full path
+                           of virtio-win.iso (checked, then remembered in $VMEX_CONF).
+                           Use an older ISO (e.g. 0.1.173) for Windows 7 / 2008 R2.
+                           Giving an ISO here also keeps VirtIO for Windows 2012 R2
+  -keep-virtio             Windows 2012 R2 and older: keep VirtIO disk/NIC. By default
+                           they get SATA + e1000e and viostor is disabled, because
+                           current virtio-win drivers fail signature checks there
+                           (boot error viostor.sys 0xc0000428)
+
+In-Transit Disk Streaming (-method stream):
+  -stream-libdir DIR       Where its library is installed on this host (default:
+                           /opt/vmware-vix-disklib-distrib; never on ESXi). If it is
+                           missing, the script offers to install it from a
+                           VMware-vix-disklib-*.tar.gz found in /root, /tmp, ... or
+                           from a URL. Get VMware-vix-disklib 8.x for Linux from
+                           Broadcom's developer portal (login needed), copy it here.
+  -stream-tarball FILE     Install it from this .tar.gz if it is missing
+  -stream-url URL          Download and install it from this URL if it is missing
+  -stream-thumbprint XX:.. ESXi SHA1 certificate thumbprint (read automatically)
+  -stream-transports MODES Transport(s), e.g. nbd or nbdssl (default: nbd -
+                           unencrypted, faster; use nbdssl to encrypt the disk data)
+  -stream-config FILE      Config file (default: generated with VMware's
+                           recommended NFC buffers BufSizeIn64KB=16, BufCount=4)
+  -esxi-password-file F    File with the ESXi password (else asked once, kept only
+                           in memory/a 0600 temp file that is deleted on exit)
+
+SAN (-method vmfs):
+  -san-portal IP           iSCSI portal of the storage holding the ESXi datastores
+  -san-target IQN          Target to use if the portal offers several
+  -san-cleanup             Remove SAN access left behind by an interrupted run
+                           The datastore LUN is logged in, set read-only at block
+                           level and mounted read-only; when the run ends (or fails,
+                           or is interrupted) it is unmounted, logged out and all
+                           iSCSI records the script created are deleted.
+
+Network:
+  -network NAME            libvirt network for all NICs (default: default)
+  -bridge BR               Host bridge for all NICs instead of a libvirt network
+  -net-map 'SRC=TYPE:NAME' Map one ESXi portgroup, e.g. 'VM Network=bridge:br0'
+                           or 'DMZ=network:dmz' (repeatable)
+  -no-keep-mac             Let libvirt generate new MAC addresses
+
+Source handling:
+  -shutdown                Gracefully shut down a running/suspended source VM
+  -force-off               Hard power-off if graceful shutdown times out
+  -shutdown-timeout SEC    Default: 300
+  -consolidate             Delete all snapshots / merge delta disks first
+  -warm                    Warm migration of running VMs: copy while the VM runs (ESXi
+                           snapshot), then shut it down and transfer only the 64 MiB
+                           chunks that changed. Downtime = shutdown + ESXi checksumming
+                           the disk + changed chunks + conversion. Uses the SSH copy.
+  -repair-unclean          If Windows was not shut down cleanly, repair the copy instead
+                           of stopping (Windows checks the disk at its first start on
+                           VMeX; data being written when it went off is lost). Without
+                           it, the run stops before copying and explains the fix.
+  -cutover ask|auto        Warm migration: ask before shutting the VM down after the first
+                           copy (default), or shut it down automatically. While asking,
+                           'touch <log dir>/cutover-<VM>' from another terminal also confirms.
+                           If ESXi locks the running VM's base disk, a temporary thin
+                           copy is made on the same datastore (vmkfstools) and deleted
+                           after pass 1; it needs free space ~ the data in the guest.
+  -skip-rdm                Migrate without Raw Device Mapping disks
+
+Transfer:
+  -no-compress             Disable SSH compression (faster on 10GbE with thick disks)
+  -verify                  md5 verify each copied disk (copy/raw methods)
+
+After migration:
+  -start                   Start the new domain
+  -autostart               Enable autostart
+
+General:
+  -dry-run                 Inspect and print the plan, change nothing
+  -y, -yes                 Do not ask for confirmation
+  -log-dir DIR             Default: $LOG_DIR
+                           Every run writes there:
+                             <VM>.log                        everything about one VM
+                             <VM>-v2v*.log, <VM>-domain.xml  conversion logs, VM definition
+                             $PROG-<run>.log          whole run (menus, all VMs, summary)
+                             $PROG-<run>.trace        every command executed (timestamped)
+  -debug                   Also write V2V debug output (-v -x) to the VM logs
+  -ignore-os               Run although the host is not Fedora $TARGET_FEDORA
+  -force-in-transit        Convert Windows 2012 R2 and older in transit even though this
+                           V2V cannot skip NTFS trimming (by default they use
+                           the SSH copy, because they did not boot otherwise)
+  -h, -help                Show this help${ac}
+
+Examples:
+  $PROG -sourcehost 10.0.0.60                       # interactive menus
+  $PROG -sourcehost 10.0.0.60 -vm web01 -method vmfs -san-portal 1.1.1.1 -bridge br0
+  $PROG -sourcehost 10.0.0.60 -setup
+  $PROG -sourcehost 10.0.0.60 -list
+  $PROG -sourcehost 10.0.0.60 -vm web01 -dry-run
+  $PROG -sourcehost 10.0.0.60 -vm web01 -vm db01 -shutdown -bridge br0 -start
+  $PROG -sourcehost 10.0.0.60 -all -shutdown -force-off -consolidate -net-map 'VM Network=bridge:br0' -y
+EOF
+}
+
+parse_args() {
+  local a v orig
+  while (($#)); do
+    # long options take one dash (-setup, -bridge); the two-dash form is still accepted
+    orig=$1
+    if [[ $1 =~ ^-[A-Za-z][A-Za-z0-9-]+(=.*)?$ ]]; then set -- "-$1" "${@:2}"; fi
+    a=$1
+    case $a in
+      --*=*) v=${a#*=}; a=${a%%=*}; set -- "$a" "$v" "${@:2}" ;;
+    esac
+    case $1 in
+      -sourcehost|--sourcehost|-H|--host) ESXI_HOST=$2; shift 2 ;;   # -H/--host: older name, still accepted
+      -u|--user) ESXI_USER=$2; shift 2 ;;
+      -p|--port) ESXI_PORT=$2; shift 2 ;;
+      -k|--key) SSH_KEY=$2; SSH_KEY_FROM_CLI=1; shift 2 ;;
+      --setup) ACTION=setup; shift ;;
+      -installautocomplete|--installautocomplete) install_autocomplete; exit 0 ;;
+      --list) ACTION=list; shift ;;
+      -i|--interactive) ACTION=interactive; shift ;;
+      --target-dir) TARGET_DIR=$2; shift 2 ;;
+      --virtio-win) VIRTIO_WIN_DIR=$2; VIRTIO_CUSTOM=1; shift 2 ;;
+      --vm) ACTION=migrate; VM_ARGS+=("$2"); shift 2 ;;
+      --all) ACTION=migrate; MIGRATE_ALL=1; shift ;;
+      --method) METHOD=$2; METHOD_FROM_CLI=1; shift 2 ;;
+      --san-portal) SAN_PORTAL=$2; shift 2 ;;
+      --stream-libdir|--vddk-libdir) VDDK_LIBDIR=$2; shift 2 ;;
+      --stream-tarball|--vddk-tarball) VDDK_TARBALL=$2; shift 2 ;;
+      --stream-url|--vddk-url) VDDK_URL=$2; shift 2 ;;
+      --ignore-os) IGNORE_OS=1; shift ;;
+      --debug) DEBUG=1; shift ;;
+      --force-in-transit) FORCE_IN_TRANSIT=1; shift ;;
+      --keep-virtio) KEEP_VIRTIO=1; shift ;;
+      --stream-thumbprint|--vddk-thumbprint) VDDK_THUMB=$2; shift 2 ;;
+      --stream-transports|--vddk-transports) VDDK_TRANSPORTS=$2; shift 2 ;;
+      --stream-config|--vddk-config) VDDK_CONF=$2; shift 2 ;;
+      --esxi-password-file) ESXI_PWFILE=$2; shift 2 ;;
+      --san-target) SAN_TARGET=$2; shift 2 ;;
+      --san-cleanup) ACTION=san-cleanup; shift ;;
+      --no-fallback) FALLBACK=0; shift ;;
+      --pool) POOL=$2; POOL_FROM_CLI=1; shift 2 ;;
+      --format) FORMAT=$2; FORMAT_EXPLICIT=1; shift 2 ;;
+      --target-name) TARGET_NAME=$2; shift 2 ;;
+      --v2v-arg) V2V_EXTRA+=("$2"); shift 2 ;;
+      --network) DEF_NET_TYPE=network; DEF_NET_NAME=$2; shift 2 ;;
+      --bridge) DEF_NET_TYPE=bridge; DEF_NET_NAME=$2; shift 2 ;;
+      --net-map)
+        [[ $2 == *=*:* ]] || die "-net-map expects 'SRC=network:NAME' or 'SRC=bridge:NAME'"
+        v=${2#*=}
+        [[ ${v%%:*} == network || ${v%%:*} == bridge ]] || die "-net-map type must be network or bridge"
+        NET_MAP["${2%%=*}"]=$v; shift 2 ;;
+      --no-keep-mac) KEEP_MAC=0; shift ;;
+      --shutdown) DO_SHUTDOWN=1; shift ;;
+      --force-off) FORCE_OFF=1; shift ;;
+      --shutdown-timeout) SHUTDOWN_TIMEOUT=$2; shift 2 ;;
+      --consolidate) CONSOLIDATE=1; shift ;;
+      --warm) WARM=1; DO_SHUTDOWN=1; shift ;;
+      --repair-unclean) REPAIR_UNCLEAN=1; shift ;;
+      --cutover) WARM_CUTOVER=$2; shift 2 ;;
+      --skip-rdm) SKIP_RDM=1; shift ;;
+      --no-compress) COMPRESS=0; shift ;;
+      --min-free) MIN_FREE_GB=$2; shift 2 ;;
+      --skip-space-check) SKIP_SPACE=1; shift ;;
+      --verify) VERIFY=1; shift ;;
+      --start) START_VM=1; shift ;;
+      --autostart) AUTOSTART=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      -y|--yes) ASSUME_YES=1; YES_CLI=1; shift ;;
+      --log-dir) LOG_DIR=$2; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) usage; die "Unknown option: $orig" ;;
+    esac
+  done
+  [[ -n $ESXI_HOST ]] || { usage; die "-sourcehost is required (the ESXi host to migrate from)"; }
+  [[ -n $ACTION ]] || ACTION=interactive   # only -sourcehost given: ask what to do
+  [[ -z $TARGET_DIR || $TARGET_DIR == /* ]] || die "-target-dir must be an absolute path"
+  [[ $METHOD == stream ]] && METHOD=vddk   # shown as "stream"; vddk is the internal name
+  [[ $METHOD =~ ^(auto|vddk|vmfs|v2v|copy|raw)$ ]] || die "-method must be auto, stream, vmfs, v2v, copy or raw"
+  [[ $METHOD != vmfs || -n $SAN_PORTAL || $ACTION == interactive ]] || die "-method vmfs needs -san-portal IP"
+  [[ $FORMAT =~ ^(qcow2|raw)$ ]] || die "-format must be qcow2 or raw"
+  [[ $WARM_CUTOVER =~ ^(ask|auto)$ ]] || die "-cutover must be ask or auto"
+  [[ $SHUTDOWN_TIMEOUT =~ ^[0-9]+$ ]] || die "-shutdown-timeout must be a number"
+  [[ -z $MIN_FREE_GB || $MIN_FREE_GB =~ ^[0-9]+$ ]] || die "-min-free must be a number of GiB"
+  if [[ -n $TARGET_NAME ]]; then
+    ((MIGRATE_ALL == 0 && ${#VM_ARGS[@]} == 1)) || die "-target-name can only be used with a single -vm"
+    TARGET_NAME=$(sanitize_name "$TARGET_NAME")
+  fi
+}
+
+log_environment() {   # recorded at the top of every log file (not shown on screen)
+  local v
+  {
+    echo "  Command            : $0 $*"
+    echo "  Started            : $(date '+%F %T %Z') by $(id -un) on $(hostname)"
+    echo "  OS                 : $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}"), kernel $(uname -r)"
+    local r
+    for v in virt-v2v libvirt-daemon-kvm qemu-kvm-core nbdkit libguestfs virtio-win; do
+      r=$(rpm -q "$v" 2>/dev/null) || r="not installed"
+      printf '  %-19s: %s\n' "${v/virt-v2v/V2V}" "${r%%$'\n'*}"
+    done
+    echo "  Trace              : $TRACE_FILE"
+  } | while IFS= read -r v; do logfile_only "$v"; done
+}
+
+main() {
+  parse_args "$@"
+  mkdir -p "$LOG_DIR" && chmod 750 "$LOG_DIR" "${LOG_DIR%/*}" 2>/dev/null || true
+  RUN_ID=$(date +%Y%m%d-%H%M%S)
+  LOG_FILE="$LOG_DIR/$PROG-$RUN_ID.log"
+  TRACE_FILE="$LOG_DIR/$PROG-$RUN_ID.trace"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+  # full trace: every command with its arguments and a timestamp (passwords are never traced)
+  exec {BASH_XTRACEFD}>>"$TRACE_FILE"
+  PS4='+ ${EPOCHREALTIME:-} ${FUNCNAME[0]:-main}:${LINENO}: '
+  set -x
+  info "$PROG $VERSION ($PRODUCT_LABEL) - log:$LOG_FILE"
+  log_environment "$@"
+  os_check
+
+  case $ACTION in
+    setup) do_setup; exit 0 ;;
+    san-cleanup) require_root; san_detach; exit 0 ;;
+    list)
+      pick_ssh_key
+      [[ -f $SSH_KEY ]] || die "SSH key $SSH_KEY not found. Run first:  $PROG -sourcehost $ESXI_HOST -setup"
+      init_ssh_opts; check_esxi; list_vms; exit 0 ;;
+  esac
+
+  require_root
+  local t
+  for t in ssh ssh-agent virsh virt-install qemu-img; do have "$t" || die "Missing '$t'. Run with -setup."; done
+  have virt-v2v || { warn "V2V not installed; only copy/raw methods are possible"; [[ $METHOD == auto ]] && METHOD=raw; }
+  [[ -e /dev/kvm ]] || die "/dev/kvm not present - enable hardware virtualization"
+  v2v_features
+  validate_v2v_extra
+  logfile_only "V2V ${V2V_VERSION:-n/a}; --no-fstrim supported: $( ((V2V_HAS_NO_FSTRIM)) && echo yes || echo no)"
+  pick_ssh_key
+  init_ssh_opts
+  start_agent
+  check_esxi
+  trap 'exit 130' INT TERM HUP   # make sure on_exit (SAN cleanup) runs on Ctrl+C
+  check_storage_pools            # before the VM list: no pool = nothing to migrate to
+  load_inventory
+  [[ $ACTION == interactive ]] && interactive_select || true
+  resolve_target_dir
+  ensure_pool
+  local plan_targets=()
+  if ((MIGRATE_ALL)); then plan_targets=("${INV_ID[@]}"); else plan_targets=("${VM_ARGS[@]}"); fi
+  ((${#plan_targets[@]})) && plan_space_check "${plan_targets[@]}"
+  if [[ $METHOD == vddk ]]; then
+    vddk_present || offer_vddk || true
+    vddk_present && get_esxi_password || true
+  fi
+  if [[ $METHOD == vmfs ]]; then
+    ((DRY_RUN)) && info "[dry-run] attaching the SAN read-only to verify access (removed again at the end)"
+    san_attach
+  fi
+
+  local targets=() i
+  if ((MIGRATE_ALL)); then
+    for i in "${!INV_ID[@]}"; do targets+=("${INV_ID[i]}"); done
+  else
+    targets=("${VM_ARGS[@]}")
+  fi
+  ((${#targets[@]})) || die "Nothing to migrate"
+  check_windows_prereqs "${targets[@]}"   # before any source VM is shut down
+
+  local ok=() failed=() rc n=0 total=${#targets[@]} label t0 took vmlog vmlogs=()
+  for t in "${targets[@]}"; do
+    n=$((n + 1)); label=$(vm_label "$t"); t0=$SECONDS
+    vmlog="$LOG_DIR/$(vm_log_name "$t").log"; vmlogs+=("$vmlog")
+    printf '\n%s\n=== %s  run %s  %s %s  ESXi %s  VM: %s ===\n%s\n' "$(hr)" "$(date '+%F %T')" "$RUN_ID" "$PROG" "$VERSION" \
+      "$ESXI_HOST" "$label" "$(hr)" >>"$vmlog" 2>/dev/null || true
+    hr
+    info "=== Migrating VM $n of $total: $label ===   (log: $vmlog)"
+    hr
+    trap - ERR; set +e
+    # each VM isolated: one failure never stops the batch; its output also goes to its own log
+    ( set -e; trap on_err ERR; migrate_vm "$t" ) 2>&1 | tee -a "$vmlog"
+    rc=${PIPESTATUS[0]}
+    set -e; trap on_err ERR
+    took=$(duration $((SECONDS - t0)))
+    hr
+    if ((rc == 0)); then
+      ok+=("$label  ($took)")
+      info "=== VM $n of $total: $label has been migrated successfully ($took) ===" | tee -a "$vmlog"
+    else
+      local why=""
+      [[ -r $vmlog ]] && why=$(grep '\[ERROR\]' "$vmlog" 2>/dev/null | tail -n 1 | sed 's/.*\[ERROR\] *//' | cut -c1-110) || true
+      failed+=("$label${why:+  - $why}")
+      err "=== VM $n of $total: $label FAILED - see the messages above ===" 2>&1 | tee -a "$vmlog"
+    fi
+    hr
+    echo
+  done
+
+  san_detach
+  hr
+  info "Done. Succeeded: ${#ok[@]}  Failed: ${#failed[@]}  (of $total)"
+  for t in "${ok[@]}"; do info "  OK     : $t"; done
+  for t in "${failed[@]}"; do err "  FAILED : $t"; done
+  hr
+  info "Logs of this run ($LOG_DIR):"
+  local lf
+  for lf in "$LOG_DIR/$PROG-$RUN_ID"*; do [[ -e $lf ]] && info "  ${lf##*/}   (whole run)"; done
+  for lf in "${vmlogs[@]}"; do [[ -e $lf ]] && info "  ${lf##*/}"; done
+  if ((${#failed[@]})); then exit 1; fi
+  exit 0
+}
+
+main "$@"

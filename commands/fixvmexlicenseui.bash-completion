@@ -1,0 +1,10 @@
+# bash completion for fixvmexlicenseui (VMeX License UI Fix Tool v1.6)
+_fixvmexlicenseui() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD == 1 )); then
+        COMPREPLY=( $(compgen -W "--check --restart --no-restart --installautocomplete --uninstall --completion --version --help" -- "$cur") )
+    else
+        COMPREPLY=()
+    fi
+}
+complete -F _fixvmexlicenseui fixvmexlicenseui

@@ -1,0 +1,294 @@
+# =============================================================================
+#  Tool        : vmexcluster.bash-completion
+#  Description : Bash Tab completion for the vmexcluster command
+#  Version     : 2.21  (matches vmexcluster 1.21.0)
+#  Last change : 2.21 (2026-11-17) - New command -setuplocking.
+# =============================================================================
+#
+#  Versioning: bump the version on every change and update "Last change".
+#  When vmexcluster gets a new command or option, add it here too
+#  (lists: _vmexcluster_actions, _vmexcluster_value_opts, _vmexcluster_opts_for).
+#
+#  CHANGELOG
+#  ---------
+#  2.21 2026-11-17  vmexcluster 1.21.0: new command -setuplocking.
+#  2.20 2026-11-17  vmexcluster 1.20.0: -mount offers /storages/storageNN, -vg/-lv/-fsname
+#                   the matching storagevgNN / storageNN names.
+#  2.19 2026-11-17  Matches vmexcluster 1.19.0 (validate/mpathalias defaults; no new switches).
+#  2.18 2026-11-16  Matches vmexcluster 1.18.0 (SAN readiness, network checks; no new switches).
+#  2.17 2026-11-16  vmexcluster 1.17.0: new option -cipher (for -addfence).
+#  2.16 2026-11-16  vmexcluster 1.16.0: new command -bmcstatus [node ...].
+#  2.15 2026-11-15  Matches vmexcluster 1.15.0 (BMC test from other nodes; no new switches).
+#  2.14 2026-11-15  Matches vmexcluster 1.14.0 (BMC ownership check; no new switches).
+#  2.13 2026-11-15  vmexcluster 1.13.0: new option -wipe (for -setupstorage).
+#  2.12 2026-11-15  Matches vmexcluster 1.12.0 (-changeip sets server IPs; no new switches).
+#  2.11 2026-11-15  Matches vmexcluster 1.11.1 (bug fixes; no new switches).
+#  2.10 2026-11-15  vmexcluster 1.11.0: new command -changeip (offers node1=,
+#                   node2= ... for the cluster's nodes).
+#  2.9  2026-11-15  Matches vmexcluster 1.10.0 (no new switches).
+#  2.8  2026-11-15  Matches vmexcluster 1.9.0 (hacluster password file); -force offered for -installprereq.
+#  2.7  2026-11-15  Matches vmexcluster 1.8.0 (-validate summary; no new switches).
+#  2.6  2026-11-15  vmexcluster 1.7.0: new command -history [N].
+#  2.5  2026-11-15  Matches vmexcluster 1.6.0 (connectivity test; no new switches).
+#  2.4  2026-11-15  vmexcluster 1.5.0: -sshtrust renamed to -onboard.
+#  2.3  2026-11-15  vmexcluster 1.4.0: -validate options -portal (iSCSI portals
+#                   from the discovered targets) and -nosan.
+#  2.2  2026-11-15  vmexcluster 1.3.0: new command -validate (node names/IPs,
+#                   -nodes, -all).
+#  2.1  2026-11-15  vmexcluster 1.2.0: new commands -listnodes and -synchosts,
+#                   new option -prefix (for -create). IP addresses offered
+#                   for -create -nodes, -sshtrust (now -onboard) and -installprereq (this
+#                   host's IPs and the cluster's IPs).
+#  2.0  2026-11-15  Rewritten to match vmexcluster 1.1.0: all 51 actions,
+#                   per-action options, node names (corosync.conf and
+#                   /etc/hosts), clustered VMs, libvirt VMs for -addvm,
+#                   fence agents, multipath devices, cluster properties,
+#                   resources for -cleanup, backup files for -restore.
+#  1.0  2026-11-15  First release (for an earlier command set).
+#
+#  Install:  vmexcluster -installautocomplete
+#     (or by hand: install -m 644 vmexcluster.bash-completion \
+#                  /usr/share/bash-completion/completions/vmexcluster)
+#  Loaded automatically the first time Tab is pressed after "vmexcluster"
+#  in a NEW bash shell (needs the bash-completion package).
+# -----------------------------------------------------------------------------
+
+_vmexcluster_actions="-installprereq -checkprereq -validate -onboard
+    -create -destroy -start -stop -enable -disable -status -quorum -property
+    -addnode -removenode -listnodes -synchosts -changeip -standby -unstandby -maintenance
+    -addfence -removefence -listfence -testfence -bmcstatus
+    -iscsilogin -iscsilogout -listdisks -mpathalias -setuplocking -setupstorage
+    -addjournal -storagestatus -removestorage
+    -addvm -removevm -startvm -stopvm -restartvm -migratevm -clearvm
+    -listvms -vmstatus -syncvm
+    -verify -cleanup -config -backup -restore -report -logs -history
+    -installautocomplete -help -version"
+
+# Options that take a value (-nodes and -params take several)
+_vmexcluster_value_opts=" cluster nodes node hapass ipaddr user pass agent params delay
+    portal target chapuser chappass wwid alias device vg lv size mount fsname
+    journals xml to prefer since lines file prefix cipher "
+
+_vmexcluster_common="-cluster -yes -dryrun"
+
+# Extra options offered after each action
+_vmexcluster_opts_for() {
+    case $1 in
+        installprereq)               echo "-nodes -all -force -hapass" ;;
+        checkprereq|onboard)         echo "-nodes -all" ;;
+        validate)                    echo "-nodes -all -portal -nosan" ;;
+        create)                      echo "-nodes -hapass -prefix" ;;
+        addnode)                     echo "-hapass" ;;
+        status)                      echo "-full" ;;
+        maintenance)                 echo "-nodes" ;;
+        addfence)                    echo "-ipaddr -user -pass -delay -agent -params -nolanplus -cipher -force" ;;
+        iscsilogin)                  echo "-portal -target -chapuser -chappass -nodes -all" ;;
+        iscsilogout)                 echo "-portal -target -purge -nodes -all" ;;
+        listdisks|logs)              echo "-nodes -all -lines" ;;
+        mpathalias)                  echo "-wwid -alias -nodes -all" ;;
+        setupstorage)                echo "-device -vg -lv -size -mount -fsname -journals -wipe -force" ;;
+        removestorage)               echo "-force" ;;
+        addvm)                       echo "-xml -prefer -nomigrate -nostart" ;;
+        removevm)                    echo "-purge" ;;
+        migratevm)                   echo "-to" ;;
+        syncvm)                      echo "-xml" ;;
+        report)                      echo "-since" ;;
+        installautocomplete)         echo "-file -nodes -all" ;;
+    esac
+}
+
+# --- data sources (all quiet if not readable) --------------------------------
+_vmexcluster_cluster_nodes() {
+    awk '$1=="nodelist"{f=1} f && $1=="name:"{print $2}' /etc/corosync/corosync.conf 2>/dev/null
+}
+
+_vmexcluster_hosts() {
+    { _vmexcluster_cluster_nodes
+      awk '!/^[[:space:]]*#/ && NF > 1 {for (i = 2; i <= NF; i++) print $i}' /etc/hosts 2>/dev/null \
+        | grep -Ev '^(localhost|ip6-)|\.localdomain$'
+    } | sort -u
+}
+
+_vmexcluster_state() { printf '%s' /etc/vmexcluster/cluster.conf; }
+
+# IP addresses: cluster node IPs (from the state file) and this host's own
+_vmexcluster_ips() {
+    { sed -n 's/^NODEMAP=//p' "$(_vmexcluster_state)" 2>/dev/null | tr -d "\\\\'\"" \
+        | tr ' ' '\n' | sed -n 's/^[0-9][0-9]*=//p'
+      ip -4 -o addr show 2>/dev/null | awk '$2 != "lo" {sub(/\/.*/, "", $4); print $4}'
+    } | sort -u
+}
+
+_vmexcluster_cluster_name() {
+    awk '$1=="cluster_name:"{print $2; exit}' /etc/corosync/corosync.conf 2>/dev/null
+}
+
+_vmexcluster_vms() {        # VMs under cluster control
+    local f
+    for f in /etc/pacemaker/vms/*.xml; do [[ -e $f ]] && basename "$f" .xml; done
+}
+
+_vmexcluster_libvirt_vms() { # VMs defined in libvirt on this node (for -addvm)
+    virsh -q list --all --name 2>/dev/null
+}
+
+_vmexcluster_resources() {
+    crm_resource --list-raw 2>/dev/null | sed 's/:[0-9]*$//' | sort -u
+}
+
+_vmexcluster_fence_agents() {
+    compgen -c fence_ 2>/dev/null | sort -u
+}
+
+_vmexcluster_mpath_devices() {
+    local d
+    for d in /dev/mapper/*; do [[ $d == /dev/mapper/control ]] || printf '%s\n' "$d"; done 2>/dev/null
+}
+
+_vmexcluster_wwids() {
+    multipath -ll 2>/dev/null | sed -n 's/^[^ ]* (\([^)]*\)).*/\1/p'
+}
+
+# --- main --------------------------------------------------------------------
+_vmexcluster() {
+    local cur prev words cword
+    if declare -F _init_completion >/dev/null; then
+        _init_completion -n = || return
+    else
+        cur=${COMP_WORDS[COMP_CWORD]}; prev=${COMP_WORDS[COMP_CWORD-1]}
+        words=("${COMP_WORDS[@]}"); cword=$COMP_CWORD
+    fi
+
+    local p=${prev#-}; p=${p#-}; p=${p,,}
+
+    # 1. Value of the option just typed
+    case $p in
+        cipher)             COMPREPLY=($(compgen -W "3 17" -- "$cur")); return ;;
+        prefix)             COMPREPLY=($(compgen -W "node kvm hv" -- "$cur")); return ;;
+        cluster)            COMPREPLY=($(compgen -W "$(_vmexcluster_cluster_name)" -- "$cur")); return ;;
+        nodes|node)         COMPREPLY=($(compgen -W "$(_vmexcluster_ips) $(_vmexcluster_hosts)" -- "$cur")); return ;;
+        to|prefer)          COMPREPLY=($(compgen -W "$(_vmexcluster_cluster_nodes)" -- "$cur")); return ;;
+        agent)              COMPREPLY=($(compgen -W "$(_vmexcluster_fence_agents)" -- "$cur")); return ;;
+        delay)              COMPREPLY=($(compgen -W "5s 10s 15s" -- "$cur")); return ;;
+        device)             COMPREPLY=($(compgen -W "$(_vmexcluster_mpath_devices)" -- "$cur"))
+                            ((${#COMPREPLY[@]})) || COMPREPLY=($(compgen -f -- "$cur")); return ;;
+        wwid)               COMPREPLY=($(compgen -W "$(_vmexcluster_wwids)" -- "$cur")); return ;;
+        alias)              COMPREPLY=($(compgen -W "storagepool1" -- "$cur")); return ;;
+        vg)                 COMPREPLY=($(compgen -W "storagevg02 storagevg03" -- "$cur")); return ;;
+        lv)                 COMPREPLY=($(compgen -W "storage02 storage03" -- "$cur")); return ;;
+        fsname)             COMPREPLY=($(compgen -W "storage02 storage03" -- "$cur")); return ;;
+        size)               COMPREPLY=($(compgen -W "100%FREE 90%FREE 500G 1T 2T" -- "$cur")); return ;;
+        mount)              COMPREPLY=($(compgen -W "/storages/storage02 /storages/storage03" -- "$cur")); return ;;
+        journals)           COMPREPLY=($(compgen -W "2 3 4 6 8" -- "$cur")); return ;;
+        lines)              COMPREPLY=($(compgen -W "50 100 200 500 1000" -- "$cur")); return ;;
+        since)              # date only; add the time yourself and quote it: "2026-11-15 08:00"
+                            COMPREPLY=($(compgen -W "$(date '+%Y-%m-%d') $(date -d '-1 day' '+%Y-%m-%d' 2>/dev/null)" -- "$cur")); return ;;
+        xml|file)           COMPREPLY=($(compgen -f -- "$cur")); return ;;
+        portal)             COMPREPLY=($(compgen -W "$(iscsiadm -m node 2>/dev/null | awk '{sub(/,.*/, "", $1); print $1}' | sort -u)" -- "$cur")); return ;;
+        hapass|pass|chappass|chapuser|ipaddr|user|target|params)
+                            return ;;   # free text
+    esac
+
+    # 2. Find the action and the last switch before the cursor
+    local i w action="" action_idx=0 last_opt=""
+    for (( i = 1; i < cword; i++ )); do
+        w=${words[i]}
+        [[ $w == -* ]] || continue
+        w=${w#-}; w=${w#-}; w=${w,,}
+        last_opt=$w
+        if [[ -z $action && " $_vmexcluster_actions " == *" -$w"[[:space:]]* ]]; then
+            action=$w; action_idx=$i
+        fi
+    done
+
+    # -nodes / -params take several values: keep completing node names
+    if [[ $cur != -* && ( $last_opt == nodes || $last_opt == node ) && ${words[cword-1]} != -* ]]; then
+        local j=$(( cword - 1 ))
+        while (( j > 0 )) && [[ ${words[j]} != -* ]]; do (( j-- )); done
+        w=${words[j]#-}; w=${w#-}; w=${w,,}
+        if [[ $w == nodes || $w == node ]]; then
+            COMPREPLY=($(compgen -W "$(_vmexcluster_ips) $(_vmexcluster_hosts)" -- "$cur")); return
+        fi
+    fi
+
+    # 3. No action yet: offer actions
+    if [[ -z $action ]]; then
+        COMPREPLY=($(compgen -W "$_vmexcluster_actions $_vmexcluster_common" -- "$cur"))
+        return
+    fi
+
+    # 4. Switches after the action
+    if [[ $cur == -* ]]; then
+        COMPREPLY=($(compgen -W "$(_vmexcluster_opts_for "$action") $_vmexcluster_common" -- "$cur"))
+        return
+    fi
+
+    # 5. Positional arguments: count them (skip option values)
+    local argn=1
+    for (( i = action_idx + 1; i < cword; i++ )); do
+        w=${words[i]}
+        if [[ $w == -* ]]; then
+            w=${w#-}; w=${w#-}; w=${w,,}
+            if [[ $w == nodes || $w == node || $w == params ]]; then
+                while (( i + 1 < cword )) && [[ ${words[i+1]} != -* ]]; do (( i++ )); done
+            elif [[ $_vmexcluster_value_opts == *" $w "* ]]; then
+                (( i++ ))
+            fi
+            continue
+        fi
+        (( argn++ ))
+    done
+
+    case $action in
+        addnode)
+            ;;  # new node IP: typed by hand
+        installprereq|checkprereq|validate|onboard)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_ips) $(_vmexcluster_hosts)" -- "$cur")) ;;
+        iscsilogin|iscsilogout|listdisks|mpathalias|logs|installautocomplete)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_hosts)" -- "$cur")) ;;
+        start|stop|enable|disable|standby|unstandby|removenode|bmcstatus)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_cluster_nodes)" -- "$cur")) ;;
+        addfence|removefence|testfence)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "$(_vmexcluster_cluster_nodes)" -- "$cur")) ;;
+        create)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "cluster1" -- "$cur")) ;;
+        destroy)
+            ;;
+        maintenance)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "on off" -- "$cur")) ;;
+        property)
+            COMPREPLY=($(compgen -W "stonith-enabled= no-quorum-policy= maintenance-mode=
+                cluster-recheck-interval= stonith-timeout= start-failure-is-fatal=
+                symmetric-cluster= priority-fencing-delay= shutdown-lock=" -- "$cur"))
+            case $cur in
+                stonith-enabled=*|maintenance-mode=*|start-failure-is-fatal=*|symmetric-cluster=*|shutdown-lock=*)
+                    COMPREPLY=($(compgen -W "${cur%%=*}=true ${cur%%=*}=false" -- "$cur")) ;;
+                no-quorum-policy=*)
+                    COMPREPLY=($(compgen -W "no-quorum-policy=freeze no-quorum-policy=stop no-quorum-policy=ignore no-quorum-policy=demote" -- "$cur")) ;;
+            esac
+            [[ ${COMPREPLY[0]:-} == *= ]] && compopt -o nospace 2>/dev/null ;;
+        addvm)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_libvirt_vms)" -- "$cur")) ;;
+        changeip)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_cluster_nodes | sed 's/$/=/')" -- "$cur"))
+            [[ ${COMPREPLY[0]:-} == *= ]] && compopt -o nospace 2>/dev/null ;;
+        removevm|startvm|stopvm|restartvm|migratevm|clearvm|syncvm)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_vms)" -- "$cur")) ;;
+        vmstatus)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "$(_vmexcluster_vms)" -- "$cur")) ;;
+        cleanup)
+            COMPREPLY=($(compgen -W "$(_vmexcluster_resources)" -- "$cur")) ;;
+        history)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "10 30 50 100" -- "$cur")) ;;
+        addjournal)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "1 2" -- "$cur")) ;;
+        backup|report)
+            (( argn == 1 )) && COMPREPLY=($(compgen -f -- "$cur")) ;;
+        restore)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -f -X '!*.tar.bz2' -- "$cur") $(compgen -d -- "$cur"))
+            fi ;;
+    esac
+}
+
+complete -F _vmexcluster vmexcluster

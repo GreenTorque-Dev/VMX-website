@@ -1,0 +1,2278 @@
+#!/usr/bin/env bash
+#
+# =============================================================================
+#  Tool        : vmexsanconnect
+#  Description : Connect Fedora KVM hosts to a SAN (Lenovo ThinkSystem DE-Series or
+#                IBM Storwize / FlashSystem / SVC)
+#                (Fibre Channel / iSCSI / SAS) and configure DM-Multipath.
+#  Version     : 1.13
+#  Last change : 1.13 (2026-11-16) - "[OK] Ready for vmex cluster" verdict with
+#                [Warning] lines at the end of -verify / -all; new -cluster-ready.
+# =============================================================================
+#
+#  Versioning: bump TOOL_VERSION on every change (fix: 1.0 -> 1.1, new feature:
+#  1.x -> 1.x+1, big rework: 1.x -> 2.0), then update "Last change" above and
+#  add a line to the CHANGELOG below. Keep vmexsanconnect.bash-completion in step.
+#
+#  CHANGELOG
+#  ---------
+#  1.13 2026-11-16  Cluster readiness: -verify (and -all) end with "[OK] Ready for vmex
+#                   cluster" when the basics pass (multipathd, multipath.conf, a working
+#                   session/FC port, all expected volumes, a working path per volume),
+#                   then "[Warning] ..." recommendations (single controller, no alias,
+#                   old data, clock, hostname, monitoring off, failed checks); else
+#                   "[FAIL] Not ready for vmex cluster" + reasons. New -cluster-ready
+#                   prints only these lines (exit 0 ready / 1 not). -json:
+#                   cluster_ready, cluster_blockers, cluster_warnings. Completion 1.10.
+#  1.12 2026-11-16  -troubleshoot: new "How to fix" section - steps for this host (IP,
+#                   subnet, duplicate), cable/switch/VLAN, the array side (IBM and
+#                   DE-Series screens) and the vmexsanconnect settings; also in -json
+#                   ("fixes").
+#  1.11 2026-11-16  -troubleshoot fixes: a device found on the cable is advised as a
+#                   portal only if iSCSI port 3260 answers (target name shown), else
+#                   "probably another server"; switch frames (STP/CDP/PVST/LLDP/LACP)
+#                   reported as "connected to a network switch"; hex-dump lines no
+#                   longer read as MACs; server NIC prefixes no longer labelled IBM.
+#  1.10 2026-11-16  New command -troubleshoot [IP|card ...]: card IPs, link, duplex,
+#                   errors, same subnet on two cards, duplicate own IP; listens on the
+#                   cable (tcpdump) while asking the portals and every address of the
+#                   subnet (arping); shows the MAC/IP the other end uses and whether
+#                   it sends anything at all; plain-language findings. -install adds
+#                   ethtool, iputils, tcpdump. -iscsi-test points to it. Completion 1.9.
+#  1.9  2026-11-15  SAN monitoring: -monitor, -monitor-enable [SECONDS], -monitor-disable.
+#                   On a change (disconnected / restored): wall message, journal,
+#                   log event, login banner /etc/motd.d/vmexsanconnect while not
+#                   healthy, /var/lib/vmexsanconnect/health.json for a UI. -all
+#                   switches it on. -verify now checks every portal's session state
+#                   (LOGGED_IN). Fix: "No active sessions" was counted as 1 session.
+#                   Built-in completion 1.8.
+#  1.8  2026-11-15  New command -validate: hostname, time, protocol, settings,
+#                   packages (installed or downloadable), multipath.conf, every
+#                   iSCSI portal (as -iscsi-test) or FC ports, IQN; verdict READY /
+#                   NOT READY. -all validates first and stops before any change if
+#                   something blocks; "-all -force" skips it. Built-in completion 1.7.
+#  1.7  2026-11-15  New command -iscsi-test [IP ...]: route, link, ARP answer, ping,
+#                   port 3260 and the array target behind each portal (shows crossed
+#                   cables). -iscsi-setup points to it when discovery fails.
+#                   Built-in completion 1.6.
+#  1.6.1 2026-11-15 Fix: rescan message "DE volume(s)" -> "SAN volume(s)".
+#  1.6  2026-11-15  Supports IBM Storwize / FlashSystem / SVC (vendor IBM, product 2145)
+#                   as well as Lenovo DE-Series: multipath.conf allows both, volumes,
+#                   verify and -detect recognise both, hints name the right array.
+#                   -detect lists the SAN arrays seen. Built-in completion 1.5.
+#  1.5  2026-11-11  Commands and options are single-dash switches: -all -verify
+#                   -volumes -config -config-set -json -dry-run ... ("--" also works,
+#                   and the old plain words still work, so scripts and the UI keep
+#                   running). -config now shows the settings (was show-config); an
+#                   other config file is given with -config-file FILE (was --config).
+#                   Help text and all hints show the "-" form. Built-in completion 1.4.
+#  1.4  2026-11-03  New command install-completion (alias --installautocomplete):
+#                   writes the built-in completion (vmexsanconnect.bash-completion 1.3)
+#                   to /usr/share/bash-completion/completions/vmexsanconnect, removes
+#                   older copies, checks that it loads.
+#  1.3  2026-10-31  Log path changed from /var/log/vmexsanconnect/ to /var/log/vmex/.
+#                   Old logs and the saved LOG_DIR are migrated on first run.
+#                   Log rotation now covers only this tool's files in the shared dir.
+#  1.2  2026-10-31  Fix: SCSI path count no longer includes LUN 0 placeholder
+#                   entries (no /dev device); they are logged at DEBUG instead.
+#  1.1  2026-10-31  VMFS warning text: "before KVM use" -> "before VMeX use".
+#  1.0  2026-10-31  First release: FC/iSCSI/SAS connection, DM-Multipath setup,
+#                   health checks, --json output for a UI, full action logging,
+#                   config-set/alias commands, bash completion.
+#
+# -----------------------------------------------------------------------------
+#  Built as a command-line tool so a UI can drive it:
+#   * one switch per action                      ->  vmexsanconnect -help
+#   * -json : one JSON result object on stdout, live JSON-lines progress on stderr
+#   * every action, every system command (with its output, exit code and
+#     duration) and every file change is logged to
+#         /var/log/vmex/vmexsanconnect.log     human readable
+#         /var/log/vmex/vmexsanconnect.jsonl   one JSON object per event
+#     each run has its own run_id so a UI can filter one run's events.
+#   * settings live in /etc/vmexsanconnect/vmexsanconnect.conf, changed with `-config-set`
+#
+#  Exit codes: 0 ok | 1 error | 2 finished with warnings | 3 usage error | 4 another run is active
+# -----------------------------------------------------------------------------
+#
+TOOL_NAME="vmexsanconnect"
+TOOL_VERSION="1.13"
+TOOL_LAST_CHANGE="1.13 (2026-11-16) - Ready for vmex cluster verdict (-verify, -all, -cluster-ready)"
+VERSION="$TOOL_VERSION"
+set -uo pipefail
+shopt -s nullglob
+
+###############################################################################
+# Globals
+###############################################################################
+PROG="$TOOL_NAME"
+CONFIG_FILE="${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}"
+LOCK_FILE="/run/vmexsanconnect.lock"
+RUN_ID="$(date +%Y%m%dT%H%M%S)-$$"
+HOST_NAME=$(hostname -s 2>/dev/null || hostname)
+RUN_START_MS=$(date +%s%3N)
+
+JSON_OUT=0; DRY_RUN=0; QUIET=0; VERBOSE=0; CONSOLE_OFF=0
+COMMAND=""; ARGS=()
+WARNINGS=(); ERRORS=(); CHECKS=()
+RESULT_DATA="null"; EXIT_CODE=0; SKIP_RESULT=0; NO_RUN_LOG=0
+LOG_READY=0; LOG_FILE=""; JSONL_FILE=""
+RUN_OUT=""; RUN_RC=0
+FC_PORTS=(); VOLUMES=()
+
+C_DBG=$'\e[90m'; C_INF=$'\e[36m'; C_OK=$'\e[32m'; C_WRN=$'\e[33m'; C_ERR=$'\e[31m'; C_OFF=$'\e[0m'
+if [[ ! -t 2 ]]; then C_DBG=""; C_INF=""; C_OK=""; C_WRN=""; C_ERR=""; C_OFF=""; fi
+
+MUTATING_COMMANDS=" monitor-enable monitor-disable all install load-driver iscsi-setup multipath-config rescan init-config config-set alias-set alias-remove install-completion "
+COMPLETION_DIR="${VMEXSANCONNECT_COMPLETION_DIR:-/usr/share/bash-completion/completions}"
+SYSNET="${VMEXSANCONNECT_SYSNET:-/sys/class/net}"
+STATE_DIR="${VMEXSANCONNECT_STATE_DIR:-/var/lib/vmexsanconnect}"     # health state for -monitor (and a UI)
+MOTD_FILE="${VMEXSANCONNECT_MOTD:-/etc/motd.d/vmexsanconnect}"       # login banner while disconnected
+UNIT_DIR="${VMEXSANCONNECT_UNIT_DIR:-/etc/systemd/system}"
+MONITOR_UNIT="vmexsanconnect-monitor"
+
+# Supported SAN arrays (SCSI vendor / product as the array reports them):
+#   Lenovo ThinkSystem DE-Series      LENOVO  DE_Series   (access LUN "Universal Xport" excluded)
+#   IBM Storwize / FlashSystem / SVC  IBM     2145        (e.g. Storwize V3700, FlashSystem 5000)
+SAN_MP_REGEX='LENOVO,DE_Series|IBM,2145'        # vendor,product in "multipath -ll"
+SAN_SCSI_REGEX='LENOVO +DE_Series|IBM +2145'    # vendor  product in "lsscsi"
+san_array_label() {   # "LENOVO DE_Series" / "IBM,2145" -> readable name
+  case $1 in
+    *LENOVO*DE_Series*) echo "Lenovo DE-Series" ;;
+    *IBM*2145*)         echo "IBM Storwize/FlashSystem" ;;
+    *)                  echo "$1" ;;
+  esac
+}
+
+###############################################################################
+# Default configuration (overridden by $CONFIG_FILE)
+###############################################################################
+set_defaults() {
+  PROTOCOL="fc"                    # fc | iscsi | sas | auto
+  ISCSI_PORTALS=()                 # controller A + B iSCSI port IPs
+  ISCSI_PORT=3260
+  INITIATOR_IQN=""                 # empty = keep Fedora's generated IQN
+  CHAP_USER=""
+  CHAP_PASS=""
+  ISCSI_REPLACEMENT_TIMEOUT=15
+  EXPECTED_VOLUMES=2
+  MIN_PATHS_PER_VOLUME=2
+  MIN_PATH_GROUPS=2                # one group per controller
+  declare -gA VOLUME_ALIASES=()    # [wwid]=alias
+  LOG_DIR="/var/log/vmex"
+  LOG_LEVEL="DEBUG"                # level written to the log files
+}
+
+###############################################################################
+# JSON helpers
+###############################################################################
+json_esc() {
+  local s=$1
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}; s=${s//$'\r'/\\r}; s=${s//$'\t'/\\t}
+  s=${s//[[:cntrl:]]/}
+  printf '%s' "$s"
+}
+jstr() { printf '"%s"' "$(json_esc "$1")"; }
+jbool() { if (( $1 )); then printf true; else printf false; fi; }
+jnum() { if [[ $1 =~ ^-?[0-9]+$ ]]; then printf '%s' "$1"; else printf null; fi; }
+join_by() { local d=$1; shift; local first=1 x; for x in "$@"; do if (( first )); then first=0; else printf '%s' "$d"; fi; printf '%s' "$x"; done; }
+jarr_str() { local out=() x; for x in "$@"; do out+=("$(jstr "$x")"); done; printf '[%s]' "$(join_by , "${out[@]}")"; }
+
+###############################################################################
+# Logging
+###############################################################################
+mask() {
+  local s=$1
+  if [[ -n ${CHAP_PASS:-} ]]; then s=${s//"$CHAP_PASS"/********}; fi
+  printf '%s' "$s"
+}
+lvl_num() { case $1 in DEBUG) echo 10 ;; INFO) echo 20 ;; WARN) echo 30 ;; ERROR) echo 40 ;; *) echo 20 ;; esac; }
+
+# log LEVEL EVENT MESSAGE [key=value ...]   (key "output" = multi-line command output)
+log() {
+  local level=$1 event=$2 msg; msg=$(mask "$3"); shift 3
+  local n ts kv k v jextra="" hextra="" output=""
+  n=$(lvl_num "$level")
+  ts=$(date '+%Y-%m-%dT%H:%M:%S.%3N%:z')
+  for kv in "$@"; do
+    k=${kv%%=*}; v=$(mask "${kv#*=}")
+    jextra+=",$(jstr "$k"):$(jstr "$v")"
+    if [[ $k == output ]]; then output=$v; else hextra+=" $k=\"$v\""; fi
+  done
+  local jline
+  jline="{\"ts\":$(jstr "$ts"),\"run_id\":$(jstr "$RUN_ID"),\"host\":$(jstr "$HOST_NAME"),\"command\":$(jstr "$COMMAND"),\"pid\":$$,\"level\":$(jstr "$level"),\"event\":$(jstr "$event"),\"message\":$(jstr "$msg")${jextra}}"
+
+  if (( LOG_READY )) && (( n >= $(lvl_num "$LOG_LEVEL") )); then
+    printf '%s run=%s host=%s cmd=%s %-5s %s: %s%s\n' "$ts" "$RUN_ID" "$HOST_NAME" "$COMMAND" "$level" "$event" "$msg" "$hextra" >> "$LOG_FILE"
+    if [[ -n $output ]]; then printf '%s\n' "$output" | sed 's/^/        | /' >> "$LOG_FILE"; fi
+    printf '%s\n' "$jline" >> "$JSONL_FILE"
+  fi
+
+  # console (stderr): INFO+ by default, DEBUG with --verbose, WARN+ with --quiet
+  if (( CONSOLE_OFF )); then return 0; fi
+  local cmin=20
+  if (( VERBOSE )); then cmin=10; fi
+  if (( QUIET )); then cmin=30; fi
+  if (( n >= cmin )); then
+    if (( JSON_OUT )); then
+      printf '%s\n' "$jline" >&2
+    else
+      local col=$C_INF
+      case $level in DEBUG) col=$C_DBG ;; WARN) col=$C_WRN ;; ERROR) col=$C_ERR ;; esac
+      if [[ $event == check_ok || $event == ok ]]; then col=$C_OK; fi
+      printf '%s %s%-5s%s %s' "${ts:11:8}" "$col" "$level" "$C_OFF" "$msg" >&2
+      if (( VERBOSE )); then printf '%s' "$hextra" >&2; fi
+      printf '\n' >&2
+      if (( VERBOSE )) && [[ -n $output ]]; then printf '%s\n' "$output" | sed 's/^/        | /' >&2; fi
+    fi
+  fi
+}
+
+warn_() { WARNINGS+=("$(mask "$1")"); log WARN warning "$1" "${@:2}"; }
+err_()  { ERRORS+=("$(mask "$1")");   log ERROR error "$1" "${@:2}"; }
+fail()  { err_ "$@"; EXIT_CODE=1; exit 1; }
+ok_()   { log INFO ok "$1" "${@:2}"; }
+say()   { if (( ! JSON_OUT && ! CONSOLE_OFF )); then printf '%s\n' "$*"; fi; }
+
+OLD_LOG_DIR="/var/log/vmexsanconnect"   # log location before version 1.3
+LOG_MIGRATED=0
+
+init_logging() {
+  local f
+  # Configs saved by 1.0-1.2 still point at the old directory: move to /var/log/vmex
+  if [[ $LOG_DIR == "$OLD_LOG_DIR" ]]; then LOG_DIR="/var/log/vmex"; LOG_MIGRATED=1; fi
+
+  # /var/log/vmex is shared with the other VMeX tools: only set permissions if we create it
+  if [[ ! -d $LOG_DIR ]]; then
+    mkdir -p "$LOG_DIR" 2>/dev/null && chmod 750 "$LOG_DIR" 2>/dev/null
+  fi
+  LOG_FILE="$LOG_DIR/vmexsanconnect.log"
+  JSONL_FILE="$LOG_DIR/vmexsanconnect.jsonl"
+
+  # Bring the history from the old directory along (old events first)
+  if [[ -d $OLD_LOG_DIR && $LOG_DIR != "$OLD_LOG_DIR" ]]; then
+    for f in vmexsanconnect.log vmexsanconnect.jsonl; do
+      if [[ -f $OLD_LOG_DIR/$f && -f $LOG_DIR/$f ]]; then
+        if cat "$OLD_LOG_DIR/$f" "$LOG_DIR/$f" > "$LOG_DIR/$f.migrate" 2>/dev/null; then
+          mv -f "$LOG_DIR/$f.migrate" "$LOG_DIR/$f" && rm -f "$OLD_LOG_DIR/$f"
+        else
+          rm -f "$LOG_DIR/$f.migrate"
+        fi
+      elif [[ -f $OLD_LOG_DIR/$f ]]; then
+        mv -f "$OLD_LOG_DIR/$f" "$LOG_DIR/$f"
+      fi
+    done
+    for f in "$OLD_LOG_DIR"/vmexsanconnect.*; do mv -f "$f" "$LOG_DIR/" 2>/dev/null; done
+    rmdir "$OLD_LOG_DIR" 2>/dev/null
+    LOG_MIGRATED=1
+  fi
+
+  if touch "$LOG_FILE" "$JSONL_FILE" 2>/dev/null; then
+    chmod 640 "$LOG_FILE" "$JSONL_FILE"
+    LOG_READY=1
+  else
+    log WARN warning "Cannot write to $LOG_DIR - logging to console only"
+  fi
+}
+
+# Rotate only this tool's files - /var/log/vmex is shared with other VMeX tools
+write_logrotate() {
+  write_file /etc/logrotate.d/vmexsanconnect "Log rotation for vmexsanconnect" 644 <<EOF
+$LOG_DIR/vmexsanconnect.log $LOG_DIR/vmexsanconnect.jsonl {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+}
+
+finish_log_migration() {
+  (( LOG_MIGRATED )) || return 0
+  log INFO log_migrated "Logs moved from $OLD_LOG_DIR to $LOG_DIR" old_dir="$OLD_LOG_DIR" new_dir="$LOG_DIR"
+  if [[ -f $CONFIG_FILE ]] && grep -q "^LOG_DIR=$OLD_LOG_DIR\$" "$CONFIG_FILE"; then
+    write_config
+  fi
+  if [[ -f /etc/logrotate.d/vmexsanconnect ]]; then
+    write_logrotate
+  fi
+}
+
+###############################################################################
+# Action wrappers - every system command goes through run/query
+###############################################################################
+# run DESCRIPTION CMD [ARGS...]   - changes the system; skipped with --dry-run
+#   RUN_OK="15 21" run ...        - extra exit codes that count as success
+# query DESCRIPTION CMD [ARGS...] - read-only; always executed, logged at DEBUG
+run() {
+  local desc=$1; shift
+  local readonly_=${RUN_READONLY:-0} okrc=" 0 ${RUN_OK:-} "
+  local cmdstr t0 t1 out rc
+  cmdstr=$(printf '%q ' "$@"); cmdstr=${cmdstr% }
+
+  if (( DRY_RUN )) && (( ! readonly_ )); then
+    log INFO dry_run "[dry-run] $desc" cmd="$cmdstr"
+    RUN_OUT=""; RUN_RC=0; return 0
+  fi
+  log DEBUG cmd_start "$desc" cmd="$cmdstr"
+  t0=$(date +%s%3N)
+  out=$("$@" 2>&1); rc=$?
+  t1=$(date +%s%3N)
+  RUN_OUT=$out; RUN_RC=$rc
+
+  local lvl=INFO
+  if (( readonly_ )); then lvl=DEBUG; fi
+  if [[ $okrc == *" $rc "* ]]; then
+    log "$lvl" action "$desc" rc="$rc" duration_ms="$((t1 - t0))" cmd="$cmdstr" output="$out"
+    return 0
+  fi
+  log WARN action_failed "$desc (exit $rc)" rc="$rc" duration_ms="$((t1 - t0))" cmd="$cmdstr" output="$out"
+  return "$rc"
+}
+query() { RUN_READONLY=1 run "$@"; }
+
+# write_file PATH DESCRIPTION MODE  (content on stdin) - backs up the old file, logs the content
+write_file() {
+  local path=$1 desc=$2 mode=${3:-644} content backup=""
+  content=$(cat)
+  if [[ -f $path && "$(cat "$path")" == "$content" ]]; then
+    log INFO file_unchanged "$desc: $path already up to date" path="$path"
+    return 0
+  fi
+  if (( DRY_RUN )); then
+    log INFO dry_run "[dry-run] $desc: would write $path" path="$path" output="$content"
+    return 0
+  fi
+  mkdir -p "$(dirname "$path")"
+  if [[ -f $path ]]; then
+    backup="$path.bak.$RUN_ID"
+    cp -p "$path" "$backup" || { err_ "Could not back up $path"; return 1; }
+  fi
+  printf '%s\n' "$content" > "$path" || { err_ "Could not write $path"; return 1; }
+  chmod "$mode" "$path"
+  log INFO file_written "$desc: wrote $path" path="$path" backup="$backup" \
+      sha256="$(sha256sum "$path" | cut -d' ' -f1)" output="$content"
+}
+
+add_check() { # add_check NAME ok|warn|fail MESSAGE
+  local name=$1 status=$2 msg=$3
+  CHECKS+=("{\"name\":$(jstr "$name"),\"status\":$(jstr "$status"),\"message\":$(jstr "$msg")}")
+  case $status in
+    ok)   log INFO check_ok "[ OK ] $msg" check="$name" ;;
+    warn) warn_ "[WARN] $msg" check="$name" ;;
+    *)    err_  "[FAIL] $msg" check="$name" ;;
+  esac
+}
+
+###############################################################################
+# Configuration file
+###############################################################################
+load_config() {
+  if [[ -f $CONFIG_FILE ]]; then
+    # shellcheck disable=SC1090
+    if ! source "$CONFIG_FILE"; then fail "Config file $CONFIG_FILE has errors"; fi
+    CONFIG_LOADED="existing"
+  else
+    CONFIG_LOADED="defaults"
+  fi
+}
+
+write_config() {
+  local w p content
+  content=$(
+    echo "# vmexsanconnect configuration - managed by $PROG $VERSION"
+    echo "# Change with: $PROG -config-set KEY VALUE   (or edit by hand)"
+    echo "# Last written $(date -Is) by run $RUN_ID"
+    printf 'PROTOCOL=%q\n' "$PROTOCOL"
+    printf 'ISCSI_PORTALS=('; for p in "${ISCSI_PORTALS[@]}"; do printf ' %q' "$p"; done; echo ' )'
+    printf 'ISCSI_PORT=%q\n' "$ISCSI_PORT"
+    printf 'INITIATOR_IQN=%q\n' "$INITIATOR_IQN"
+    printf 'CHAP_USER=%q\n' "$CHAP_USER"
+    printf 'CHAP_PASS=%q\n' "$CHAP_PASS"
+    printf 'ISCSI_REPLACEMENT_TIMEOUT=%q\n' "$ISCSI_REPLACEMENT_TIMEOUT"
+    printf 'EXPECTED_VOLUMES=%q\n' "$EXPECTED_VOLUMES"
+    printf 'MIN_PATHS_PER_VOLUME=%q\n' "$MIN_PATHS_PER_VOLUME"
+    printf 'MIN_PATH_GROUPS=%q\n' "$MIN_PATH_GROUPS"
+    printf 'VOLUME_ALIASES=('; for w in "${!VOLUME_ALIASES[@]}"; do printf ' [%q]=%q' "$w" "${VOLUME_ALIASES[$w]}"; done; echo ' )'
+    printf 'LOG_DIR=%q\n' "$LOG_DIR"
+    printf 'LOG_LEVEL=%q\n' "$LOG_LEVEL"
+  )
+  printf '%s\n' "$content" | write_file "$CONFIG_FILE" "Save configuration" 600
+}
+
+config_json() {
+  local w al=()
+  for w in "${!VOLUME_ALIASES[@]}"; do al+=("$(jstr "$w"):$(jstr "${VOLUME_ALIASES[$w]}")"); done
+  printf '{"config_file":%s,"source":%s,"protocol":%s,"iscsi_portals":%s,"iscsi_port":%s,"initiator_iqn":%s,"chap_user":%s,"chap_pass_set":%s,"iscsi_replacement_timeout":%s,"expected_volumes":%s,"min_paths_per_volume":%s,"min_path_groups":%s,"volume_aliases":{%s},"log_dir":%s,"log_level":%s}' \
+    "$(jstr "$CONFIG_FILE")" "$(jstr "$CONFIG_LOADED")" "$(jstr "$PROTOCOL")" "$(jarr_str "${ISCSI_PORTALS[@]}")" \
+    "$(jnum "$ISCSI_PORT")" "$(jstr "$INITIATOR_IQN")" "$(jstr "$CHAP_USER")" "$(jbool "$([[ -n $CHAP_PASS ]] && echo 1 || echo 0)")" \
+    "$(jnum "$ISCSI_REPLACEMENT_TIMEOUT")" "$(jnum "$EXPECTED_VOLUMES")" "$(jnum "$MIN_PATHS_PER_VOLUME")" "$(jnum "$MIN_PATH_GROUPS")" \
+    "$(join_by , "${al[@]}")" "$(jstr "$LOG_DIR")" "$(jstr "$LOG_LEVEL")"
+}
+
+###############################################################################
+# Discovery helpers
+###############################################################################
+fmt_wwn() { sed 's/^0x//; s/../&:/g; s/:$//' <<<"$1"; }
+
+collect_fc_ports() { # FC_PORTS: host|wwpn|wwnn|state|speed|model
+  FC_PORTS=()
+  local h host wwpn wwnn st sp model
+  for h in /sys/class/fc_host/host*; do
+    host=$(basename "$h")
+    wwpn=$(fmt_wwn "$(cat "$h/port_name" 2>/dev/null)")
+    wwnn=$(fmt_wwn "$(cat "$h/node_name" 2>/dev/null)")
+    st=$(cat "$h/port_state" 2>/dev/null || echo unknown)
+    sp=$(cat "$h/speed" 2>/dev/null || echo unknown)
+    model=$(cat "/sys/class/scsi_host/$host/modelname" 2>/dev/null || echo "")
+    FC_PORTS+=("$host|$wwpn|$wwnn|$st|$sp|$model")
+    log DEBUG fc_port "FC port $host" wwpn="$wwpn" wwnn="$wwnn" state="$st" speed="$sp" model="$model"
+  done
+}
+
+fc_ports_json() {
+  local rec host wwpn wwnn st sp model out=()
+  for rec in "${FC_PORTS[@]}"; do
+    IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"
+    out+=("{\"host\":$(jstr "$host"),\"wwpn\":$(jstr "$wwpn"),\"wwnn\":$(jstr "$wwnn"),\"state\":$(jstr "$st"),\"speed\":$(jstr "$sp"),\"model\":$(jstr "$model")}")
+  done
+  printf '[%s]' "$(join_by , "${out[@]}")"
+}
+
+current_iqn() { sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi 2>/dev/null; }
+
+collect_volumes() { # VOLUMES: name|wwid|dm|size|hwhandler|groups|paths|bad|prios|fstype
+  VOLUMES=()
+  if ! command -v multipath >/dev/null; then return 0; fi
+  query "Read multipath topology" multipath -ll
+  local line name fs
+  while IFS= read -r line; do
+    [[ -n $line ]] || continue
+    name=${line%%|*}
+    fs=$(lsblk -nro FSTYPE "/dev/mapper/$name" 2>/dev/null | awk 'NF' | sort -u | paste -sd, -)
+    VOLUMES+=("$line|${fs:-none}")
+  done < <(awk -v san="$SAN_MP_REGEX" '
+    function flush() { if (name != "") printf "%s|%s|%s|%s|%s|%d|%d|%d|%s\n", name, wwid, dm, size, hw, groups, paths, bad, prios; name = "" }
+    /^[^ |`]/ && !/^size=/ {
+      flush()
+      if ($0 ~ san) {
+        name = $1
+        if ($2 ~ /^\(/) { wwid = $2; gsub(/[()]/, "", wwid); dm = $3 } else { wwid = $1; dm = $2 }
+        size = "?"; hw = "?"; groups = paths = bad = 0; prios = ""
+      }
+      next
+    }
+    name == "" { next }
+    /^size=/ {
+      if (match($0, /size=[^ ]+/)) size = substr($0, RSTART + 5, RLENGTH - 5)
+      if (match($0, /hwhandler=\047[^\047]*\047/)) hw = substr($0, RSTART + 11, RLENGTH - 12)
+    }
+    /policy=/ { groups++; if (match($0, /prio=-?[0-9]+/)) prios = prios (prios == "" ? "" : "/") substr($0, RSTART + 5, RLENGTH - 5) }
+    /[0-9]+:[0-9]+:[0-9]+:[0-9]+ +sd/ { paths++; if ($0 !~ /active ready running/) bad++ }
+    END { flush() }' <<<"$RUN_OUT")
+}
+
+volumes_json() {
+  local rec name wwid dm size hw groups paths bad prios fs out=()
+  for rec in "${VOLUMES[@]}"; do
+    IFS='|' read -r name wwid dm size hw groups paths bad prios fs <<<"$rec"
+    out+=("{\"name\":$(jstr "$name"),\"wwid\":$(jstr "$wwid"),\"dm\":$(jstr "$dm"),\"size\":$(jstr "$size"),\"hwhandler\":$(jstr "$hw"),\"path_groups\":$(jnum "$groups"),\"paths\":$(jnum "$paths"),\"failed_paths\":$(jnum "$bad"),\"group_priorities\":$(jstr "$prios"),\"fstype\":$(jstr "$fs"),\"alias\":$(jstr "${VOLUME_ALIASES[$wwid]:-}"),\"device\":$(jstr "/dev/mapper/$name")}")
+  done
+  printf '[%s]' "$(join_by , "${out[@]}")"
+}
+
+print_volumes_table() {
+  local rec name wwid dm size hw groups paths bad prios fs
+  if (( ${#VOLUMES[@]} == 0 )); then say "  (no SAN multipath volumes)"; return 0; fi
+  say "$(printf '  %-36s %-7s %-6s %-5s %-6s %-6s %-7s %s' NAME SIZE DM PATHS FAILED GROUPS PRIOS FSTYPE)"
+  for rec in "${VOLUMES[@]}"; do
+    IFS='|' read -r name wwid dm size hw groups paths bad prios fs <<<"$rec"
+    say "$(printf '  %-36s %-7s %-6s %-5s %-6s %-6s %-7s %s' "$name" "$size" "$dm" "$paths" "$bad" "$groups" "$prios" "$fs")"
+  done
+}
+
+effective_protocol() {
+  if [[ $PROTOCOL != auto ]]; then printf '%s' "$PROTOCOL"; return; fi
+  local rec st
+  collect_fc_ports
+  for rec in "${FC_PORTS[@]}"; do
+    IFS='|' read -r _ _ _ st _ _ <<<"$rec"
+    if [[ $st == Online ]]; then printf fc; return; fi
+  done
+  if (( ${#ISCSI_PORTALS[@]} > 0 )); then printf iscsi; return; fi
+  printf none
+}
+
+###############################################################################
+# Commands
+###############################################################################
+cmd_detect() {
+  local os kernel fc_hbas=() line detected online=0 rec st mpd
+  os=$(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")
+  kernel=$(uname -r)
+  query "List PCI devices" lspci
+  while IFS= read -r line; do [[ -n $line ]] && fc_hbas+=("$line"); done < <(grep -i 'fibre channel' <<<"$RUN_OUT")
+  collect_fc_ports
+  for rec in "${FC_PORTS[@]}"; do IFS='|' read -r _ _ _ st _ _ <<<"$rec"; if [[ $st == Online ]]; then online=$((online + 1)); fi; done
+  if (( online > 0 )); then detected=fc
+  elif (( ${#fc_hbas[@]} > 0 )); then detected="fc (no port online)"
+  elif (( ${#ISCSI_PORTALS[@]} > 0 )); then detected=iscsi
+  else detected=none; fi
+  mpd=$(systemctl is-active multipathd 2>/dev/null || true)
+  # SAN arrays this host can already see (any protocol)
+  local san_seen="" a cnt
+  if command -v lsscsi >/dev/null && query "List SCSI devices" lsscsi; then
+    while read -r cnt a; do
+      [[ -n $a ]] && san_seen+="${san_seen:+, }$(san_array_label "$a") ($cnt LUN path(s))"
+    done < <(grep -oE "$SAN_SCSI_REGEX" <<<"$RUN_OUT" | sed 's/  */ /' | sort | uniq -c)
+  fi
+
+  log INFO detect "OS: $os, kernel $kernel; configured protocol $PROTOCOL, detected $detected; ${#fc_hbas[@]} FC HBA function(s), $online/${#FC_PORTS[@]} FC ports online"
+  say "Host              : $HOST_NAME"
+  say "OS / kernel       : $os / $kernel"
+  say "Protocol          : configured=$PROTOCOL detected=$detected"
+  say "FC HBAs           : ${#fc_hbas[@]}"
+  for line in "${fc_hbas[@]}"; do say "  $line"; done
+  say "FC ports online   : $online/${#FC_PORTS[@]}"
+  say "multipathd        : ${mpd:-not installed}"
+  say "SAN arrays seen   : ${san_seen:-none yet}"
+
+  RESULT_DATA="{\"host\":$(jstr "$HOST_NAME"),\"os\":$(jstr "$os"),\"kernel\":$(jstr "$kernel"),\"protocol_configured\":$(jstr "$PROTOCOL"),\"protocol_detected\":$(jstr "$detected"),\"fc_hbas\":$(jarr_str "${fc_hbas[@]}"),\"fc_ports\":$(fc_ports_json),\"multipathd\":$(jstr "${mpd:-not installed}"),\"san_arrays_seen\":$(jstr "$san_seen")}"
+}
+
+cmd_identifiers() {
+  local rec host wwpn wwnn st sp model iqn
+  collect_fc_ports
+  iqn=$(current_iqn)
+  say "Register these as this host's ports on the array:"
+  say "  Lenovo DE-Series : System Manager > Storage > Hosts > Create Host (Host Type: Linux DM-MP (Kernel 3.10 or later))"
+  say "  IBM Storwize     : Hosts > Add Host (Fibre Channel or iSCSI host, host type Generic)"
+  for rec in "${FC_PORTS[@]}"; do
+    IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"
+    say "  FC WWPN  $host : $wwpn   ($st, $sp)"
+  done
+  if [[ -n $iqn ]]; then say "  iSCSI IQN      : $iqn"; fi
+  if (( ${#FC_PORTS[@]} == 0 )) && [[ -z $iqn ]]; then warn_ "No FC ports and no iSCSI IQN found"; fi
+  log INFO identifiers "Collected host identifiers" fc_ports="${#FC_PORTS[@]}" iqn="$iqn"
+  RESULT_DATA="{\"host\":$(jstr "$HOST_NAME"),\"fc_ports\":$(fc_ports_json),\"iscsi_iqn\":$(jstr "$iqn")}"
+}
+
+cmd_fc_status() {
+  local rec host wwpn wwnn st sp model online=0
+  collect_fc_ports
+  if (( ${#FC_PORTS[@]} == 0 )); then
+    err_ "No FC ports in /sys/class/fc_host - run: $PROG -load-driver"
+  fi
+  for rec in "${FC_PORTS[@]}"; do
+    IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"
+    if [[ $st == Online ]]; then
+      online=$((online + 1)); ok_ "$host $wwpn Online at $sp"
+    else
+      warn_ "$host $wwpn is $st - check cable, SFP, switch port and zoning"
+    fi
+  done
+  RESULT_DATA="{\"online\":$online,\"total\":${#FC_PORTS[@]},\"ports\":$(fc_ports_json)}"
+}
+
+# REQ_PKGS / MISSING_PKGS for the protocol in use
+required_packages() {
+  local proto=$1 p
+  REQ_PKGS=(device-mapper-multipath sg3_utils lsscsi pciutils ethtool iputils tcpdump)
+  if [[ $proto == iscsi ]]; then REQ_PKGS+=(iscsi-initiator-utils); fi
+  MISSING_PKGS=()
+  for p in "${REQ_PKGS[@]}"; do
+    if rpm -q "$p" >/dev/null 2>&1; then log DEBUG pkg_present "$p already installed" package="$p"
+    else MISSING_PKGS+=("$p"); fi
+  done
+  if ! modinfo lpfc >/dev/null 2>&1 && [[ $proto == fc* ]]; then
+    MISSING_PKGS+=("kernel-modules-$(uname -r)")
+  fi
+}
+
+cmd_install() {
+  local pkgs=() missing=() proto
+  proto=$(effective_protocol)
+  required_packages "$proto"
+  pkgs=("${REQ_PKGS[@]}"); missing=("${MISSING_PKGS[@]}")
+  if (( ${#missing[@]} > 0 )); then
+    run "Install packages: ${missing[*]}" dnf -y install "${missing[@]}" || fail "Package installation failed"
+  else
+    ok_ "All required packages already installed"
+  fi
+
+  write_logrotate
+  RESULT_DATA="{\"required\":$(jarr_str "${pkgs[@]}"),\"installed_now\":$(jarr_str "${missing[@]}")}"
+}
+
+cmd_load_driver() {
+  local proto pattern mods=() m loaded=()
+  proto=$(effective_protocol)
+  if [[ $proto == iscsi ]]; then
+    log INFO skip "iSCSI uses the software initiator - no HBA driver needed"
+    RESULT_DATA='{"modules":[]}'; return 0
+  fi
+  pattern='Fibre Channel'
+  if [[ $proto == sas ]]; then pattern='Serial Attached SCSI'; fi
+  query "List PCI devices with kernel modules" lspci -k || fail "lspci failed (run: $PROG -install)"
+  while IFS= read -r m; do [[ -n $m ]] && mods+=("$m"); done < <(
+    awk -v pat="$pattern" '/^[0-9a-f]/ { f = 0 } $0 ~ pat { f = 1 }
+      f && /Kernel modules:/ { sub(/.*Kernel modules: */, ""); gsub(/, */, "\n"); print }' <<<"$RUN_OUT" | sort -u)
+  if (( ${#mods[@]} == 0 )); then
+    fail "No $pattern adapter with a kernel module found (lspci -k)"
+  fi
+  for m in "${mods[@]}"; do
+    if lsmod | awk '{print $1}' | grep -qx "$m"; then
+      log INFO module_loaded "Driver $m already loaded" module="$m"
+    else
+      run "Load driver $m" modprobe "$m" || fail "modprobe $m failed (run: $PROG -install, then reboot if the kernel was updated)"
+    fi
+    loaded+=("$m")
+  done
+  if [[ $proto == fc* ]] && (( ! DRY_RUN )); then
+    query "Wait for udev" udevadm settle --timeout=30
+    collect_fc_ports
+    if (( ${#FC_PORTS[@]} == 0 )); then fail "Driver loaded but no FC ports appeared"; fi
+    ok_ "${#FC_PORTS[@]} FC port(s) present"
+  fi
+  RESULT_DATA="{\"modules\":$(jarr_str "${loaded[@]}"),\"fc_ports\":$(fc_ports_json)}"
+}
+
+set_kv() { # set_kv FILE KEY VALUE (logged)
+  local f=$1 k=$2 v=$3 kre ve
+  kre=${k//./\\.}
+  ve=$(printf '%s' "$v" | sed 's/[&|\\]/\\&/g')
+  if grep -qE "^[#[:space:]]*${kre}[[:space:]]*=" "$f"; then
+    run "Set $k in $f" sed -i -E "s|^[#[:space:]]*${kre}[[:space:]]*=.*|${k} = ${ve}|" "$f"
+  else
+    run "Append $k to $f" sh -c 'printf "%s = %s\n" "$1" "$2" >> "$3"' _ "$k" "$v" "$f"
+  fi
+}
+
+cmd_iscsi_setup() {
+  local proto f=/etc/iscsi/initiatorname.iscsi conf=/etc/iscsi/iscsid.conf current p portal target ip sessions
+  proto=$(effective_protocol)
+  if [[ $proto != iscsi ]]; then
+    log INFO skip "Protocol is $proto - iSCSI setup not needed"
+    RESULT_DATA='{"skipped":true}'; return 0
+  fi
+  (( ${#ISCSI_PORTALS[@]} > 0 )) || fail "ISCSI_PORTALS is empty - run: $PROG -config-set ISCSI_PORTALS \"ip1 ip2 ...\""
+  command -v iscsiadm >/dev/null || fail "iscsiadm missing - run: $PROG -install"
+
+  current=$(current_iqn)
+  if [[ -n $INITIATOR_IQN && $INITIATOR_IQN != "$current" ]]; then
+    RUN_OK="21" run "Log out existing iSCSI sessions before IQN change" iscsiadm -m node --logoutall=all
+    printf 'InitiatorName=%s\n' "$INITIATOR_IQN" | write_file "$f" "Set initiator IQN" 644
+  elif [[ -z $current ]]; then
+    printf 'InitiatorName=%s\n' "$(iscsi-iname -p iqn.1994-05.com.redhat)" | write_file "$f" "Generate initiator IQN" 644
+  else
+    log INFO iqn "Keeping initiator IQN $current"
+  fi
+
+  if [[ ! -f $conf.orig ]]; then run "Keep original iscsid.conf" cp -p "$conf" "$conf.orig"; fi
+  set_kv "$conf" node.startup automatic
+  set_kv "$conf" node.session.timeo.replacement_timeout "$ISCSI_REPLACEMENT_TIMEOUT"
+  if [[ -n $CHAP_USER ]]; then
+    set_kv "$conf" node.session.auth.authmethod CHAP
+    set_kv "$conf" node.session.auth.username "$CHAP_USER"
+    set_kv "$conf" node.session.auth.password "$CHAP_PASS"
+    set_kv "$conf" discovery.sendtargets.auth.authmethod CHAP
+    set_kv "$conf" discovery.sendtargets.auth.username "$CHAP_USER"
+    set_kv "$conf" discovery.sendtargets.auth.password "$CHAP_PASS"
+  fi
+  run "Enable iSCSI services" systemctl enable iscsid.service iscsi.service
+  run "Restart iscsid" systemctl restart iscsid.service || fail "iscsid failed to start"
+
+  for p in "${ISCSI_PORTALS[@]}"; do
+    if query "Ping portal $p" ping -c1 -W2 "$p"; then ok_ "Portal $p reachable"
+    else warn_ "Portal $p does not answer ping (check NIC IP/subnet/VLAN/MTU)"; fi
+    run "Discover targets via $p:$ISCSI_PORT" iscsiadm -m discovery -t sendtargets -p "$p:$ISCSI_PORT" \
+      || warn_ "Discovery via $p failed - step-by-step check: $PROG -iscsi-test $p"
+  done
+
+  # The array advertises every portal; drop those not configured (other subnets, IPv6)
+  RUN_OK="21" query "List iSCSI node records" iscsiadm -m node
+  while read -r portal target; do
+    [[ -n ${portal:-} ]] || continue
+    ip=${portal%%:*}
+    if [[ " ${ISCSI_PORTALS[*]} " != *" $ip "* ]]; then
+      run "Remove unused node record ${portal%%,*}" iscsiadm -m node -T "$target" -p "${portal%%,*}" -o delete || true
+    fi
+  done <<<"$RUN_OUT"
+
+  run "Set all node records to log in at boot" iscsiadm -m node -o update -n node.startup -v automatic || true
+  if [[ -n $CHAP_USER ]]; then
+    run "Set CHAP method on node records"   iscsiadm -m node -o update -n node.session.auth.authmethod -v CHAP
+    run "Set CHAP user on node records"     iscsiadm -m node -o update -n node.session.auth.username -v "$CHAP_USER"
+    run "Set CHAP password on node records" iscsiadm -m node -o update -n node.session.auth.password -v "$CHAP_PASS"
+  fi
+  RUN_OK="15" run "Log in to all target portals" iscsiadm -m node --loginall=automatic || warn_ "Some iSCSI logins failed"
+
+  sessions=$(iscsi_session_states | awk '$2 == "LOGGED_IN"' | grep -c . || true)
+  if (( sessions >= ${#ISCSI_PORTALS[@]} )); then ok_ "$sessions iSCSI sessions established"
+  else warn_ "Only $sessions iSCSI session(s) for ${#ISCSI_PORTALS[@]} portals"; fi
+  RESULT_DATA="{\"iqn\":$(jstr "$(current_iqn)"),\"portals\":$(jarr_str "${ISCSI_PORTALS[@]}"),\"sessions\":$sessions}"
+}
+
+# iscsi_session_states - "portal-ip state" per iSCSI session (empty = no sessions).
+# Uses the persistent (configured) portal; state LOGGED_IN = connected.
+iscsi_session_states() {
+  command -v iscsiadm >/dev/null || return 0
+  iscsiadm -m session -P1 2>/dev/null | awk '
+    /Persistent Portal:/ { split($3, a, ":"); ip = a[1] }
+    /iSCSI Session State:/ { print ip, $4 }'
+}
+iscsi_session_count() { iscsi_session_states | grep -c . || true; }
+
+# check_portal IP - one iSCSI portal step by step (read-only), as checks:
+# route -> link -> ARP answer -> ping -> port 3260 -> which array target answers.
+# Returns 0 when the portal is usable.
+check_portal() {
+  local p=$1 route dev src via nbr carrier speed lladdr pingok targets
+  say ""
+  say "Portal $p:$ISCSI_PORT"
+  route=$(ip -4 route get "$p" 2>/dev/null | head -1)
+  dev=$(sed -n 's/.* dev \([^ ]*\).*/\1/p' <<<"$route")
+  src=$(sed -n 's/.* src \([^ ]*\).*/\1/p' <<<"$route")
+  via=$(sed -n 's/.* via \([^ ]*\).*/\1/p' <<<"$route")
+  if [[ -z $dev ]]; then
+    add_check "route:$p" fail "$p: no route - give the iSCSI network card an IP in that subnet"; return 1
+  fi
+  add_check "route:$p" ok "$p: reached ${via:+via gateway $via }on $dev from $src"
+
+  carrier=$(cat "$SYSNET/$dev/carrier" 2>/dev/null || echo 0)
+  speed=$(cat "$SYSNET/$dev/speed" 2>/dev/null || echo "?")
+  if [[ $carrier != 1 ]]; then
+    add_check "link:$p" fail "$p: $dev has no link - check the cable"; return 1
+  fi
+  add_check "link:$p" ok "$p: $dev link up, $speed Mb/s"
+
+  # ask afresh: an old failed answer stays in the neighbour table for a while
+  nbr=${via:-$p}
+  ip neigh flush to "$nbr" dev "$dev" >/dev/null 2>&1 || true
+  if ping -c2 -W2 -I "$dev" "$p" >/dev/null 2>&1; then pingok=1; else pingok=0; fi
+  lladdr=$(ip neigh show to "$nbr" dev "$dev" 2>/dev/null | sed -n 's/.*lladdr \([^ ]*\).*/\1/p' | head -1)
+  if [[ -z $lladdr ]]; then
+    if [[ -n $via ]]; then
+      add_check "arp:$p" fail "$p: the gateway $via does not answer on $dev"
+    else
+      add_check "arp:$p" fail "$p: nothing answers on $dev - the array port does not have this IP, or the cable goes to another controller. Find out what is on the cable: $PROG -troubleshoot $p"
+    fi
+    return 1
+  fi
+  add_check "arp:$p" ok "$p: ${via:+gateway }answers on $dev (MAC $lladdr)"
+  if (( pingok )); then add_check "ping:$p" ok "$p: ping OK"
+  else add_check "ping:$p" warn "$p: ping fails although the address answers - ICMP may be blocked"; fi
+
+  if ! timeout 3 bash -c "</dev/tcp/$p/$ISCSI_PORT" 2>/dev/null; then
+    add_check "port:$p" fail "$p: iSCSI port $ISCSI_PORT closed - enable iSCSI / host attach on that array port"; return 1
+  fi
+  add_check "port:$p" ok "$p: iSCSI port $ISCSI_PORT open"
+
+  if command -v iscsiadm >/dev/null; then
+    # -o nonpersistent: ask for the target names without saving anything
+    if query "Discover targets on $p (nothing saved)" iscsiadm -m discovery -t sendtargets -p "$p:$ISCSI_PORT" -o nonpersistent; then
+      targets=$(awk -v p="$p:" 'index($1, p) == 1 {print $2}' <<<"$RUN_OUT" | sort -u | paste -sd' ' -)
+      if [[ -n $targets ]]; then add_check "target:$p" ok "$p: array target $targets"
+      else add_check "target:$p" warn "$p: discovery returned no target for this address"; fi
+    else
+      add_check "target:$p" warn "$p: discovery failed (CHAP?) - see: $PROG -logs"
+    fi
+  else
+    log INFO skip "iscsiadm not installed yet - target name not checked"
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# -troubleshoot [IP|interface ...] - when a portal does not answer: what is on
+# the other end of the cable? Read-only. Per network card:
+#   card: IPs, link, speed/duplex, errors; same subnet on another card
+#   own IP used by another device? (duplicate address)
+#   listen on the cable (tcpdump) while asking the portal IPs and every address
+#   of the subnet "who has this IP?" (arping) - anything the array sends shows
+#   up with its MAC and IP, also a port that has a different IP than expected
+#   received-packet counter: 0 new packets = the array side sends nothing
+# ---------------------------------------------------------------------------
+TS_LISTEN=${VMEXSANCONNECT_TS_LISTEN:-15}     # seconds to listen on each card
+
+mac_vendor() {   # first 3 bytes -> known storage vendors
+  case ${1,,} in
+    5c:f3:fc:*|00:14:5e:*|00:1a:64:*|34:40:b5:*|e4:1f:13:*) echo "IBM" ;;
+    00:a0:98:*|d0:39:ea:*|00:80:e5:*) echo "NetApp/Lenovo DE" ;;
+    *) echo "" ;;
+  esac
+}
+
+# ts_classify DEV IP - is the device at IP an iSCSI target? adds the advice check
+ts_classify() {
+  local dev=$1 t=$2 iqn
+  if timeout 3 bash -c "</dev/tcp/$t/$ISCSI_PORT" 2>/dev/null; then
+    iqn=""
+    if command -v iscsiadm >/dev/null && query "Ask $t for its target name (nothing saved)" iscsiadm -m discovery -t sendtargets -p "$t:$ISCSI_PORT" -o nonpersistent; then
+      iqn=$(awk -v p="$t:" 'index($1, p) == 1 {print $2}' <<<"$RUN_OUT" | sort -u | paste -sd' ' -)
+    fi
+    add_check "target:$t" warn "iSCSI target ${iqn:-(name unknown)} answers on $dev at $t - set ISCSI_PORTALS to $t (or give that array port the expected IP)"
+  else
+    add_check "nottarget:$t" warn "$t on $dev is not an iSCSI target (port $ISCSI_PORT closed) - probably another server, not the array"
+  fi
+}
+
+ts_interface() {   # ts_interface DEV "portal ..."
+  local dev=$1 portals=$2 p ip4 myip prefix mymac net others rx0 rx1 cap sweep_out t
+  local cidr base i n found=() heard=() answered=0
+  local -A hinted=()
+  local switch_macs="" switch_protos=""
+  say ""
+  say "=== Network card $dev  (portals: ${portals:-none})"
+  if [[ ! -d $SYSNET/$dev ]]; then add_check "card:$dev" fail "$dev does not exist"; return; fi
+
+  ip4=$(ip -4 -o addr show dev "$dev" 2>/dev/null | awk '{print $4}')
+  mymac=$(cat "$SYSNET/$dev/address" 2>/dev/null)
+  if [[ -z $ip4 ]]; then add_check "ip:$dev" fail "$dev has no IPv4 address - configure it (nmcli)"; return; fi
+  add_check "ip:$dev" ok "$dev: $(paste -sd' ' <<<"$ip4"), MAC $mymac, MTU $(cat "$SYSNET/$dev/mtu" 2>/dev/null)"
+  cidr=$(head -1 <<<"$ip4"); myip=${cidr%/*}; prefix=${cidr#*/}
+
+  # link details
+  if [[ $(cat "$SYSNET/$dev/carrier" 2>/dev/null) != 1 ]]; then
+    add_check "link:$dev" fail "$dev: no link - cable or the port on the other side"; return
+  fi
+  local spd dup; spd=$(cat "$SYSNET/$dev/speed" 2>/dev/null); dup=$(cat "$SYSNET/$dev/duplex" 2>/dev/null)
+  if [[ $dup == half ]]; then add_check "link:$dev" warn "$dev: link up $spd Mb/s HALF duplex - set both sides to auto"
+  else add_check "link:$dev" ok "$dev: link up, $spd Mb/s ${dup:-} duplex"; fi
+  local rxerr; rxerr=$(cat "$SYSNET/$dev/statistics/rx_errors" 2>/dev/null || echo 0)
+  if (( rxerr > 0 )); then add_check "errors:$dev" warn "$dev: $rxerr receive errors - try another cable"; fi
+
+  # the same subnet on another card makes replies leave by the wrong card
+  others=$(ip -4 -o addr show 2>/dev/null | awk -v d="$dev" '$2 != d {print $2, $4}' | while read -r o oc; do
+             [[ ${oc#*/} == "$prefix" ]] && [[ $(ipcalc_net "$oc") == $(ipcalc_net "$cidr") ]] && echo "$o($oc)"; done | paste -sd' ' -)
+  if [[ -n $others ]]; then add_check "subnet:$dev" fail "The subnet of $dev is also on: $others - remove it there, replies may leave by the wrong card"
+  else add_check "subnet:$dev" ok "Subnet $(ipcalc_net "$cidr")/$prefix only on $dev"; fi
+
+  # someone else using our address?
+  if command -v arping >/dev/null; then
+    if arping -D -q -c 2 -w 3 -I "$dev" "$myip" >/dev/null 2>&1; then add_check "dup:$dev" ok "No other device uses $myip"
+    else add_check "dup:$dev" fail "Another device answers for $myip (duplicate IP) - give this card another address"; fi
+  fi
+
+  # listen while asking
+  rx0=$(cat "$SYSNET/$dev/statistics/rx_packets" 2>/dev/null || echo 0)
+  cap=$(mktemp)
+  if command -v tcpdump >/dev/null; then
+    timeout "$TS_LISTEN" tcpdump -i "$dev" -nn -e -l -c 500 "not ether src $mymac" > "$cap" 2>/dev/null &
+    local tpid=$!
+    sleep 1
+  else
+    log WARN skip "tcpdump not installed - not listening on the cable (dnf install tcpdump)"
+  fi
+  if command -v arping >/dev/null; then
+    for p in $portals; do
+      t=$(arping -c 2 -w 3 -I "$dev" "$p" 2>/dev/null | sed -n 's/.*reply from \([0-9.]*\) \[\([0-9A-Fa-f:]*\)\].*/\1 \2/p' | head -1)
+      if [[ -n $t ]]; then answered=1; add_check "arp:$p" ok "$p answers on $dev (MAC ${t#* } $(mac_vendor "${t#* }"))"
+      else add_check "arp:$p" fail "$p does not answer on $dev"; fi
+    done
+    # ask every address of the subnet (only /24 or smaller)
+    if (( prefix >= 24 )); then
+      base=$(ipcalc_net "$cidr"); base=${base%.*}
+      sweep_out=$(mktemp)
+      n=0
+      for (( i=1; i<255; i++ )); do
+        [[ $base.$i == "$myip" ]] && continue
+        ( arping -c 1 -w 1 -I "$dev" "$base.$i" 2>/dev/null | sed -n 's/.*reply from \([0-9.]*\) \[\([0-9A-Fa-f:]*\)\].*/\1 \2/p' >> "$sweep_out" ) &
+        n=$((n + 1)); (( n % 64 == 0 )) && wait $(jobs -rp | grep -v "^${tpid:-x}$") 2>/dev/null
+      done
+      wait $(jobs -rp | grep -v "^${tpid:-x}$") 2>/dev/null
+      mapfile -t found < <(sort -u -t. -k4,4n "$sweep_out")
+      rm -f "$sweep_out"
+      if (( ${#found[@]} )); then
+        for t in "${found[@]}"; do say "  answers in $base.0/$prefix: ${t% *}  MAC ${t#* } $(mac_vendor "${t#* }")"; done
+        add_check "sweep:$dev" ok "${#found[@]} device(s) answer in $base.0/$prefix: $(printf '%s ' "${found[@]%% *}")"
+        for t in "${found[@]}"; do
+          t=${t%% *}
+          if [[ " $portals " != *" $t "* && -z ${hinted[$t]:-} ]]; then
+            hinted[$t]=1; ts_classify "$dev" "$t"
+          fi
+        done
+      else
+        add_check "sweep:$dev" warn "No device answers anywhere in $base.0/$prefix"
+      fi
+    fi
+  else
+    log WARN skip "arping not installed (package iputils)"
+  fi
+  if [[ -n ${tpid:-} ]]; then wait "$tpid" 2>/dev/null; fi
+  rx1=$(cat "$SYSNET/$dev/statistics/rx_packets" 2>/dev/null || echo 0)
+
+  # what did the other end send?
+  if [[ -s $cap ]]; then
+    mapfile -t heard < <(awk '
+      # only frame lines: "hh:mm:ss.us SRC-MAC > DST-MAC, ..." (skip hex dump / decode lines)
+      $1 !~ /^[0-9][0-9]:[0-9][0-9]:[0-9][0-9]\./ || $2 !~ /^[0-9a-fA-F][0-9a-fA-F](:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])(:[0-9a-fA-F][0-9a-fA-F])$/ { next }
+      { mac = $2; dst = $4; sub(/,$/, "", dst); dst = tolower(dst) }
+      dst == "01:80:c2:00:00:00" { sw[mac] = sw[mac] " STP" }
+      dst == "01:00:0c:cc:cc:cc" { sw[mac] = sw[mac] " CDP" }
+      dst == "01:00:0c:cc:cc:cd" { sw[mac] = sw[mac] " PVST" }
+      dst == "01:80:c2:00:00:0e" { sw[mac] = sw[mac] " LLDP" }
+      dst == "01:80:c2:00:00:02" { sw[mac] = sw[mac] " LACP" }
+      /Request who-has/ { for (i=1;i<=NF;i++) if ($i=="tell") { ip=$(i+1); sub(/,$/, "", ip); seen[mac]=seen[mac] " " ip } }
+      /Reply .* is-at/  { for (i=1;i<=NF;i++) if ($i=="Reply") seen[mac]=seen[mac] " " $(i+1) }
+      /ethertype IPv4/  { for (i=1;i<=NF;i++) if ($i ~ /^length/ ) { s=$(i+2); n=split(s, o, "."); if (n>=4) seen[mac]=seen[mac] " " o[1]"."o[2]"."o[3]"."o[4]; break } }
+      /ethertype IPv6/  { seen[mac]=seen[mac] " ipv6" }
+      /ethertype LLDP|LLDP/ { seen[mac]=seen[mac] " lldp" }
+      { if (!(mac in seen)) seen[mac]=""; cnt[mac]++ }
+      END { for (m in cnt) {
+              split(seen[m], a, " "); out=""; delete u; for (k in a) if (!(a[k] in u)) { u[a[k]]=1; out=out a[k] " " }
+              split(sw[m], b, " "); so=""; delete v; for (k in b) if (!(b[k] in v)) { v[b[k]]=1; so=so b[k] " " }
+              print m "|" cnt[m] "|" out "|" so } }' "$cap")
+  fi
+  rm -f "$cap"
+  if (( ${#heard[@]} )); then
+    local h hm hc hi hs
+    for h in "${heard[@]}"; do
+      IFS='|' read -r hm hc hi hs <<<"$h"
+      if [[ -n ${hs// /} ]]; then
+        say "  heard on the cable: MAC $hm - $hc frame(s): network switch protocol(s) ${hs% }"
+        switch_macs+="$hm "; switch_protos+="$hs "
+        continue
+      fi
+      say "  heard on the cable: MAC $hm $(mac_vendor "$hm") - $hc frame(s), addresses: ${hi:-none}"
+      add_check "heard:$hm" ok "Heard $hm $(mac_vendor "$hm") on $dev using: ${hi:-no IP seen}"
+      for t in $hi; do
+        if [[ $t =~ ^[0-9.]+$ ]] && [[ " $portals " != *" $t "* ]] && [[ $t != "$myip" ]] && [[ -z ${hinted[$t]:-} ]]; then
+          hinted[$t]=1; ts_classify "$dev" "$t"
+        fi
+      done
+    done
+    if [[ -n $switch_macs ]]; then
+      add_check "switch:$dev" warn "$dev is connected to a network switch ($(tr ' ' '\n' <<<"$switch_protos" | sed '/^$/d' | sort -u | paste -sd/ -) from ${switch_macs% }), not straight to the array - the array port must be on the same switch/VLAN, or cable $dev directly to the array"
+    fi
+  elif command -v tcpdump >/dev/null; then
+    add_check "heard:$dev" fail "Nothing received from the other end in ${TS_LISTEN}s ($((rx1 - rx0)) packet(s) on the counter)"
+  fi
+  if (( rx1 - rx0 == 0 && ${#found[@]} == 0 && ${#heard[@]} == 0 && answered == 0 )); then
+    add_check "rx:$dev" fail "$dev received 0 packets while being asked - the array port is silent: on the array check Settings > Network > Ethernet Ports (IP, Speed), Monitoring > System (canister online) and Events"
+  else
+    add_check "rx:$dev" ok "$dev received $((rx1 - rx0)) packet(s) during the test"
+  fi
+  (( answered )) && return 0 || return 1
+}
+
+ipcalc_net() {   # a.b.c.d/nn -> network address
+  local ip=${1%/*} pre=${1#*/} a b c d n
+  IFS=. read -r a b c d <<<"$ip"
+  n=$(( ((a << 24) | (b << 16) | (c << 8) | d) & ((0xFFFFFFFF << (32 - pre)) & 0xFFFFFFFF) ))
+  printf '%d.%d.%d.%d' $(( (n >> 24) & 255 )) $(( (n >> 16) & 255 )) $(( (n >> 8) & 255 )) $(( n & 255 ))
+}
+
+# ts_fix_tips - "How to fix": turn the -troubleshoot findings into concrete steps.
+# Reads CHECKS (name/status), prints numbered steps, sets FIX_TIPS for -json.
+ts_fix_tips() {
+  local c name st arg n=0 t
+  local -A has=()            # finding type -> arguments
+  for c in "${CHECKS[@]}"; do
+    name=$(sed -n 's/^{"name":"\([^"]*\)".*/\1/p' <<<"$c")
+    st=$(sed -n 's/.*"status":"\([a-z]*\)".*/\1/p' <<<"$c")
+    [[ $st == ok ]] && continue
+    has[${name%%:*}]+="${name#*:} "
+  done
+  FIX_TIPS=()
+  tip() { FIX_TIPS+=("$1"); n=$((n + 1)); say ""; say "  $n. $1"; shift; for t in "$@"; do say "       $t"; done; }
+
+  say ""
+  say "=== How to fix"
+  (( ${#has[@]} )) || { say "  Nothing to fix here. If the volume is still missing: $PROG -validate, then $PROG -all"; return 0; }
+
+  # --- 1. this host
+  if [[ -n ${has[route]:-} || -n ${has[ip]:-} ]]; then
+    tip "Give the iSCSI network card an IP in the array's subnet (no gateway needed):" \
+        "nmcli -f DEVICE,STATE,CONNECTION device status          # find the card cabled to the array" \
+        "nmcli con add type ethernet ifname <card> con-name vmex-iscsi ipv4.method manual \\" \
+        "      ipv4.addresses <free-IP>/<prefix> ipv6.method disabled && nmcli con up vmex-iscsi"
+  fi
+  if [[ -n ${has[subnet]:-} ]]; then
+    tip "The same subnet is on two network cards - keep it only on the iSCSI card:" \
+        "nmcli -f NAME,DEVICE con show                            # which profile is on the other card" \
+        "nmcli con mod <that profile> -ipv4.addresses <its IP/prefix> && nmcli con up <that profile>"
+  fi
+  if [[ -n ${has[dup]:-} ]]; then
+    tip "Another device uses this host's iSCSI IP - give the card a free address:" \
+        "nmcli con mod vmex-iscsi ipv4.addresses <free-IP>/<prefix> && nmcli con up vmex-iscsi" \
+        "(arping -D -I <card> <IP> shows the MAC of the other device)"
+  fi
+
+  # --- 2. cable / switch
+  if [[ -n ${has[link]:-} ]]; then
+    tip "No link (or half duplex) on ${has[link]% }:" \
+        "re-seat the cable at both ends, then try another cable" \
+        "check the port LEDs on the host and on the array/switch port" \
+        "check: ethtool ${has[link]%% *}        (Link detected: yes, Speed 1000Mb/s, Duplex Full)"
+  fi
+  if [[ -n ${has[errors]:-} ]]; then
+    tip "Receive errors on ${has[errors]% } - a bad cable or port:" \
+        "replace the cable; on a switch, try another switch port" \
+        "watch the counter: ip -s link show ${has[errors]%% *}"
+  fi
+  if [[ -n ${has[switch]:-} && -z ${has[target]:-} ]]; then
+    tip "This host's card goes into a network switch, but the array port is not on it:" \
+        "connect the array's iSCSI ports (e.g. V3700 port 2 of each canister) to the SAME switch" \
+        "put the host ports and the array ports in the SAME VLAN on the switch (ask the network team)" \
+        "or cable the host's card directly to an array port instead of the switch" \
+        "with a switch every host reaches both controllers: list both portal IPs in ISCSI_PORTALS" \
+        "and set MIN_PATHS_PER_VOLUME 2 / MIN_PATH_GROUPS 2 for real failover"
+  fi
+  if [[ -n ${has[nottarget]:-} && -z ${has[target]:-} ]]; then
+    tip "Other servers answer on this network (${has[nottarget]% }), the array does not:" \
+        "the card is on the right subnet but the array port is not connected to this network yet - see the switch/cabling step"
+  fi
+
+  # --- 3. the array side
+  if [[ -n ${has[rx]:-} || -n ${has[heard]:-} || ( -n ${has[arp]:-} && -z ${has[target]:-} && -z ${has[switch]:-} && -z ${has[nottarget]:-} ) ]]; then
+    tip "The array port does not answer at all - check the array side:" \
+        "IBM Storwize / FlashSystem GUI:" \
+        "  Settings > Network > Ethernet Ports : the port shows the portal IP, a Speed (e.g. 1Gb/s) and Host Attach Yes" \
+        "  Monitoring > System                 : both node canisters online" \
+        "  Monitoring > Events                 : canister restarts, port errors" \
+        "Lenovo DE-Series System Manager:" \
+        "  Hardware > Controller A/B > Configure iSCSI ports : IP, port enabled, link up" \
+        "the cable at the ARRAY end: is it in the right port (iSCSI port, not management)?"
+  fi
+
+  # --- 4. vmexsanconnect settings
+  if [[ -n ${has[target]:-} ]]; then
+    local ips=${has[target]% } old=""
+    old=$(printf '%s ' "${ISCSI_PORTALS[@]}")
+    tip "An iSCSI target answers at $ips - use it:" \
+        "$PROG -config-set ISCSI_PORTALS \"$ips\"" \
+        "remove the old login so it does not retry at every boot (for each old portal not in the new list):" \
+        "  iscsiadm -m node -p <old-IP> --logout; iscsiadm -m node -p <old-IP> -o delete      (old: ${old% })" \
+        "(or give the array port the IP you expected, on the array)"
+  fi
+
+  say ""
+  say "  Then check again:  $PROG -troubleshoot  ->  $PROG -validate  ->  $PROG -all"
+}
+
+cmd_troubleshoot() {
+  local a p dev
+  local -A dev_portals=()
+  local -a items=("${ARGS[@]}")
+  (( ${#items[@]} )) || items=("${ISCSI_PORTALS[@]}")
+  (( ${#items[@]} )) || { EXIT_CODE=3; fail "Nothing to check: $PROG -troubleshoot <portal-IP | network card> ...  (or set ISCSI_PORTALS)"; }
+  CHECKS=()
+  for a in "${items[@]}"; do
+    if valid_ip "$a"; then
+      dev=$(ip -4 route get "$a" 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
+      if [[ -z $dev ]]; then add_check "route:$a" fail "$a: no network card has a route to it - configure an IP in its subnet"; continue; fi
+      dev_portals[$dev]+="$a "
+    elif [[ -d $SYSNET/$a ]]; then
+      dev_portals[$a]+=""
+    else
+      EXIT_CODE=3; fail "'$a' is neither an IPv4 address nor a network card"
+    fi
+  done
+  say "Troubleshooting - listening ${TS_LISTEN}s per network card, this changes nothing"
+  for dev in "${!dev_portals[@]}"; do ts_interface "$dev" "${dev_portals[$dev]% }"; done
+
+  # summary
+  say ""
+  say "=== What this means"
+  local c st m n=0
+  for c in "${CHECKS[@]}"; do
+    st=$(sed -n 's/.*"status":"\([a-z]*\)".*/\1/p' <<<"$c"); m=$(sed -n 's/.*"message":"\(.*\)"}$/\1/p' <<<"$c")
+    [[ $st == ok ]] && continue
+    n=$((n + 1)); say "  $n. ${m//\\\"/\"}"
+  done
+  (( n )) || say "  Everything answered - the portal is reachable; if iSCSI still fails: $PROG -iscsi-test"
+  ts_fix_tips
+  RESULT_DATA="{\"checks\":[$(join_by , "${CHECKS[@]}")],\"fixes\":$(jarr_str "${FIX_TIPS[@]}")}"
+}
+
+# -iscsi-test [IP ...] - check iSCSI portals step by step (default: ISCSI_PORTALS)
+cmd_iscsi_test() {
+  local -a portals=("${ARGS[@]}")
+  (( ${#portals[@]} )) || portals=("${ISCSI_PORTALS[@]}")
+  if (( ${#portals[@]} == 0 )); then
+    EXIT_CODE=3; fail "No portals to test: $PROG -iscsi-test <IP> [IP ...]  (or set ISCSI_PORTALS)"
+  fi
+  local p good=() bad=()
+  CHECKS=()
+  for p in "${portals[@]}"; do valid_ip "$p" || { EXIT_CODE=3; fail "Not an IPv4 address: $p"; }; done
+  for p in "${portals[@]}"; do
+    if check_portal "$p"; then good+=("$p"); else bad+=("$p"); fi
+  done
+  say ""
+  say "Reachable: ${good[*]:-none}    Not reachable: ${bad[*]:-none}"
+  if (( ${#good[@]} > 0 )) && (( ${#bad[@]} > 0 )); then
+    say "Tip: with direct cables each host reaches only one controller - put only the reachable IP(s) in ISCSI_PORTALS."
+  fi
+  RESULT_DATA="{\"reachable\":$(jarr_str "${good[@]}"),\"unreachable\":$(jarr_str "${bad[@]}"),\"checks\":[$(join_by , "${CHECKS[@]}")]}"
+}
+
+cmd_multipath_config() {
+  command -v multipath >/dev/null || fail "multipath tools missing - run: $PROG -install"
+  local content builtin=1 w
+  IFS= read -r -d '' content <<'EOF' || true
+# Managed by vmexsanconnect - SAN arrays: Lenovo ThinkSystem DE-Series,
+# IBM Storwize / FlashSystem / SVC (2145).
+# Path policy, checker and handler come from the built-in multipath
+# hardware table for each array (maintained by the vendors).
+
+defaults {
+    user_friendly_names  no      # WWID names: identical on both KVM hosts
+    find_multipaths      no      # every SAN LUN gets a map, even with 1 path
+}
+
+# Multipath ONLY the SAN arrays' LUNs. Local disks are ignored, and the DE-Series
+# "Universal Xport" access LUN (in-band management) is excluded.
+blacklist {
+    device {
+        vendor  ".*"
+        product ".*"
+    }
+}
+blacklist_exceptions {
+    device {
+        vendor  "LENOVO"
+        product "DE_Series"
+    }
+    device {
+        vendor  "IBM"
+        product "^2145"
+    }
+}
+EOF
+  content=${content%$'\n'}
+  query "Dump multipath built-in hardware table" multipath -t
+  local hwtable=$RUN_OUT devs=""
+  if grep -q 'product "DE_Series"' <<<"$hwtable"; then
+    log INFO builtin "Using multipath built-in profile for LENOVO DE_Series"
+  else
+    builtin=0
+    warn_ "No built-in DE_Series entry in this multipath version - adding an explicit device stanza"
+    devs+=$'\n    device {\n        vendor               "LENOVO"\n        product              "DE_Series"\n        product_blacklist    "Universal Xport"\n        path_grouping_policy group_by_prio\n        path_checker         rdac\n        features             "2 pg_init_retries 50"\n        hardware_handler     "1 rdac"\n        prio                 rdac\n        failback             immediate\n        no_path_retry        30\n    }'
+  fi
+  if grep -q 'product "^2145"' <<<"$hwtable"; then
+    log INFO builtin "Using multipath built-in profile for IBM 2145 (Storwize / FlashSystem)"
+  else
+    builtin=0
+    warn_ "No built-in IBM 2145 entry in this multipath version - adding an explicit device stanza"
+    devs+=$'\n    device {\n        vendor               "IBM"\n        product              "^2145"\n        path_grouping_policy group_by_prio\n        prio                 alua\n        hardware_handler     "1 alua"\n        failback             immediate\n        no_path_retry        30\n    }'
+  fi
+  if [[ -n $devs ]]; then content+=$'\n\ndevices {'"$devs"$'\n}'; fi
+  if (( ${#VOLUME_ALIASES[@]} > 0 )); then
+    content+=$'\n\nmultipaths {'
+    for w in "${!VOLUME_ALIASES[@]}"; do
+      content+=$(printf '\n    multipath {\n        wwid  %s\n        alias %s\n    }' "$w" "${VOLUME_ALIASES[$w]}")
+    done
+    content+=$'\n}'
+  fi
+
+  printf '%s\n' "$content" | write_file /etc/multipath.conf "Write DM-Multipath configuration" 644 \
+    || fail "Could not write /etc/multipath.conf"
+  run "Enable and start multipathd" systemctl enable --now multipathd.service || fail "multipathd failed to start"
+  run "Reload multipathd configuration" multipathd reconfigure \
+    || run "Restart multipathd" systemctl restart multipathd.service || fail "multipathd reload failed"
+  if (( ! DRY_RUN )); then
+    query "Validate effective multipath config" multipath -t || warn_ "multipath -t reported problems - see log"
+  fi
+  ok_ "DM-Multipath configured"
+  RESULT_DATA="{\"config\":\"/etc/multipath.conf\",\"builtin_profile\":$(jbool "$builtin"),\"aliases\":${#VOLUME_ALIASES[@]}}"
+}
+
+cmd_rescan() {
+  local proto h s
+  proto=$(effective_protocol)
+  case $proto in
+    fc*)
+      for h in /sys/class/fc_host/host*; do
+        run "Issue LIP on $(basename "$h")" sh -c 'echo 1 > "$1"' _ "$h/issue_lip" || true
+      done
+      if (( ! DRY_RUN )); then sleep 5; fi
+      for h in /sys/class/fc_host/host*; do
+        s="/sys/class/scsi_host/$(basename "$h")/scan"
+        run "Scan SCSI bus $(basename "$h")" sh -c 'echo "- - -" > "$1"' _ "$s" || true
+      done ;;
+    iscsi)
+      RUN_OK="21" run "Rescan iSCSI sessions" iscsiadm -m session --rescan || true ;;
+    *)
+      for s in /sys/class/scsi_host/host*/scan; do
+        run "Scan SCSI bus $(basename "$(dirname "$s")")" sh -c 'echo "- - -" > "$1"' _ "$s" || true
+      done ;;
+  esac
+  run "Wait for udev" udevadm settle --timeout=60 || true
+  if (( ! DRY_RUN )); then sleep 3; fi
+  run "Reload multipath maps" multipath -r || true
+  run "Wait for udev" udevadm settle --timeout=60 || true
+  collect_volumes
+  ok_ "Rescan complete - ${#VOLUMES[@]} SAN volume(s) visible"
+  RESULT_DATA="{\"protocol\":$(jstr "$proto"),\"volumes\":$(volumes_json)}"
+}
+
+cmd_verify() {
+  local proto rec host wwpn wwnn st sp model online=0 de_paths sessions mpd
+  local name wwid dm size hw groups paths bad prios fs vmfs=0
+  proto=$(effective_protocol)
+  CHECKS=()
+
+  mpd=$(systemctl is-active multipathd 2>/dev/null || true)
+  if [[ $mpd == active ]]; then add_check multipathd ok "multipathd is running"
+  else add_check multipathd fail "multipathd is ${mpd:-not installed} - run: $PROG -multipath-config"; fi
+
+  if grep -qs 'Managed by vmexsanconnect' /etc/multipath.conf; then add_check multipath_conf ok "/etc/multipath.conf is managed by vmexsanconnect"
+  else add_check multipath_conf warn "/etc/multipath.conf not written by vmexsanconnect - run: $PROG -multipath-config"; fi
+
+  case $proto in
+    fc*)
+      collect_fc_ports
+      for rec in "${FC_PORTS[@]}"; do
+        IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"
+        if [[ $st == Online ]]; then online=$((online + 1)); fi
+      done
+      if (( ${#FC_PORTS[@]} == 0 )); then add_check fc_ports fail "No FC ports found - run: $PROG -load-driver"
+      elif (( online == ${#FC_PORTS[@]} )); then add_check fc_ports ok "All $online FC ports Online"
+      else add_check fc_ports warn "$online of ${#FC_PORTS[@]} FC ports Online"; fi ;;
+    iscsi)
+      # every configured portal needs its own LOGGED_IN session
+      local states pstate pp
+      states=$(iscsi_session_states)
+      log DEBUG iscsi_sessions "iSCSI session states" output="$states"
+      for pp in "${ISCSI_PORTALS[@]}"; do
+        pstate=$(awk -v ip="$pp" '$1 == ip {print $2; exit}' <<<"$states")
+        if [[ $pstate == LOGGED_IN ]]; then add_check "session:$pp" ok "iSCSI session to $pp: LOGGED_IN"
+        elif [[ -z $pstate ]]; then add_check "session:$pp" fail "iSCSI session to $pp: DISCONNECTED (no session) - check: $PROG -iscsi-test $pp, then: $PROG -all"
+        else add_check "session:$pp" fail "iSCSI session to $pp: $pstate (connection lost) - check the cable/array port: $PROG -iscsi-test $pp"; fi
+      done
+      if (( ${#ISCSI_PORTALS[@]} == 0 )); then add_check iscsi_sessions fail "ISCSI_PORTALS is empty"; fi ;;
+  esac
+
+  query "List SCSI devices" lsscsi
+  # Count only real volume paths (with a /dev node). The array also reports a
+  # LUN 0 placeholder per path with no device ("-") when no volume uses LUN 0.
+  local de_lines placeholders
+  de_lines=$(grep -E "$SAN_SCSI_REGEX" <<<"$RUN_OUT" || true)
+  local arrays; arrays=$(grep -oE "$SAN_SCSI_REGEX" <<<"$de_lines" | sort -u | while read -r a; do san_array_label "$a"; done | paste -sd, - || true)
+  de_paths=$(grep -c '/dev/' <<<"$de_lines" || true)
+  placeholders=$(grep -vc '/dev/' <<<"$de_lines" || true)
+  if [[ -z $de_lines ]]; then placeholders=0; fi
+  log DEBUG scsi_paths "SAN SCSI entries: $de_paths with a device, $placeholders placeholder(s)" output="$de_lines"
+  if (( de_paths > 0 )); then
+    add_check scsi_paths ok "$de_paths SAN SCSI paths visible ($arrays)"
+  else
+    add_check scsi_paths fail "No SAN LUNs visible: on the array check this host's port identifiers ($PROG -identifiers), the host type (DE-Series: 'Linux DM-MP (Kernel 3.10 or later)', IBM Storwize: Generic) and the volume mapping, then run: $PROG -rescan"
+  fi
+
+  collect_volumes
+  for rec in "${VOLUMES[@]}"; do
+    IFS='|' read -r name wwid dm size hw groups paths bad prios fs <<<"$rec"
+    local d="$name ($size): $paths paths, $groups groups [prio $prios], handler '$hw'"
+    if (( bad > 0 )); then add_check "volume:$wwid" fail "$d - $bad path(s) not active/ready"
+    elif (( paths < MIN_PATHS_PER_VOLUME )); then add_check "volume:$wwid" warn "$d - fewer than $MIN_PATHS_PER_VOLUME paths"
+    elif (( groups < MIN_PATH_GROUPS )); then add_check "volume:$wwid" warn "$d - only $groups path group(s): one controller unreachable or wrong Host Type on the array"
+    else add_check "volume:$wwid" ok "$d"; fi
+    if [[ ${fs,,} == *vmfs* ]]; then vmfs=1; fi
+  done
+
+  if (( ${#VOLUMES[@]} == EXPECTED_VOLUMES )); then add_check volume_count ok "${#VOLUMES[@]} volume(s), as expected"
+  else add_check volume_count warn "${#VOLUMES[@]} volume(s) found, expected $EXPECTED_VOLUMES"; fi
+
+  if (( vmfs )); then
+    add_check vmfs warn "Old VMFS data on the SAN volume(s) - re-initialise with a cluster-safe layout (shared LVM + sanlock, or GFS2) before VMeX use"
+  fi
+
+  say ""
+  say "Volumes:"
+  print_volumes_table
+  cluster_verdict "$proto"
+  RESULT_DATA="{\"protocol\":$(jstr "$proto"),\"cluster_ready\":$(jbool "$CLUSTER_READY"),\"cluster_blockers\":$(jarr_str "${CLUSTER_BLOCKERS[@]}"),\"cluster_warnings\":$(jarr_str "${CLUSTER_WARNINGS[@]}"),\"checks\":[$(join_by , "${CHECKS[@]}")],\"volumes\":$(volumes_json),\"fc_ports\":$(fc_ports_json)}"
+}
+
+# cluster_verdict - is this host's SAN ready for the VMeX cluster?
+# Basics decide (all must pass); everything else is a recommendation.
+# Prints exactly:  [OK] Ready for vmex cluster   (or [FAIL] Not ready for vmex cluster)
+#                  [FAIL] <reason> ...  /  [Warning] <recommendation> ...
+# Sets CLUSTER_READY, CLUSTER_BLOCKERS, CLUSTER_WARNINGS.
+cluster_verdict() {
+  local proto=$1 c name st m rec vname wwid dm size hw groups paths bad prios fs
+  local ok_sessions=0 online=0 h ntp
+  CLUSTER_BLOCKERS=(); CLUSTER_WARNINGS=()
+
+  # --- basics
+  [[ $(systemctl is-active multipathd 2>/dev/null) == active ]] || CLUSTER_BLOCKERS+=("multipathd is not running - run: $PROG -multipath-config")
+  grep -qs 'Managed by vmexsanconnect' /etc/multipath.conf || CLUSTER_BLOCKERS+=("/etc/multipath.conf is not managed by vmexsanconnect - run: $PROG -multipath-config")
+  case $proto in
+    iscsi)
+      ok_sessions=$(iscsi_session_states | awk '$2 == "LOGGED_IN"' | grep -c . || true)
+      (( ok_sessions > 0 )) || CLUSTER_BLOCKERS+=("No working iSCSI session - run: $PROG -troubleshoot") ;;
+    fc*)
+      for rec in "${FC_PORTS[@]}"; do IFS='|' read -r _ _ _ st _ _ <<<"$rec"; [[ $st == Online ]] && online=$((online + 1)); done
+      (( online > 0 )) || CLUSTER_BLOCKERS+=("No FC port Online - run: $PROG -fc-status") ;;
+  esac
+  if (( EXPECTED_VOLUMES < 1 )); then
+    CLUSTER_BLOCKERS+=("EXPECTED_VOLUMES is 0 - set it: $PROG -config-set EXPECTED_VOLUMES <n>")
+  elif (( ${#VOLUMES[@]} < EXPECTED_VOLUMES )); then
+    CLUSTER_BLOCKERS+=("${#VOLUMES[@]} of $EXPECTED_VOLUMES SAN volume(s) visible - check the mapping on the array, then: $PROG -rescan")
+  fi
+  for rec in "${VOLUMES[@]}"; do
+    IFS='|' read -r vname wwid dm size hw groups paths bad prios fs <<<"$rec"
+    (( paths - bad >= 1 )) || CLUSTER_BLOCKERS+=("Volume $vname has no working path")
+  done
+
+  # --- recommendations: every check that did not pass ...
+  local blk=" ${CLUSTER_BLOCKERS[*]:-} "
+  for c in "${CHECKS[@]}"; do
+    st=$(sed -n 's/.*"status":"\([a-z]*\)".*/\1/p' <<<"$c")
+    [[ $st == ok ]] && continue
+    name=$(sed -n 's/^{"name":"\([^"]*\)".*/\1/p' <<<"$c")
+    # already said by a [FAIL] line
+    [[ $name == volume_count && $blk == *"SAN volume(s) visible"* ]] && continue
+    [[ $name == session:* && $blk == *"No working iSCSI session"* ]] && continue
+    [[ $name == fc_ports && $blk == *"No FC port Online"* ]] && continue
+    [[ $name == multipathd && $blk == *"multipathd is not running"* ]] && continue
+    [[ $name == multipath_conf && $blk == *"is not managed by"* ]] && continue
+    m=$(sed -n 's/.*"message":"\(.*\)"}$/\1/p' <<<"$c"); m=${m//\\\"/\"}
+    CLUSTER_WARNINGS+=("$m")
+  done
+  # ... plus what a cluster needs
+  for rec in "${VOLUMES[@]}"; do
+    IFS='|' read -r vname wwid dm size hw groups paths bad prios fs <<<"$rec"
+    if (( groups < 2 )); then
+      CLUSTER_WARNINGS+=("Volume $vname: only $paths path(s) through $groups controller - no failover when a controller restarts; connect each host to both controllers (switch)")
+    fi
+    if [[ $vname == "$wwid" ]]; then
+      CLUSTER_WARNINGS+=("Volume $wwid has no alias - give it the same name on every host: $PROG -alias-set $wwid <name>")
+    fi
+    if [[ -n $fs && $fs != none && ${fs,,} != *vmfs* ]]; then
+      CLUSTER_WARNINGS+=("Volume $vname holds $fs data - creating a shared pool on it (vmexsp shared-init) erases it; make sure it is not needed")
+    fi
+  done
+  ntp=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
+  [[ $ntp == yes ]] || CLUSTER_WARNINGS+=("Clock not synchronised - cluster nodes need the same time: timedatectl set-ntp true")
+  h=$(hostname -s 2>/dev/null || hostname)
+  if [[ ${h,,} == localhost* || ${h,,} == linux ]]; then
+    CLUSTER_WARNINGS+=("Hostname is '$h' - each cluster node needs its own name (vmexcluster -nodes sets node1, node2 ...)")
+  fi
+  [[ -f $UNIT_DIR/$MONITOR_UNIT.timer ]] || CLUSTER_WARNINGS+=("SAN monitoring is off - turn it on: $PROG -monitor-enable")
+
+  if (( ${#CLUSTER_BLOCKERS[@]} == 0 )); then CLUSTER_READY=1; else CLUSTER_READY=0; fi
+  log DEBUG cluster_verdict "Ready for vmex cluster: $( (( CLUSTER_READY )) && echo yes || echo no) - ${#CLUSTER_BLOCKERS[@]} blocker(s), ${#CLUSTER_WARNINGS[@]} warning(s)" \
+    ready="$CLUSTER_READY" blockers="${#CLUSTER_BLOCKERS[@]}" warnings="${#CLUSTER_WARNINGS[@]}"
+  # --- verdict (plain text, no colours: other tools look for these exact lines)
+  local saved=$CONSOLE_OFF w nl='\n'; CONSOLE_OFF=0
+  [[ $COMMAND == cluster-ready ]] && nl=''
+  if (( JSON_OUT )); then :
+  elif (( ${#CLUSTER_BLOCKERS[@]} == 0 )); then
+    printf "${nl}[OK] Ready for vmex cluster\n"
+  else
+    printf "${nl}[FAIL] Not ready for vmex cluster\n"
+    for w in "${CLUSTER_BLOCKERS[@]}"; do printf '[FAIL] %s\n' "$w"; done
+  fi
+  if (( ! JSON_OUT )); then for w in "${CLUSTER_WARNINGS[@]}"; do printf '[Warning] %s\n' "$w"; done; fi
+  CONSOLE_OFF=$saved
+}
+
+NO_RUN_LOG_SUMMARY=0
+# -cluster-ready - only the verdict lines (for vmexcluster -validate):
+# exit 0 = ready (warnings allowed), 1 = not ready
+cmd_cluster_ready() {
+  CONSOLE_OFF=1
+  cmd_verify
+  if (( CLUSTER_READY )); then WARNINGS=(); ERRORS=(); EXIT_CODE=0; else EXIT_CODE=1; fi
+  NO_RUN_LOG_SUMMARY=1
+}
+
+
+cmd_status() {
+  local proto mpd
+  proto=$(effective_protocol)
+  collect_fc_ports
+  collect_volumes
+  mpd=$(systemctl is-active multipathd 2>/dev/null || true)
+  say "Host       : $HOST_NAME   protocol: $proto   multipathd: ${mpd:-not installed}"
+  say "Identifiers:"
+  local rec host wwpn wwnn st sp model
+  for rec in "${FC_PORTS[@]}"; do IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"; say "  $host $wwpn $st $sp"; done
+  if [[ -n $(current_iqn) ]]; then say "  IQN $(current_iqn)"; fi
+  say "Volumes:"
+  print_volumes_table
+  RESULT_DATA="{\"host\":$(jstr "$HOST_NAME"),\"protocol\":$(jstr "$proto"),\"multipathd\":$(jstr "${mpd:-not installed}"),\"iscsi_iqn\":$(jstr "$(current_iqn)"),\"fc_ports\":$(fc_ports_json),\"volumes\":$(volumes_json)}"
+}
+
+cmd_volumes() {
+  collect_volumes
+  print_volumes_table
+  RESULT_DATA="$(volumes_json)"
+}
+
+# ---------------------------------------------------------------------------
+# Monitoring: -monitor checks this host's SAN connection; run every minute by a
+# systemd timer (-monitor-enable). It warns only when something CHANGES:
+#   wall message to logged-in users, journal (logger), log file event,
+#   login banner ($MOTD_FILE) while not healthy, state file for a UI.
+# ---------------------------------------------------------------------------
+# health_snapshot -> HEALTH lines "key|ok/fail|message", HEALTH_STATUS ok/degraded/down
+health_snapshot() {
+  local proto states pp pstate rec host wwpn wwnn st sp model online=0
+  local name wwid dm size hw groups paths bad prios fs
+  HEALTH=(); HEALTH_STATUS=ok
+  proto=$(effective_protocol)
+  case $proto in
+    iscsi)
+      states=$(iscsi_session_states)
+      for pp in "${ISCSI_PORTALS[@]}"; do
+        pstate=$(awk -v ip="$pp" '$1 == ip {print $2; exit}' <<<"$states")
+        if [[ $pstate == LOGGED_IN ]]; then HEALTH+=("session:$pp|ok|iSCSI to $pp connected")
+        else HEALTH+=("session:$pp|fail|iSCSI to $pp DISCONNECTED${pstate:+ ($pstate)}"); fi
+      done ;;
+    fc*)
+      collect_fc_ports
+      for rec in "${FC_PORTS[@]}"; do
+        IFS='|' read -r host wwpn wwnn st sp model <<<"$rec"
+        if [[ $st == Online ]]; then HEALTH+=("fc:$wwpn|ok|FC port $host $wwpn Online")
+        else HEALTH+=("fc:$wwpn|fail|FC port $host $wwpn $st"); fi
+      done ;;
+  esac
+  if command -v multipath >/dev/null; then
+    collect_volumes
+    for rec in "${VOLUMES[@]}"; do
+      IFS='|' read -r name wwid dm size hw groups paths bad prios fs <<<"$rec"
+      if (( bad > 0 || paths < MIN_PATHS_PER_VOLUME )); then
+        HEALTH+=("volume:$wwid|fail|Volume $name: $((paths - bad)) of $paths path(s) working (need $MIN_PATHS_PER_VOLUME)")
+      else HEALTH+=("volume:$wwid|ok|Volume $name: $paths path(s) working"); fi
+    done
+    if (( ${#VOLUMES[@]} < EXPECTED_VOLUMES )); then
+      HEALTH+=("volumes|fail|${#VOLUMES[@]} of $EXPECTED_VOLUMES SAN volume(s) visible")
+    else HEALTH+=("volumes|ok|${#VOLUMES[@]} SAN volume(s) visible"); fi
+  fi
+  local h nfail=0 nok=0
+  for h in "${HEALTH[@]}"; do [[ $h == *"|fail|"* ]] && nfail=$((nfail + 1)) || nok=$((nok + 1)); done
+  if (( nfail == 0 )); then HEALTH_STATUS=ok
+  elif [[ " ${HEALTH[*]} " == *"volumes|fail|0 of"* ]]; then HEALTH_STATUS=down
+  else HEALTH_STATUS=degraded; fi
+}
+
+health_json() {
+  local h k st m out=()
+  for h in "${HEALTH[@]}"; do
+    IFS='|' read -r k st m <<<"$h"
+    out+=("{\"key\":$(jstr "$k"),\"status\":$(jstr "$st"),\"message\":$(jstr "$m")}")
+  done
+  printf '{"host":%s,"time":%s,"status":%s,"items":[%s]}' "$(jstr "$HOST_NAME")" "$(jstr "$(date -Is)")" \
+    "$(jstr "$HEALTH_STATUS")" "$(join_by , "${out[@]}")"
+}
+
+# alert LEVEL TEXT - tell everyone who should know, once per change
+alert() {
+  local level=$1 text="vmexsanconnect on $HOST_NAME: $2"
+  logger -t vmexsanconnect -p "user.$level" -- "$2" 2>/dev/null || true
+  if command -v wall >/dev/null; then wall -- "$text" 2>/dev/null || true; fi
+}
+
+cmd_monitor() {
+  # -all or another change is running: its own checks report, skip this round
+  exec 8>"$LOCK_FILE" 2>/dev/null || true
+  if ! flock -n 8 2>/dev/null; then
+    say "Another $PROG run is in progress - monitoring skipped this time"
+    RESULT_DATA='{"skipped":true}'; return 0
+  fi
+  # runs every minute: keep the log to real events (DISCONNECTED / RESTORED)
+  [[ $LOG_LEVEL == DEBUG ]] && LOG_LEVEL=INFO
+  local prev_file="$STATE_DIR/health.state" json_file="$STATE_DIR/health.json"
+  local h k st m old changed=0 down_list=() up_list=()
+  local -A before=()
+  health_snapshot
+  if [[ -f $prev_file ]]; then
+    while IFS='|' read -r k st m; do [[ -n $k ]] && before[$k]=$st; done < "$prev_file"
+  fi
+  for h in "${HEALTH[@]}"; do
+    IFS='|' read -r k st m <<<"$h"
+    old=${before[$k]:-new}
+    if [[ $st == fail && $old != fail ]]; then
+      changed=1; down_list+=("$m")
+      log WARN disconnected "DISCONNECTED: $m" key="$k"
+    elif [[ $st == ok && $old == fail ]]; then
+      changed=1; up_list+=("$m")
+      log INFO restored "RESTORED: $m" key="$k"
+    fi
+  done
+  (( ${#down_list[@]} )) && alert warning "SAN WARNING - $(join_by '; ' "${down_list[@]}") - check: $PROG -verify"
+  (( ${#up_list[@]} ))   && alert notice  "SAN restored - $(join_by '; ' "${up_list[@]}")"
+
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  printf '%s\n' "${HEALTH[@]}" > "$prev_file.tmp" && mv -f "$prev_file.tmp" "$prev_file"
+  health_json > "$json_file.tmp" && mv -f "$json_file.tmp" "$json_file"
+
+  # login banner while not healthy
+  if [[ $HEALTH_STATUS == ok ]]; then
+    rm -f "$MOTD_FILE"
+  else
+    mkdir -p "$(dirname "$MOTD_FILE")" 2>/dev/null
+    {
+      echo "*** SAN WARNING ($(date '+%F %T')) - $PROG reports: ${HEALTH_STATUS^^}"
+      for h in "${HEALTH[@]}"; do [[ $h == *"|fail|"* ]] && echo "***   ${h##*|}"; done
+      echo "*** Check: $PROG -verify"
+    } > "$MOTD_FILE"
+  fi
+
+  say "SAN health on $HOST_NAME: ${HEALTH_STATUS^^}"
+  for h in "${HEALTH[@]}"; do
+    IFS='|' read -r k st m <<<"$h"
+    if [[ $st == ok ]]; then say "  [ OK ] $m"; else say "  [FAIL] $m"; fi
+  done
+  if [[ $HEALTH_STATUS != ok ]]; then WARNINGS+=("SAN $HEALTH_STATUS"); fi
+  RESULT_DATA=$(health_json)
+}
+
+cmd_monitor_enable() {
+  local every=${ARGS[0]:-60} self
+  valid_num "$every" && (( every >= 30 && every <= 3600 )) || { EXIT_CODE=3; fail "Usage: $PROG -monitor-enable [SECONDS 30-3600] (default 60)"; }
+  self=$(readlink -f "$0" 2>/dev/null || echo "/usr/local/sbin/$TOOL_NAME")
+  write_file "$UNIT_DIR/$MONITOR_UNIT.service" "Monitor service" 644 <<EOF
+[Unit]
+Description=vmexsanconnect - check the SAN connection and warn when it changes
+After=network-online.target iscsid.service multipathd.service
+
+[Service]
+Type=oneshot
+ExecStart=$self -monitor -quiet
+# 2 = "not healthy": the tool already warned once - not a failure of the service
+SuccessExitStatus=2
+StandardOutput=null
+EOF
+  write_file "$UNIT_DIR/$MONITOR_UNIT.timer" "Monitor timer (every ${every}s)" 644 <<EOF
+[Unit]
+Description=Run vmexsanconnect -monitor every ${every} seconds
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${every}s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+  run "Reload systemd" systemctl daemon-reload || fail "systemctl daemon-reload failed"
+  run "Enable and start $MONITOR_UNIT.timer" systemctl enable --now "$MONITOR_UNIT.timer" || fail "Could not start the monitor timer"
+  ok_ "SAN monitoring on: every ${every}s, warnings on change (wall, journal, login banner, $STATE_DIR/health.json)"
+  RESULT_DATA="{\"enabled\":true,\"interval_seconds\":$every}"
+}
+
+cmd_monitor_disable() {
+  if [[ -f $UNIT_DIR/$MONITOR_UNIT.timer ]]; then
+    run "Stop and disable $MONITOR_UNIT.timer" systemctl disable --now "$MONITOR_UNIT.timer" || true
+    run "Remove monitor units" rm -f "$UNIT_DIR/$MONITOR_UNIT.timer" "$UNIT_DIR/$MONITOR_UNIT.service"
+    run "Reload systemd" systemctl daemon-reload || true
+  fi
+  [[ -f $MOTD_FILE ]] && run "Remove login banner" rm -f "$MOTD_FILE"
+  ok_ "SAN monitoring off"
+  RESULT_DATA='{"enabled":false}'
+}
+
+# -validate - read-only pre-flight check: is this host 100% ready for -all?
+# fail = blocks -all, warn = -all can run but look at it, ok = fine
+cmd_validate() {
+  local proto p good=() bad=() rec st online=0 h ntp blocking before
+  CHECKS=()
+  before=${#ERRORS[@]}
+  proto=$(effective_protocol)
+  say "Validating $HOST_NAME for: $PROG -all"
+
+  # --- host
+  h=$(hostname -s 2>/dev/null || hostname)
+  if [[ ${h,,} == localhost* || ${h,,} == linux ]]; then
+    add_check hostname warn "Hostname is '$h' - give each host a unique name before building the cluster (vmexcluster -nodes)"
+  else add_check hostname ok "Hostname $h"; fi
+  ntp=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)
+  if [[ $ntp == yes ]]; then add_check time ok "Clock synchronised ($(timedatectl show -p Timezone --value 2>/dev/null))"
+  else add_check time warn "Clock not synchronised - run: timedatectl set-ntp true"; fi
+
+  # --- configuration
+  case $proto in
+    fc|fc*|iscsi|sas) add_check protocol ok "Protocol: $proto (configured: $PROTOCOL)" ;;
+    *) add_check protocol fail "No protocol: no FC port online and ISCSI_PORTALS empty - run: $PROG -config-set PROTOCOL iscsi|fc" ;;
+  esac
+  if (( EXPECTED_VOLUMES >= 1 )); then add_check expected_volumes ok "Expecting $EXPECTED_VOLUMES volume(s) (EXPECTED_VOLUMES)"
+  else add_check expected_volumes warn "EXPECTED_VOLUMES is 0 - set it: $PROG -config-set EXPECTED_VOLUMES <n>"; fi
+
+  # --- packages: missing ones are installed by -all, but they must be downloadable
+  required_packages "$proto"
+  if (( ${#MISSING_PKGS[@]} == 0 )); then
+    add_check packages ok "Required packages installed"
+  elif query "Check that the missing packages can be downloaded" timeout 120 dnf -q list "${MISSING_PKGS[@]}"; then
+    add_check packages ok "Missing packages are available and will be installed by -all: ${MISSING_PKGS[*]}"
+  else
+    add_check packages fail "Packages missing and not downloadable: ${MISSING_PKGS[*]} - check the dnf repositories / internet access"
+  fi
+
+  # --- multipath configuration that -all will replace
+  if [[ -f /etc/multipath.conf ]] && ! grep -qs "Managed by vmexsanconnect" /etc/multipath.conf; then
+    add_check multipath_conf warn "/etc/multipath.conf exists and will be replaced by -all (a backup is kept)"
+  else add_check multipath_conf ok "/etc/multipath.conf can be written"; fi
+
+  # --- protocol specific
+  case $proto in
+    iscsi)
+      if (( ${#ISCSI_PORTALS[@]} == 0 )); then
+        add_check portals fail "ISCSI_PORTALS is empty - run: $PROG -config-set ISCSI_PORTALS \"IP ...\""
+      else
+        for p in "${ISCSI_PORTALS[@]}"; do
+          if check_portal "$p"; then good+=("$p"); else bad+=("$p"); fi
+        done
+        say ""
+        if (( ${#bad[@]} == 0 )); then
+          add_check portals ok "All ${#good[@]} configured portal(s) reachable: ${good[*]}"
+        else
+          add_check portals fail "Not reachable: ${bad[*]} - fix them or remove them from ISCSI_PORTALS (each configured portal must work)"
+        fi
+        if (( MIN_PATHS_PER_VOLUME > ${#ISCSI_PORTALS[@]} )); then
+          add_check min_paths fail "MIN_PATHS_PER_VOLUME=$MIN_PATHS_PER_VOLUME but only ${#ISCSI_PORTALS[@]} portal(s) - -verify could never pass. Set: $PROG -config-set MIN_PATHS_PER_VOLUME ${#ISCSI_PORTALS[@]}"
+        else add_check min_paths ok "MIN_PATHS_PER_VOLUME=$MIN_PATHS_PER_VOLUME fits ${#ISCSI_PORTALS[@]} portal(s)"; fi
+        if (( MIN_PATH_GROUPS > ${#ISCSI_PORTALS[@]} )); then
+          add_check min_groups fail "MIN_PATH_GROUPS=$MIN_PATH_GROUPS but only ${#ISCSI_PORTALS[@]} portal(s) - set: $PROG -config-set MIN_PATH_GROUPS ${#ISCSI_PORTALS[@]}"
+        else add_check min_groups ok "MIN_PATH_GROUPS=$MIN_PATH_GROUPS fits ${#ISCSI_PORTALS[@]} portal(s)"; fi
+      fi
+      if [[ -n $(current_iqn) ]]; then
+        add_check iqn ok "Initiator IQN: $(current_iqn)"
+      elif [[ -n $INITIATOR_IQN ]]; then
+        add_check iqn ok "Initiator IQN will be set to $INITIATOR_IQN"
+      else
+        add_check iqn warn "No initiator IQN yet - it is created by -all; register it on the array before -all (run: $PROG -install && systemctl start iscsid && $PROG -identifiers)"
+      fi
+      ;;
+    fc*)
+      collect_fc_ports
+      for rec in "${FC_PORTS[@]}"; do IFS='|' read -r _ _ _ st _ _ <<<"$rec"; [[ $st == Online ]] && online=$((online + 1)); done
+      if (( ${#FC_PORTS[@]} == 0 )); then
+        add_check fc_ports fail "No FC ports - check the HBA, or run: $PROG -load-driver"
+      elif (( online == 0 )); then
+        add_check fc_ports fail "0 of ${#FC_PORTS[@]} FC ports Online - check cables, SFPs and switch ports ($PROG -fc-status)"
+      elif (( online < ${#FC_PORTS[@]} )); then
+        add_check fc_ports warn "$online of ${#FC_PORTS[@]} FC ports Online"
+      else add_check fc_ports ok "All ${#FC_PORTS[@]} FC ports Online"; fi
+      if (( MIN_PATHS_PER_VOLUME > online && online > 0 )); then
+        add_check min_paths warn "MIN_PATHS_PER_VOLUME=$MIN_PATHS_PER_VOLUME with $online port(s) online - each port must see the array through the switch zoning"
+      fi
+      ;;
+  esac
+
+  # --- what this host cannot check: the array side
+  say ""
+  say "On the array (cannot be checked from this host before connecting):"
+  say "  - this host is defined with the identifiers from: $PROG -identifiers"
+  say "  - the volume(s) are mapped to this host"
+
+  blocking=$(( ${#ERRORS[@]} - before ))
+  say ""
+  if (( blocking == 0 )); then
+    log INFO check_ok "READY - run: $PROG -all"
+  else
+    log ERROR validate "NOT READY - $blocking item(s) to fix (marked FAIL above)"
+  fi
+  RESULT_DATA="{\"ready\":$(jbool "$(( blocking == 0 ))"),\"blocking\":$blocking,\"protocol\":$(jstr "$proto"),\"checks\":[$(join_by , "${CHECKS[@]}")]}"
+}
+
+cmd_all() {
+  local step before steps_done=()
+  if [[ $CONFIG_LOADED == defaults ]]; then write_config; fi
+
+  # pre-flight: refuse to start when something blocks (-force skips this)
+  if [[ " ${ARGS[*]:-} " == *" --force "* ]]; then
+    warn_ "Validation skipped (-force)"
+  else
+    before=${#ERRORS[@]}
+    log INFO step_start "=== Step: validate ===" step="validate"
+    cmd_validate
+    log INFO step_end "=== Step done: validate ===" step="validate"
+    if (( ${#ERRORS[@]} > before )); then
+      err_ "Not ready - nothing was changed. Fix the FAIL items above (or run with -force)"
+      RESULT_DATA="{\"steps\":[\"validate\"],\"validate\":${RESULT_DATA}}"
+      return 0
+    fi
+    steps_done+=("validate")
+  fi
+  for step in install load-driver iscsi-setup multipath-config rescan verify; do
+    before=${#ERRORS[@]}
+    log INFO step_start "=== Step: $step ===" step="$step"
+    "cmd_${step//-/_}"
+    log INFO step_end "=== Step done: $step ===" step="$step"
+    steps_done+=("$step")
+    if (( ${#ERRORS[@]} > before )) && [[ $step != verify ]]; then
+      err_ "Stopping after failed step: $step"; break
+    fi
+  done
+  # keep watching the connection from now on (warns when it drops)
+  if [[ " ${steps_done[*]} " == *" verify "* ]] && [[ ! -f $UNIT_DIR/$MONITOR_UNIT.timer ]]; then
+    local vdata=$RESULT_DATA
+    log INFO step_start "=== Step: monitor-enable ===" step="monitor-enable"
+    ARGS=(); cmd_monitor_enable
+    log INFO step_end "=== Step done: monitor-enable ===" step="monitor-enable"
+    steps_done+=("monitor-enable"); RESULT_DATA=$vdata
+  fi
+  # RESULT_DATA from verify is kept; wrap it with the step list
+  RESULT_DATA="{\"steps\":$(jarr_str "${steps_done[@]}"),\"verify\":${RESULT_DATA}}"
+}
+
+cmd_show_config() {
+  say "Config file: $CONFIG_FILE ($CONFIG_LOADED)"
+  say "  PROTOCOL                  = $PROTOCOL"
+  say "  ISCSI_PORTALS             = ${ISCSI_PORTALS[*]:-}"
+  say "  ISCSI_PORT                = $ISCSI_PORT"
+  local iqn_shown=${INITIATOR_IQN:-"(keep the Fedora generated IQN)"}
+  say "  INITIATOR_IQN             = $iqn_shown"
+  say "  CHAP_USER                 = ${CHAP_USER:-(none)}"
+  say "  CHAP_PASS                 = $([[ -n $CHAP_PASS ]] && echo '******** (set)' || echo '(none)')"
+  say "  ISCSI_REPLACEMENT_TIMEOUT = $ISCSI_REPLACEMENT_TIMEOUT"
+  say "  EXPECTED_VOLUMES          = $EXPECTED_VOLUMES"
+  say "  MIN_PATHS_PER_VOLUME      = $MIN_PATHS_PER_VOLUME"
+  say "  MIN_PATH_GROUPS           = $MIN_PATH_GROUPS"
+  say "  LOG_DIR                   = $LOG_DIR"
+  say "  LOG_LEVEL                 = $LOG_LEVEL"
+  local w
+  say "  VOLUME_ALIASES            = ${#VOLUME_ALIASES[@]}"
+  for w in "${!VOLUME_ALIASES[@]}"; do say "      $w -> ${VOLUME_ALIASES[$w]}"; done
+  RESULT_DATA=$(config_json)
+}
+
+cmd_init_config() {
+  if [[ $CONFIG_LOADED == existing && ${ARGS[0]:-} != --force ]]; then
+    warn_ "$CONFIG_FILE already exists - use: $PROG -init-config -force to reset it"
+  else
+    set_defaults
+    write_config
+    ok_ "Default configuration written to $CONFIG_FILE"
+  fi
+  RESULT_DATA=$(config_json)
+}
+
+valid_ip() { [[ $1 =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
+valid_num() { [[ $1 =~ ^[0-9]+$ ]]; }
+
+cmd_config_set() {
+  (( ${#ARGS[@]} >= 1 )) || { EXIT_CODE=3; fail "Usage: $PROG -config-set KEY [VALUE]"; }
+  local key=${ARGS[0]} val="${ARGS[*]:1}" p old shown
+  case $key in
+    PROTOCOL)
+      [[ $val =~ ^(fc|iscsi|sas|auto)$ ]] || fail "PROTOCOL must be fc, iscsi, sas or auto"
+      old=$PROTOCOL; PROTOCOL=$val ;;
+    ISCSI_PORTALS)
+      old="${ISCSI_PORTALS[*]:-}"; ISCSI_PORTALS=()
+      for p in ${val//,/ }; do valid_ip "$p" || fail "Invalid IP address: $p"; ISCSI_PORTALS+=("$p"); done ;;
+    ISCSI_PORT|ISCSI_REPLACEMENT_TIMEOUT|EXPECTED_VOLUMES|MIN_PATHS_PER_VOLUME|MIN_PATH_GROUPS)
+      valid_num "$val" || fail "$key must be a number"
+      old=${!key}; printf -v "$key" '%s' "$val" ;;
+    INITIATOR_IQN)
+      [[ -z $val || $val =~ ^iqn\.[0-9]{4}-[0-9]{2}\.[^[:space:]]+$ ]] || fail "INITIATOR_IQN must look like iqn.YYYY-MM.domain:name"
+      old=$INITIATOR_IQN; INITIATOR_IQN=$val ;;
+    CHAP_USER) old=$CHAP_USER; CHAP_USER=$val ;;
+    CHAP_PASS) old="(hidden)"; CHAP_PASS=$val ;;
+    LOG_LEVEL)
+      [[ $val =~ ^(DEBUG|INFO|WARN|ERROR)$ ]] || fail "LOG_LEVEL must be DEBUG, INFO, WARN or ERROR"
+      old=$LOG_LEVEL; LOG_LEVEL=$val ;;
+    LOG_DIR)
+      [[ $val == /* ]] || fail "LOG_DIR must be an absolute path"
+      old=$LOG_DIR; LOG_DIR=$val ;;
+    *) EXIT_CODE=3; fail "Unknown key '$key'. Keys: PROTOCOL ISCSI_PORTALS ISCSI_PORT INITIATOR_IQN CHAP_USER CHAP_PASS ISCSI_REPLACEMENT_TIMEOUT EXPECTED_VOLUMES MIN_PATHS_PER_VOLUME MIN_PATH_GROUPS LOG_DIR LOG_LEVEL" ;;
+  esac
+  shown=$val; if [[ $key == CHAP_PASS ]]; then shown="(hidden)"; fi
+  write_config || fail "Could not save configuration"
+  log INFO config_changed "$key: '$old' -> '$shown'" key="$key" old="$old" new="$shown"
+  say "$key = $shown"
+  RESULT_DATA=$(config_json)
+}
+
+cmd_alias_set() {
+  (( ${#ARGS[@]} == 2 )) || { EXIT_CODE=3; fail "Usage: $PROG -alias-set WWID ALIAS"; }
+  local wwid=${ARGS[0]} alias=${ARGS[1]} w
+  [[ $wwid =~ ^[0-9a-fA-F]{8,}$ ]] || fail "WWID must be hexadecimal (see: $PROG -volumes)"
+  [[ $alias =~ ^[A-Za-z0-9_.-]+$ ]] || fail "Alias may only contain letters, digits, _ . -"
+  for w in "${!VOLUME_ALIASES[@]}"; do
+    if [[ ${VOLUME_ALIASES[$w]} == "$alias" && $w != "$wwid" ]]; then fail "Alias $alias already used for $w"; fi
+  done
+  VOLUME_ALIASES[$wwid]=$alias
+  write_config || fail "Could not save configuration"
+  log INFO alias_set "Alias $alias -> $wwid (apply with: $PROG -multipath-config)" wwid="$wwid" alias="$alias"
+  say "Alias saved. Apply with: $PROG -multipath-config   (do the same on the other host)"
+  RESULT_DATA=$(config_json)
+}
+
+cmd_alias_remove() {
+  (( ${#ARGS[@]} == 1 )) || { EXIT_CODE=3; fail "Usage: $PROG -alias-remove WWID"; }
+  local wwid=${ARGS[0]}
+  [[ -n ${VOLUME_ALIASES[$wwid]:-} ]] || fail "No alias set for $wwid"
+  unset "VOLUME_ALIASES[$wwid]"
+  write_config || fail "Could not save configuration"
+  log INFO alias_removed "Alias removed for $wwid (apply with: $PROG -multipath-config)" wwid="$wwid"
+  RESULT_DATA=$(config_json)
+}
+
+cmd_logs() {
+  local n=${ARGS[0]:-50} rid=${ARGS[1]:-} lines
+  valid_num "$n" || { EXIT_CODE=3; fail "Usage: $PROG -logs [COUNT] [RUN_ID]"; }
+  if (( JSON_OUT )); then
+    if [[ -n $rid ]]; then lines=$(grep -F "\"run_id\":\"$rid\"" "$JSONL_FILE" 2>/dev/null | tail -n "$n")
+    else lines=$(tail -n "$n" "$JSONL_FILE" 2>/dev/null); fi
+    RESULT_DATA="[$(paste -sd, - <<<"$lines" | sed 's/^,*$//')]"
+  else
+    if [[ -n $rid ]]; then grep -F "run=$rid " "$LOG_FILE" | tail -n "$n"
+    else tail -n "$n" "$LOG_FILE"; fi
+  fi
+}
+
+cmd_runs() {
+  local n=${ARGS[0]:-20} lines
+  valid_num "$n" || { EXIT_CODE=3; fail "Usage: $PROG -runs [COUNT]"; }
+  lines=$(grep -F '"event":"run_end"' "$JSONL_FILE" 2>/dev/null | tail -n "$n")
+  if (( JSON_OUT )); then
+    RESULT_DATA="[$(paste -sd, - <<<"$lines" | sed 's/^,*$//')]"
+  else
+    grep -F ' run_end: ' "$LOG_FILE" 2>/dev/null | tail -n "$n"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Bash Tab completion: the script below is vmexsanconnect.bash-completion,
+# built in so that one file installs everything.
+# ---------------------------------------------------------------------------
+completion_script() {
+  cat <<'VMEXSANCONNECT_COMPLETION_EOF'
+# =============================================================================
+#  Tool        : vmexsanconnect.bash-completion
+#  Description : Bash Tab completion for the vmexsanconnect command
+#  Version     : 1.10  (matches vmexsanconnect 1.13)
+#  Last change : 1.10 (2026-11-16) - New switch -cluster-ready.
+# =============================================================================
+#
+#  Versioning: bump the version on every change and update "Last change".
+#  When vmexsanconnect gets a new command or option, add it here too.
+#
+#  CHANGELOG
+#  ---------
+#  1.10 2026-11-16  -cluster-ready.
+#  1.9  2026-11-16  -troubleshoot, completing ISCSI_PORTALS and network card names.
+#  1.8  2026-11-15  -monitor, -monitor-enable (offers 30 60 120 300), -monitor-disable.
+#  1.7  2026-11-15  -validate; -force after -all (skips the validation).
+#  1.6  2026-11-15  -iscsi-test, completing the ISCSI_PORTALS from the config.
+#  1.5  2026-11-15  WWID completion covers IBM 2145 arrays as well as Lenovo DE-Series.
+#  1.4  2026-11-11  All commands and options completed as single-dash switches, like
+#                   vmexhealthcheck: -all -verify -volumes -config -json -dry-run ...
+#                   Options are still offered after a command switch; arguments
+#                   (config keys, WWIDs, run IDs) are counted correctly after options.
+#  1.3  2026-11-03  Install location /usr/share/bash-completion/completions/vmexsanconnect
+#                   (file must be named exactly like the command there). New words:
+#                   install-completion, --installautocomplete. This file is now also
+#                   built into vmexsanconnect, which installs it.
+#  1.2  2026-10-31  Run ID completion reads logs from /var/log/vmex/ (or LOG_DIR).
+#  1.1  2026-10-31  Install location changed to /etc/bash_completion.d/.
+#  1.0  2026-10-31  First release.
+#
+#  Install:  vmexsanconnect -installautocomplete
+#     (or by hand: install -m 644 vmexsanconnect.bash-completion \
+#                  /usr/share/bash-completion/completions/vmexsanconnect)
+#  Loaded automatically the first time Tab is pressed after "vmexsanconnect"
+#  in a NEW bash shell (needs the bash-completion package).
+# -----------------------------------------------------------------------------
+
+_vmexsanconnect_wwids() {
+    # WWIDs of SAN volumes (DE-Series, IBM 2145) visible to multipath, plus WWIDs in the config
+    {
+        multipath -ll 2>/dev/null | awk '/LENOVO,DE_Series|IBM,2145/ { w = $1; if ($2 ~ /^\(/) { w = $2; gsub(/[()]/, "", w) } print w }'
+        sed -n 's/.*\[\([0-9a-fA-F]\{8,\}\)\]=.*/\1/p' \
+            "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null
+    } | sort -u
+}
+
+_vmexsanconnect_alias_wwids() {
+    # Only WWIDs that currently have an alias in the config
+    grep -o '\[[0-9a-fA-F]\{8,\}\]' \
+        "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d '[]'
+}
+
+_vmexsanconnect_run_ids() {
+    local logdir
+    logdir=$(sed -n 's/^LOG_DIR=//p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null)
+    logdir=${logdir:-/var/log/vmex}
+    [[ $logdir == /var/log/vmexsanconnect ]] && logdir=/var/log/vmex
+    grep -o '"run_id":"[^"]*"' "$logdir/vmexsanconnect.jsonl" 2>/dev/null \
+        | cut -d'"' -f4 | sort -u | tail -n 30
+}
+
+_vmexsanconnect() {
+    local cur prev words cword
+    if declare -F _init_completion >/dev/null; then
+        _init_completion || return
+    else
+        cur=${COMP_WORDS[COMP_CWORD]}; prev=${COMP_WORDS[COMP_CWORD-1]}
+        words=("${COMP_WORDS[@]}"); cword=$COMP_CWORD
+    fi
+
+    # every command and option is a single-dash switch
+    local commands="-cluster-ready -troubleshoot -monitor -monitor-enable -monitor-disable -validate -all -install -load-driver -iscsi-setup -multipath-config -rescan
+                    -detect -identifiers -fc-status -status -volumes -verify -iscsi-test
+                    -config -init-config -config-set -alias-set -alias-remove
+                    -logs -runs -installautocomplete -help -version"
+    local options="-json -dry-run -verbose -quiet -config-file"
+    local keys="PROTOCOL ISCSI_PORTALS ISCSI_PORT INITIATOR_IQN CHAP_USER CHAP_PASS
+                ISCSI_REPLACEMENT_TIMEOUT EXPECTED_VOLUMES MIN_PATHS_PER_VOLUME
+                MIN_PATH_GROUPS LOG_DIR LOG_LEVEL"
+    local cmdnames=" cluster-ready troubleshoot monitor monitor-enable monitor-disable validate iscsi-test all install load-driver iscsi-setup multipath-config rescan detect identifiers fc-status status volumes verify config show-config init-config config-set alias-set alias-remove logs runs installautocomplete install-completion help version "
+
+    # -config-file FILE
+    if [[ $prev == -config-file || $prev == --config-file ]]; then
+        COMPREPLY=($(compgen -f -- "$cur"))
+        return
+    fi
+
+    # Find the command switch (dashes optional; old plain words still count)
+    local i w cmd="" cmd_idx=0
+    for (( i = 1; i < cword; i++ )); do
+        w=${words[i]#-}; w=${w#-}
+        if [[ $w == config-file ]]; then (( i++ )); continue; fi
+        if [[ $cmdnames == *" $w "* ]]; then cmd=$w; cmd_idx=$i; break; fi
+    done
+    case $cmd in
+        config) cmd=show-config ;;
+        installautocomplete) cmd=install-completion ;;
+    esac
+
+    if [[ -z $cmd ]]; then
+        # nothing chosen yet: offer every switch
+        COMPREPLY=($(compgen -W "$commands $options" -- "$cur"))
+        return
+    fi
+
+    if [[ $cur == -* ]]; then
+        local extra=""
+        [[ $cmd == init-config || $cmd == all ]] && extra="-force"
+        COMPREPLY=($(compgen -W "$options $extra" -- "$cur"))
+        return
+    fi
+
+    # argn = position of the current word among the command's own arguments
+    local argn=1
+    for (( i = cmd_idx + 1; i < cword; i++ )); do
+        case ${words[i]} in
+            -config-file|--config-file) (( i++ )) ;;
+            -*) ;;
+            *) (( argn++ )) ;;
+        esac
+    done
+    case $cmd in
+        config-set)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$keys" -- "$cur"))
+            elif (( argn == 2 )); then
+                case $prev in
+                    PROTOCOL)  COMPREPLY=($(compgen -W "fc iscsi sas auto" -- "$cur")) ;;
+                    LOG_LEVEL) COMPREPLY=($(compgen -W "DEBUG INFO WARN ERROR" -- "$cur")) ;;
+                    LOG_DIR)   COMPREPLY=($(compgen -d -- "$cur")) ;;
+                    EXPECTED_VOLUMES|MIN_PATHS_PER_VOLUME|MIN_PATH_GROUPS)
+                               COMPREPLY=($(compgen -W "1 2 3 4 5 6 7 8" -- "$cur")) ;;
+                    ISCSI_PORT) COMPREPLY=($(compgen -W "3260" -- "$cur")) ;;
+                    INITIATOR_IQN)
+                        local iqn
+                        iqn=$(sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi 2>/dev/null)
+                        COMPREPLY=($(compgen -W "$iqn" -- "$cur")) ;;
+                esac
+            fi ;;
+        alias-set)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_wwids)" -- "$cur"))
+            fi ;;
+        alias-remove)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_alias_wwids)" -- "$cur"))
+            fi ;;
+        logs)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "20 50 100 200 500" -- "$cur"))
+            elif (( argn == 2 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_run_ids)" -- "$cur"))
+            fi ;;
+        troubleshoot)
+            COMPREPLY=($(compgen -W "$(sed -n 's/^ISCSI_PORTALS=(\(.*\))/\1/p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d "'\"") $(ls /sys/class/net 2>/dev/null | grep -v '^lo$')" -- "$cur")) ;;
+        monitor-enable)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "30 60 120 300" -- "$cur")) ;;
+        iscsi-test)
+            # the portal IPs from the config: ISCSI_PORTALS=( 10.10.10.231 ... )
+            COMPREPLY=($(compgen -W "$(sed -n 's/^ISCSI_PORTALS=(\(.*\))/\1/p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d "'\"")" -- "$cur")) ;;
+        runs)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "10 20 50 100" -- "$cur"))
+            fi ;;
+    esac
+}
+
+complete -F _vmexsanconnect vmexsanconnect
+VMEXSANCONNECT_COMPLETION_EOF
+}
+
+cmd_install_completion() {
+  local dest="$COMPLETION_DIR/$TOOL_NAME" f loaded=0 lazy="no"
+  # bash-completion only lazy-loads a file named exactly like the command
+  [[ -d $COMPLETION_DIR ]] || run "Create $COMPLETION_DIR" mkdir -p "$COMPLETION_DIR" \
+    || fail "Cannot create $COMPLETION_DIR"
+  completion_script | write_file "$dest" "Install bash completion" 644 || fail "Could not write $dest"
+  if command -v restorecon >/dev/null && (( ! DRY_RUN )); then
+    run "Apply SELinux label to $dest" restorecon "$dest" || true
+  fi
+
+  # older copies: a wrongly named file here never loads; the /etc one is replaced by this
+  for f in "$COMPLETION_DIR/$TOOL_NAME.bash-completion" \
+           /etc/bash_completion.d/$TOOL_NAME.bash-completion /etc/bash_completion.d/$TOOL_NAME; do
+    if [[ -e $f ]]; then run "Remove old completion file $f" rm -f "$f" || warn_ "Could not remove $f"; fi
+  done
+
+  if ! rpm -q bash-completion >/dev/null 2>&1 && [[ ! -f /usr/share/bash-completion/bash_completion ]]; then
+    warn_ "Package bash-completion is not installed - Tab completion will not load. Run: dnf install -y bash-completion"
+  fi
+
+  if (( ! DRY_RUN )); then
+    # 1) the file itself registers the completion
+    if query "Check that the completion file loads" bash -c 'source "$1" && complete -p "$2"' _ "$dest" "$TOOL_NAME"; then
+      loaded=1; ok_ "Completion file loads: $RUN_OUT"
+    else
+      err_ "The installed completion file does not load - see the log"
+    fi
+    # 2) bash-completion finds it on its own (what happens when you press Tab)
+    if [[ -f /usr/share/bash-completion/bash_completion ]] && query "Check that bash-completion finds it" bash -c '
+        source /usr/share/bash-completion/bash_completion >/dev/null 2>&1
+        if declare -F _comp_load >/dev/null; then _comp_load "$1"
+        elif declare -F __load_completion >/dev/null; then __load_completion "$1"; fi
+        complete -p "$1"' _ "$TOOL_NAME"; then
+      lazy="yes"; ok_ "bash-completion loads it automatically"
+    elif [[ -f /usr/share/bash-completion/bash_completion && $COMPLETION_DIR == /usr/share/bash-completion/completions ]]; then
+      warn_ "bash-completion did not pick it up automatically - check: rpm -q bash-completion"
+    fi
+  fi
+
+  say ""
+  say "Tab completion installed: $dest"
+  say "It works in every NEW shell. For this shell run:"
+  say "  source $dest"
+  RESULT_DATA="{\"file\":$(jstr "$dest"),\"loads\":$(jbool "$loaded"),\"autoload\":$(jstr "$lazy"),\"completion_version\":$(jstr "$(completion_script | sed -n 's/^#  Version *: *\([0-9.]*\).*/\1/p' | head -1)")}"
+}
+
+usage() {
+  cat <<EOF
+$PROG $VERSION - connect this host to a SAN with DM-Multipath
+         (Lenovo ThinkSystem DE-Series, IBM Storwize / FlashSystem / SVC)
+
+Usage: $PROG -<command> [arguments] [options]        e.g.  $PROG -verify -json
+
+Setup (changes the system, logged, locked against parallel runs):
+  -validate                  Pre-flight check: is this host 100% ready for -all?
+                             Ends with READY or NOT READY (changes nothing)
+  -all [-force]              Full workflow: -validate, -install, -load-driver,
+                             -iscsi-setup, -multipath-config, -rescan, -verify
+                             (stops before changing anything if -validate fails;
+                             -force skips the validation)
+  -install                   Install required packages and log rotation
+  -load-driver               Load the HBA driver (Emulex lpfc / QLogic qla2xxx)
+  -iscsi-setup               Configure initiator, discover and log in (iSCSI only)
+  -multipath-config          Write /etc/multipath.conf, enable and reload multipathd
+  -rescan                    Rescan FC/iSCSI/SCSI buses and reload multipath maps
+
+Read-only:
+  -detect                    OS, kernel, HBAs, FC ports, detected protocol
+  -identifiers               WWPNs / IQN to register on the array
+  -fc-status                 FC port link state and speed
+  -status                    Identifiers + volumes summary
+  -volumes                   SAN multipath volumes (WWID, size, paths, fstype)
+  -verify                    Health checks (paths, controllers, multipathd, VMFS);
+                             ends with "[OK] Ready for vmex cluster" + [Warning] lines
+  -cluster-ready             Only those verdict lines (for vmexcluster -validate):
+                             exit 0 = ready (warnings allowed), 1 = not ready
+  -monitor                   SAN health now (sessions, FC ports, paths, volumes);
+                             warns on change - normally run by the timer
+  -troubleshoot [IP|card ...]
+                             When a portal does not answer: listens on the cable,
+                             asks every address of the subnet, checks the card
+                             (errors, duplicate IP, received packets), explains
+                             what is on the other end and how to fix it
+                             (default: ISCSI_PORTALS)
+  -iscsi-test [IP ...]       Check iSCSI portals step by step: route, link, ARP,
+                             ping, port 3260 and which array target answers
+                             (default: the configured ISCSI_PORTALS)
+
+Monitoring (switched on by -all):
+  -monitor-enable [SECONDS]  Check every SECONDS (default 60); on a change: message
+                             to logged-in users, journal, login banner, health.json
+  -monitor-disable           Switch monitoring off
+
+Configuration ($CONFIG_FILE):
+  -config                    Show current settings
+  -init-config [-force]      Write default settings
+  -config-set KEY VALUE      Change one setting, e.g.
+                               -config-set PROTOCOL fc
+                               -config-set ISCSI_PORTALS "10.0.1.10 10.0.2.10"
+                               -config-set EXPECTED_VOLUMES 1
+  -alias-set WWID ALIAS      Name a volume (same name on every host)
+  -alias-remove WWID         Remove a volume name
+
+Logs:
+  -logs [COUNT] [RUN_ID]     Last log events (all runs, or one run)
+  -runs [COUNT]              Recent runs with command, result and duration
+
+Bash Tab completion:
+  -installautocomplete       Install it to $COMPLETION_DIR/$TOOL_NAME
+
+  -help                      This help
+  -version                   Tool version and last change
+
+Options (combine with any command):
+  -json                      Result as one JSON object on stdout; progress as
+                             JSON lines on stderr (for a UI)
+  -dry-run                   Show and log what would change, change nothing
+  -verbose                   Show DEBUG events and command output on the console
+  -quiet                     Console shows warnings and errors only
+  -config-file FILE          Use another config file (or env VMEXSANCONNECT_CONFIG)
+
+"--" works as well as "-" (e.g. --verify), and the older plain words (verify) still work.
+Logs: \$LOG_DIR/vmexsanconnect.log (text) and \$LOG_DIR/vmexsanconnect.jsonl (JSON lines),
+      default LOG_DIR=/var/log/vmex. Every event carries a run_id.
+Exit codes: 0 ok, 1 error, 2 warnings, 3 usage error, 4 another run active
+EOF
+}
+
+###############################################################################
+# Run lifecycle
+###############################################################################
+finish() {
+  local rc=$EXIT_CODE
+  if (( rc == 0 )); then
+    if (( ${#ERRORS[@]} > 0 )); then rc=1
+    elif (( ${#WARNINGS[@]} > 0 )); then rc=2; fi
+  fi
+  local dur=$(( $(date +%s%3N) - RUN_START_MS ))
+  if (( ! NO_RUN_LOG )); then
+    log INFO run_end "Run finished: command=$COMMAND exit=$rc warnings=${#WARNINGS[@]} errors=${#ERRORS[@]} duration=${dur}ms" \
+      exit_code="$rc" warnings="${#WARNINGS[@]}" errors="${#ERRORS[@]}" duration_ms="$dur" dry_run="$DRY_RUN"
+  fi
+  if (( JSON_OUT )) && (( ! SKIP_RESULT )); then
+    printf '{"ok":%s,"exit_code":%s,"command":%s,"args":%s,"run_id":%s,"host":%s,"version":%s,"dry_run":%s,"duration_ms":%s,"log_file":%s,"jsonl_file":%s,"warnings":%s,"errors":%s,"data":%s}\n' \
+      "$(jbool "$(( rc == 0 || rc == 2 ))")" "$rc" "$(jstr "$COMMAND")" "$(jarr_str "${ARGS[@]}")" "$(jstr "$RUN_ID")" \
+      "$(jstr "$HOST_NAME")" "$(jstr "$VERSION")" "$(jbool "$DRY_RUN")" "$dur" "$(jstr "$LOG_FILE")" "$(jstr "$JSONL_FILE")" \
+      "$(jarr_str "${WARNINGS[@]}")" "$(jarr_str "${ERRORS[@]}")" "${RESULT_DATA:-null}"
+  elif (( ! JSON_OUT )) && (( ! NO_RUN_LOG )) && (( ! NO_RUN_LOG_SUMMARY )) && [[ -n $COMMAND ]]; then
+    case $rc in
+      0) printf '%sDone.%s\n' "$C_OK" "$C_OFF" >&2 ;;
+      2) printf '%sDone with %d warning(s).%s Run id %s, log %s\n' "$C_WRN" "${#WARNINGS[@]}" "$C_OFF" "$RUN_ID" "${LOG_FILE:-console}" >&2 ;;
+      *) printf '%sFailed (exit %d).%s Run id %s, log %s\n' "$C_ERR" "$rc" "$C_OFF" "$RUN_ID" "${LOG_FILE:-console}" >&2 ;;
+    esac
+  fi
+  exit "$rc"
+}
+
+acquire_lock() {
+  exec 9>"$LOCK_FILE" || fail "Cannot open lock file $LOCK_FILE"
+  if ! flock -n 9; then
+    EXIT_CODE=4
+    err_ "Another $PROG run is in progress (lock $LOCK_FILE)"
+    exit 4
+  fi
+  log DEBUG lock "Lock acquired" lock="$LOCK_FILE"
+}
+
+###############################################################################
+# Main
+###############################################################################
+# Every command and option is a switch: -verify, -json ... ("--verify" works too).
+# The older plain words (verify, show-config ...) are still accepted.
+KNOWN_COMMANDS=" cluster-ready troubleshoot monitor monitor-enable monitor-disable validate iscsi-test all install load-driver iscsi-setup multipath-config rescan detect identifiers fc-status status volumes verify show-config init-config config-set alias-set alias-remove logs runs install-completion help version "
+usage_error() { printf '%s (see: %s -help)\n' "$1" "$PROG" >&2; exit 3; }
+set_command() {
+  if [[ -n $COMMAND && $COMMAND != "$1" ]]; then usage_error "Only one command per run: -$COMMAND and -$1"; fi
+  COMMAND=$1
+}
+while (( $# )); do
+  case $1 in
+    --) shift; ARGS+=("$@"); break ;;
+    -*)
+      sw=${1#-}; sw=${sw#-}; has_val=0; val=""
+      if [[ $sw == *=* ]]; then val=${sw#*=}; sw=${sw%%=*}; has_val=1; fi
+      case $sw in
+        json)          JSON_OUT=1 ;;
+        dry-run)       DRY_RUN=1 ;;
+        v|verbose)     VERBOSE=1 ;;
+        q|quiet)       QUIET=1 ;;
+        force)         ARGS+=(--force) ;;
+        config-file)
+          if (( has_val )); then CONFIG_FILE=$val; else CONFIG_FILE=${2:-}; shift; fi
+          [[ -n $CONFIG_FILE ]] || usage_error "-config-file needs a file name" ;;
+        h|help)        set_command help ;;
+        config)        set_command show-config ;;
+        installautocomplete|install-autocomplete) set_command install-completion ;;
+        *)
+          if [[ $KNOWN_COMMANDS == *" $sw "* ]]; then set_command "$sw"
+          else usage_error "Unknown switch: $1"; fi ;;
+      esac ;;
+    *)
+      if [[ -z $COMMAND && $KNOWN_COMMANDS == *" $1 "* ]]; then COMMAND=$1
+      else ARGS+=("$1"); fi ;;
+  esac
+  shift
+done
+COMMAND=${COMMAND:-help}
+
+case $COMMAND in
+  help) usage; exit 0 ;;
+  version)
+    if (( JSON_OUT )); then
+      printf '{"tool":%s,"version":%s,"last_change":%s}\n' "$(jstr "$TOOL_NAME")" "$(jstr "$TOOL_VERSION")" "$(jstr "$TOOL_LAST_CHANGE")"
+    else
+      echo "$TOOL_NAME version $TOOL_VERSION"
+      echo "Last change: $TOOL_LAST_CHANGE"
+    fi
+    exit 0 ;;
+esac
+
+trap finish EXIT
+if [[ $COMMAND == cluster-ready ]]; then CONSOLE_OFF=1; NO_RUN_LOG_SUMMARY=1; fi
+if [[ $COMMAND == logs || $COMMAND == runs || $COMMAND == monitor ]]; then NO_RUN_LOG=1; fi
+
+set_defaults
+CONFIG_LOADED="defaults"
+if [[ $EUID -ne 0 ]]; then fail "Run as root (sudo $PROG -$COMMAND)"; fi
+load_config
+init_logging
+
+if (( ! NO_RUN_LOG )); then
+  log INFO run_start "Run started: $PROG $COMMAND ${ARGS[*]:-}" version="$VERSION" \
+    args="${ARGS[*]:-}" user="${SUDO_USER:-root}" config="$CONFIG_FILE" config_source="$CONFIG_LOADED" \
+    dry_run="$DRY_RUN" json="$JSON_OUT"
+fi
+
+if (( ! DRY_RUN )); then finish_log_migration; fi
+if [[ $MUTATING_COMMANDS == *" $COMMAND "* ]]; then acquire_lock; fi
+
+case $COMMAND in
+  all)              cmd_all ;;
+  validate)         cmd_validate ;;
+  monitor)          cmd_monitor ;;
+  monitor-enable)   cmd_monitor_enable ;;
+  monitor-disable)  cmd_monitor_disable ;;
+  install)          cmd_install ;;
+  load-driver)      cmd_load_driver ;;
+  iscsi-setup)      cmd_iscsi_setup ;;
+  iscsi-test)       cmd_iscsi_test ;;
+  troubleshoot)     cmd_troubleshoot ;;
+  cluster-ready)    cmd_cluster_ready ;;
+  multipath-config) cmd_multipath_config ;;
+  rescan)           cmd_rescan ;;
+  detect)           cmd_detect ;;
+  identifiers)      cmd_identifiers ;;
+  fc-status)        cmd_fc_status ;;
+  status)           cmd_status ;;
+  volumes)          cmd_volumes ;;
+  verify)           cmd_verify ;;
+  show-config)      cmd_show_config ;;
+  init-config)      cmd_init_config ;;
+  config-set)       cmd_config_set ;;
+  alias-set)        cmd_alias_set ;;
+  alias-remove)     cmd_alias_remove ;;
+  logs)             cmd_logs ;;
+  runs)             cmd_runs ;;
+  install-completion) cmd_install_completion ;;
+  *) EXIT_CODE=3; err_ "Unknown command '$COMMAND' (see: $PROG -help)" ;;
+esac

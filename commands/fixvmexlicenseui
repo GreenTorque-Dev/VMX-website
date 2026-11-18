@@ -1,0 +1,640 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  VMeX License UI Fix Tool  (fixvmexlicenseui)
+#  Version: 1.6
+#
+#  Validates the VMX License Management web UI (Flask/gunicorn on port 5000)
+#  and repairs common problems so the UI becomes reachable again.
+#
+#  Usage:
+#     sudo fixvmexlicenseui              # check and auto-fix
+#     sudo fixvmexlicenseui --check      # check only, change nothing
+#     sudo fixvmexlicenseui --restart    # only restart the Flask web app
+#     sudo fixvmexlicenseui --no-restart # check and fix, skip final restart
+#     fixvmexlicenseui --version         # show name and version
+#     fixvmexlicenseui --help            # show usage
+#
+#  Install as a command (with Tab autocomplete):
+#     sudo bash fixvmexlicenseui --installautocomplete
+#  Then open a new shell, type "fixvmexlicenseui --" and press Tab.
+#
+#  Exit codes:  0 = UI is up   1 = UI still down after fixes   2 = usage/env error
+#
+#  Change history (raise the version by 0.1 for every change):
+#    1.6  2026-11-02  Scheduled tasks shown with neutral labels (no paths
+#                     or commands in the output or log)
+#    1.5  2026-10-30  --install renamed to --installautocomplete;
+#                     detailed --help for technicians
+#    1.4  2026-10-30  App code check: finds names app.py imports that are
+#                     missing; restores LICENSE_FILE in utils.py
+#    1.3  2026-10-30  Shows why the web app will not start (gunicorn
+#                     error log, app import test, stale PID file)
+#    1.2  2026-10-30  Fixed "SCHEME: unbound variable" crash; restarts the
+#                     web app at the end; added --restart and --no-restart
+#    1.1  2026-10-30  Tab autocomplete (--install, --uninstall, --completion)
+#    1.0  2026-10-30  First version: check and fix the license web UI
+# =============================================================================
+set -uo pipefail
+
+TOOL_NAME="VMeX License UI Fix Tool"
+TOOL_CMD="fixvmexlicenseui"
+TOOL_VERSION="1.6"   # keep in sync with "Version:" and the change history above
+
+# ----------------------------- Configuration ---------------------------------
+PROJECT_DIR="${PROJECT_DIR:-/opt/VMX-10.0.0}"
+START_WEBAPP_SCRIPT="${START_WEBAPP_SCRIPT:-${PROJECT_DIR}/start_license_webapp.sh}"
+LICENSE_CHECK_SCRIPT="${PROJECT_DIR}/vmx/pkg/license/check_license.py"
+APP_PORT="${APP_PORT:-5000}"
+APP_PATH="${APP_PATH:-/}"                 # URL path of the license page
+STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-60}"  # seconds to wait after (re)start
+LOG_FILE="${LOG_FILE:-/var/log/vmx_license_webapp_check.log}"
+WEBAPP_LOG="${WEBAPP_LOG:-${PROJECT_DIR}/vmx/pkg/license/webapp.log}"
+# Values used by start_license_webapp.sh
+FLASK_APP_DIR="${FLASK_APP_DIR:-${PROJECT_DIR}/vmx/pkg/license}"
+GUNICORN_BIN="${GUNICORN_BIN:-/usr/local/bin/gunicorn}"
+GUNICORN_ERROR_LOG="${GUNICORN_ERROR_LOG:-/var/log/license_webapp_error.log}"
+GUNICORN_PID_FILE="${GUNICORN_PID_FILE:-/var/run/license_webapp.pid}"
+
+LICENSE_CRON="*/15 * * * * /usr/bin/python3 ${LICENSE_CHECK_SCRIPT} >> ${PROJECT_DIR}/vmx/pkg/license/cron.log 2>&1"
+WEBAPP_CRON="@reboot sleep 30 && ${START_WEBAPP_SCRIPT}"
+
+# Python module -> pip requirement (same pins as the deploy script)
+declare -A PY_PKGS=(
+    [cryptlex.lexactivator]="cryptlex.lexactivator==3.35.1"
+    [flask]="Flask==3.1.2"
+    [flask_cors]="flask-cors==6.0.1"
+    [gunicorn]="gunicorn==23.0.0"
+    [pyotp]="pyotp"
+    [qrcode]="qrcode[pil]"
+    [PIL]="qrcode[pil]"
+    [pyVmomi]="pyvmomi==8.0.3.0.1"
+    [winrm]="pywinrm==0.5.0"
+)
+
+usage() {
+    cat <<EOF
+${TOOL_NAME} v${TOOL_VERSION}
+
+Checks the License Management web page (port ${APP_PORT}) and fixes it
+when it is not reachable. Run as root.
+
+USAGE
+  ${TOOL_CMD} [option]
+
+QUICK START - license page not opening?
+  1. ${TOOL_CMD} --check      See what is wrong (changes nothing)
+  2. ${TOOL_CMD}              Fix it (check + fix + restart web app)
+  3. Look for:  RESULT: License UI is UP
+
+OPTIONS
+  (no option)    Check everything, fix problems, then restart the web app
+  --check        Check only, report problems, change nothing
+  --restart      Only restart the web app (skip the other checks)
+  --no-restart   Check and fix, but do not restart a working web app
+  --installautocomplete
+                 Install this command and Tab autocomplete (one time)
+  --uninstall    Remove this command and Tab autocomplete
+  --completion   Print the autocomplete script (advanced use)
+  --version      Show name and version
+  --help         Show this help
+
+WHAT IT CHECKS AND FIXES
+  - Python packages        reinstalls missing packages (needs internet)
+  - Start script           fixes permissions and Windows line endings
+  - App code               restores LICENSE_FILE in utils.py if missing
+  - Firewall               opens port ${APP_PORT}/tcp
+  - Scheduled tasks        re-adds the validation and auto-start tasks
+  - Web app                starts it if down, then confirms the page loads
+
+READING THE OUTPUT
+  [ OK ]  check passed          [FIX ]  problem found and fixed
+  [WARN]  needs attention       [FAIL]  problem found
+  Last line shows the result:  License UI is UP / DOWN
+
+IF IT STILL SAYS "DOWN"
+  The tool found a problem it cannot fix safely. Read the [FAIL] lines
+  above the result - they say exactly what is wrong. Common cases:
+  - "does not define it" / "different versions":
+        app.py and another .py file do not match - deploy matching files
+  - "pip install failed":
+        server has no internet - install the packages manually
+  - "bound to localhost only":
+        start script must use 0.0.0.0:${APP_PORT}
+  Send the log files below to the support / development team.
+
+LOG FILES
+  This tool:        ${LOG_FILE}
+  Web app errors:   ${GUNICORN_ERROR_LOG}
+  Start script:     ${WEBAPP_LOG}
+
+EXIT CODES
+  0 = page is UP    1 = page is still DOWN    2 = wrong usage / not root
+EOF
+}
+
+# ------------------------------ Autocomplete ---------------------------------
+INSTALL_BIN="/usr/local/bin/${TOOL_CMD}"
+COMPLETION_FILE="/etc/bash_completion.d/${TOOL_CMD}"
+TOOL_OPTIONS="--check --restart --no-restart --installautocomplete --uninstall --completion --version --help"
+
+print_completion() {
+    cat <<EOF
+# bash completion for ${TOOL_CMD} (${TOOL_NAME} v${TOOL_VERSION})
+_${TOOL_CMD}() {
+    local cur="\${COMP_WORDS[COMP_CWORD]}"
+    if (( COMP_CWORD == 1 )); then
+        COMPREPLY=( \$(compgen -W "${TOOL_OPTIONS}" -- "\$cur") )
+    else
+        COMPREPLY=()
+    fi
+}
+complete -F _${TOOL_CMD} ${TOOL_CMD}
+EOF
+}
+
+do_install() {
+    [[ $EUID -ne 0 ]] && { echo "Please run as root: sudo bash $0 --installautocomplete"; exit 2; }
+    local src
+    src="$(readlink -f "$0")"
+    if [[ "$src" != "$INSTALL_BIN" ]]; then
+        install -m 755 "$src" "$INSTALL_BIN" || { echo "Failed to install $INSTALL_BIN"; exit 1; }
+        sed -i 's/\r$//' "$INSTALL_BIN"
+    fi
+    echo "Installed command:      $INSTALL_BIN"
+    mkdir -p "$(dirname "$COMPLETION_FILE")"
+    print_completion > "$COMPLETION_FILE" && chmod 644 "$COMPLETION_FILE"
+    echo "Installed autocomplete: $COMPLETION_FILE"
+    if ! [[ -f /usr/share/bash-completion/bash_completion ]]; then
+        echo "Note: the 'bash-completion' package is not installed."
+        echo "      Install it (dnf install bash-completion / apt install bash-completion)"
+        echo "      or add this line to ~/.bashrc:  source $COMPLETION_FILE"
+    fi
+    echo "Open a new shell (or run: source $COMPLETION_FILE) to use Tab completion."
+    exit 0
+}
+
+do_uninstall() {
+    [[ $EUID -ne 0 ]] && { echo "Please run as root: sudo $TOOL_CMD --uninstall"; exit 2; }
+    rm -f "$COMPLETION_FILE" && echo "Removed $COMPLETION_FILE"
+    rm -f "$INSTALL_BIN"     && echo "Removed $INSTALL_BIN"
+    exit 0
+}
+
+CHECK_ONLY=0
+RESTART_ONLY=0
+FINAL_RESTART=1
+case "${1:-}" in
+    "")            ;;
+    --check)       CHECK_ONLY=1; FINAL_RESTART=0 ;;
+    --restart)     RESTART_ONLY=1 ;;
+    --no-restart)  FINAL_RESTART=0 ;;
+    --installautocomplete) do_install ;;
+    --uninstall)   do_uninstall ;;
+    --completion)  print_completion; exit 0 ;;
+    -v|--version)  echo "${TOOL_NAME} (${TOOL_CMD}) v${TOOL_VERSION}"; exit 0 ;;
+    -h|--help)     usage; exit 0 ;;
+    *)             usage; exit 2 ;;
+esac
+
+# ------------------------------- Helpers -------------------------------------
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+log()  { printf '%s [%s] %s\n' "$(date '+%F %T')" "$1" "$2" | tee -a "$LOG_FILE"; }
+ok()   { log " OK " "$*"; }
+warn() { log "WARN" "$*"; }
+fail() { log "FAIL" "$*"; }
+fix()  { log "FIX " "$*"; }
+
+ISSUES=0
+FIXED=0
+
+can_fix() {
+    if (( CHECK_ONLY )); then
+        warn "  -> check-only mode, not fixing"
+        return 1
+    fi
+    return 0
+}
+
+# Probes the UI over http, then https.
+# Sets globals (no subshell, so they survive the call):
+#   CODE   = HTTP status code, "000" if nothing answered
+#   SCHEME = scheme that answered (http/https), "http" if none did
+CODE="000"
+SCHEME="http"
+http_probe() {
+    local host="$1" s c
+    CODE="000"; SCHEME="http"
+    for s in http https; do
+        c=$(curl -sk -o /dev/null -m 5 -w '%{http_code}' \
+            "${s}://${host}:${APP_PORT}${APP_PATH}" 2>/dev/null)
+        c="${c:0:3}"
+        [[ "$c" =~ ^[0-9]{3}$ ]] || c="000"
+        if [[ "$c" != "000" ]]; then CODE="$c"; SCHEME="$s"; return 0; fi
+    done
+    return 1
+}
+
+# Anything except "no response" or 5xx counts as the UI being up
+# (a 302 to a login page or a 401 still means the UI is reachable).
+is_healthy_code() { [[ "$1" =~ ^[0-9]{3}$ && "$1" != "000" && "$1" -lt 500 ]]; }
+
+port_pids() {
+    ss -ltnpH "sport = :${APP_PORT}" 2>/dev/null \
+        | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u
+}
+
+port_listening() { ss -ltnH "sport = :${APP_PORT}" 2>/dev/null | grep -q .; }
+
+wait_for_ui() {
+    local i
+    for (( i=0; i<STARTUP_TIMEOUT; i+=3 )); do
+        http_probe 127.0.0.1
+        is_healthy_code "$CODE" && return 0
+        sleep 3
+    done
+    return 1
+}
+
+# ---------------------------- Web app control --------------------------------
+RESTARTED=0
+
+stop_webapp() {
+    local pids
+    pids=$(port_pids)
+    if [[ -z "$pids" ]]; then
+        log "INFO" "Web app is not running - nothing to stop"
+        return 0
+    fi
+    fix "Stopping web app on port ${APP_PORT} (PIDs: $(echo $pids))"
+    kill $pids 2>/dev/null
+    local i
+    for (( i=0; i<10; i++ )); do          # give gunicorn up to 10s to stop cleanly
+        port_listening || return 0
+        sleep 1
+    done
+    pids=$(port_pids)
+    if [[ -n "$pids" ]]; then
+        warn "Web app did not stop cleanly - forcing (kill -9)"
+        kill -9 $pids 2>/dev/null
+        sleep 2
+    fi
+}
+
+start_webapp() {
+    fix "Starting web app via ${START_WEBAPP_SCRIPT} (output -> ${WEBAPP_LOG})"
+    mkdir -p "$(dirname "$WEBAPP_LOG")"
+    # Fully detached: new session, all output to the app log, so this tool
+    # never hangs waiting on the app (e.g. when run through a pipe or cron).
+    (
+        cd "$PROJECT_DIR" || exit 1
+        exec setsid nohup "$START_WEBAPP_SCRIPT"
+    ) >>"$WEBAPP_LOG" 2>&1 </dev/null &
+    disown 2>/dev/null || true
+}
+
+# Stop, start and verify. Returns 0 if the UI is up afterwards.
+restart_webapp() {
+    stop_webapp
+    start_webapp
+    RESTARTED=1
+    if wait_for_ui; then
+        ok "Flask web app restarted - UI is UP (HTTP ${CODE})"
+        return 0
+    fi
+    fail "Flask web app still down ${STARTUP_TIMEOUT}s after restart (HTTP ${CODE})"
+    fail "Last 25 lines of ${WEBAPP_LOG}:"
+    tail -n 25 "$WEBAPP_LOG" 2>/dev/null | tee -a "$LOG_FILE"
+    diagnose_start_failure
+    return 1
+}
+
+# Find out WHY gunicorn would not stay up.
+diagnose_start_failure() {
+    log "INFO" "----- Diagnosing why the web app will not start -----"
+
+    if [[ ! -x "$GUNICORN_BIN" ]]; then
+        fail "Gunicorn not found at ${GUNICORN_BIN} (start script expects it there)"
+        local found; found=$(command -v gunicorn 2>/dev/null || true)
+        [[ -n "$found" ]] && fail "  -> gunicorn is at ${found}; fix the path in ${START_WEBAPP_SCRIPT}"
+    fi
+
+    if [[ -f "$GUNICORN_ERROR_LOG" ]]; then
+        fail "Last 30 lines of gunicorn error log ${GUNICORN_ERROR_LOG}:"
+        tail -n 30 "$GUNICORN_ERROR_LOG" | tee -a "$LOG_FILE"
+    else
+        warn "Gunicorn error log not found: ${GUNICORN_ERROR_LOG}"
+    fi
+
+    if [[ -d "$FLASK_APP_DIR" ]]; then
+        log "INFO" "Test-loading the app the way gunicorn does (import app):"
+        local out rc
+        out=$(cd "$FLASK_APP_DIR" && timeout 30 python3 -c "import app; print('app imports OK')" 2>&1)
+        rc=$?
+        if (( rc == 0 )); then
+            ok "app.py imports without errors"
+        else
+            fail "app.py fails to import (exit ${rc}) - this is why gunicorn stops:"
+            printf '%s\n' "$out" | tail -n 30 | tee -a "$LOG_FILE"
+        fi
+    fi
+
+    if [[ -f "$GUNICORN_PID_FILE" ]] && ! kill -0 "$(cat "$GUNICORN_PID_FILE" 2>/dev/null)" 2>/dev/null; then
+        warn "Stale PID file ${GUNICORN_PID_FILE} - removing"
+        (( CHECK_ONLY )) || rm -f "$GUNICORN_PID_FILE"
+    fi
+
+    if command -v getenforce >/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
+        local avc; avc=$(ausearch -m avc -ts recent 2>/dev/null | grep -iE 'gunicorn|python|5000' | tail -n 5)
+        [[ -n "$avc" ]] && { fail "SELinux denials found:"; printf '%s\n' "$avc" | tee -a "$LOG_FILE"; }
+    fi
+    log "INFO" "----- End of diagnosis -----"
+}
+
+# ---------------------------- App code check ---------------------------------
+# Known constants that app.py needs from a local module, and the line that
+# restores each one. Used when a newer module version drops a name.
+#   key   = module.NAME
+#   value = Python line to add to that module
+declare -A KNOWN_CODE_FIXES=(
+    [utils.LICENSE_FILE]="LICENSE_FILE = os.path.join(BASE_PATH, 'license.key')"
+)
+
+# Lists every name app.py imports from its own local modules that is missing.
+# Output lines: "MISSING <module> <name>" or "BROKEN <module> <error>"
+app_import_report() {
+    ( cd "$FLASK_APP_DIR" && timeout 60 python3 - 2>/dev/null <<'PYEOF'
+import ast, importlib, io, os, sys, contextlib
+sys.path.insert(0, os.getcwd())
+tree = ast.parse(open('app.py').read())
+for node in ast.walk(tree):
+    if not (isinstance(node, ast.ImportFrom) and node.module and node.level == 0):
+        continue
+    if not os.path.exists(node.module.replace('.', '/') + '.py'):
+        continue                      # not a local module (flask, cryptlex, ...)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            mod = importlib.import_module(node.module)
+    except Exception as e:
+        print(f"BROKEN {node.module} {type(e).__name__}: {e}")
+        continue
+    for alias in node.names:
+        if alias.name != '*' and not hasattr(mod, alias.name):
+            print(f"MISSING {node.module} {alias.name}")
+PYEOF
+    )
+}
+
+# Adds a known missing constant back into its module (with a backup).
+apply_code_fix() {
+    local module="$1" name="$2" line="$3"
+    local file="${FLASK_APP_DIR}/${module}.py"
+    local backup="${file}.bak-$(date +%Y%m%d%H%M%S)"
+    cp -p "$file" "$backup" || { fail "Could not back up ${file}"; return 1; }
+    if grep -q '^STATUS_FILE = ' "$file"; then
+        sed -i "/^STATUS_FILE = /i ${line}" "$file"      # next to the other paths
+    elif grep -q '^BASE_PATH = ' "$file"; then
+        sed -i "/^BASE_PATH = /a ${line}" "$file"
+    else
+        printf '\n%s\n' "$line" >> "$file"
+    fi
+    if grep -q "^${name} = " "$file"; then
+        fix "Added to ${module}.py: ${line}  (backup: ${backup})"
+        warn "  -> Ask the VMX code maintainer to add this line to ${module}.py in the"
+        warn "     source code, or the next update will remove it again"
+        return 0
+    fi
+    fail "Could not add ${name} to ${file} - restoring backup"
+    cp -p "$backup" "$file"
+    return 1
+}
+
+# Checks app.py against its local modules, fixes known gaps, and confirms
+# the app loads the way gunicorn loads it. Returns 0 if app.py imports OK.
+check_app_code() {
+    if [[ ! -f "${FLASK_APP_DIR}/app.py" ]]; then
+        fail "Flask app not found: ${FLASK_APP_DIR}/app.py"
+        ((ISSUES++)); return 1
+    fi
+
+    local report kind module rest key unknown=0
+    report=$(app_import_report)
+    while read -r kind module rest; do
+        [[ -z "$kind" ]] && continue
+        if [[ "$kind" == "BROKEN" ]]; then
+            fail "Module ${module}.py fails to load: ${rest}"
+            ((ISSUES++)); unknown=1
+            continue
+        fi
+        key="${module}.${rest}"
+        fail "app.py imports '${rest}' from ${module}.py, but ${module}.py does not define it"
+        ((ISSUES++))
+        if [[ -n "${KNOWN_CODE_FIXES[$key]:-}" ]]; then
+            if can_fix; then
+                apply_code_fix "$module" "$rest" "${KNOWN_CODE_FIXES[$key]}" && ((FIXED++))
+            fi
+        else
+            fail "  -> no automatic fix known for ${key}; app.py and ${module}.py are"
+            fail "     from different versions - deploy matching versions of both files"
+            unknown=1
+        fi
+    done <<<"$report"
+
+    # Final proof: load the app exactly as gunicorn does
+    local out
+    if out=$(cd "$FLASK_APP_DIR" && timeout 60 python3 -c "import app" 2>&1); then
+        ok "App code check passed - app.py loads without errors"
+        return 0
+    fi
+    fail "app.py still fails to load - gunicorn cannot start until this is fixed:"
+    printf '%s\n' "$out" | tail -n 15 | tee -a "$LOG_FILE"
+    (( unknown )) || ((ISSUES++))
+    return 1
+}
+
+[[ $EUID -ne 0 ]] && { echo "Please run as root (sudo)."; exit 2; }
+command -v curl >/dev/null || { echo "curl is required."; exit 2; }
+command -v ss   >/dev/null || { echo "ss (iproute) is required."; exit 2; }
+
+# ----------------------- --restart: restart only -----------------------------
+if (( RESTART_ONLY )); then
+    log "INFO" "===== ${TOOL_NAME} v${TOOL_VERSION} - restart requested (port ${APP_PORT}) ====="
+    [[ -f "$START_WEBAPP_SCRIPT" ]] || { fail "Start script not found: $START_WEBAPP_SCRIPT"; exit 1; }
+    check_app_code      # fixes a known code mismatch before starting
+    restart_webapp && exit 0 || exit 1
+fi
+
+log "INFO" "===== ${TOOL_NAME} v${TOOL_VERSION} - check started (port ${APP_PORT}) ====="
+
+# ---------------------- 1. Python dependencies -------------------------------
+MISSING_REQS=()
+for mod in "${!PY_PKGS[@]}"; do
+    if ! python3 -c "import ${mod}" >/dev/null 2>&1; then
+        fail "Python module '${mod}' cannot be imported"
+        MISSING_REQS+=("${PY_PKGS[$mod]}")
+    fi
+done
+if (( ${#MISSING_REQS[@]} )); then
+    ((ISSUES++))
+    if can_fix; then
+        mapfile -t MISSING_REQS < <(printf '%s\n' "${MISSING_REQS[@]}" | sort -u)
+        fix "Installing: ${MISSING_REQS[*]}"
+        if pip3 install --break-system-packages "${MISSING_REQS[@]}" >>"$LOG_FILE" 2>&1; then
+            ((FIXED++)); ok "Python packages installed"
+        else
+            fail "pip install failed - see $LOG_FILE (no internet / repo access?)"
+        fi
+    fi
+else
+    ok "All required Python modules import correctly"
+fi
+
+# ---------------------- 2. Start script --------------------------------------
+if [[ ! -f "$START_WEBAPP_SCRIPT" ]]; then
+    fail "Start script not found: $START_WEBAPP_SCRIPT"
+    fail "Cannot start the UI without it - aborting."
+    exit 1
+fi
+if [[ ! -x "$START_WEBAPP_SCRIPT" ]]; then
+    fail "Start script is not executable"
+    ((ISSUES++))
+    if can_fix; then chmod +x "$START_WEBAPP_SCRIPT" && { fix "chmod +x applied"; ((FIXED++)); }; fi
+else
+    ok "Start script present and executable"
+fi
+# Windows line endings break shebangs silently
+if grep -q $'\r' "$START_WEBAPP_SCRIPT"; then
+    fail "Start script has Windows (CRLF) line endings"
+    ((ISSUES++))
+    if can_fix; then sed -i 's/\r$//' "$START_WEBAPP_SCRIPT" && { fix "Converted to LF"; ((FIXED++)); }; fi
+fi
+
+# ---------------------- 3. App code check ------------------------------------
+check_app_code
+
+# ---------------------- 4. Firewall ------------------------------------------
+if systemctl is-active --quiet firewalld 2>/dev/null; then
+    if firewall-cmd --query-port="${APP_PORT}/tcp" >/dev/null 2>&1; then
+        ok "firewalld (runtime): port ${APP_PORT}/tcp open"
+    else
+        fail "firewalld (runtime): port ${APP_PORT}/tcp is CLOSED"
+        ((ISSUES++))
+        if can_fix; then
+            firewall-cmd --permanent --add-port="${APP_PORT}/tcp" >/dev/null \
+              && firewall-cmd --reload >/dev/null \
+              && { fix "Opened ${APP_PORT}/tcp (permanent + reload)"; ((FIXED++)); }
+        fi
+    fi
+    if ! firewall-cmd --permanent --query-port="${APP_PORT}/tcp" >/dev/null 2>&1; then
+        warn "Port open at runtime but not permanently - would be lost on reload"
+        if can_fix; then
+            firewall-cmd --permanent --add-port="${APP_PORT}/tcp" >/dev/null && fix "Made ${APP_PORT}/tcp permanent"
+        fi
+    fi
+else
+    warn "firewalld is not running - skipping runtime firewall check"
+    if command -v iptables >/dev/null && iptables -S INPUT 2>/dev/null | grep -qE '^-P INPUT (DROP|REJECT)'; then
+        warn "iptables INPUT policy is DROP/REJECT - make sure ${APP_PORT}/tcp is allowed"
+    fi
+fi
+
+# ---------------------- 5. Cron entries --------------------------------------
+CURRENT_CRON="$(crontab -l 2>/dev/null || true)"
+# Neutral labels for the output, so the log does not show commands or paths
+declare -A CRON_LABELS=(
+    ["$WEBAPP_CRON"]="Scheduled task A (service auto-start)"
+    ["$LICENSE_CRON"]="Scheduled task B (periodic validation)"
+)
+for entry in "$WEBAPP_CRON" "$LICENSE_CRON"; do
+    label="${CRON_LABELS[$entry]}"
+    if grep -qF -- "$entry" <<<"$CURRENT_CRON"; then
+        ok "${label}: present"
+    else
+        fail "${label}: missing"
+        ((ISSUES++))
+        if can_fix; then
+            CURRENT_CRON="$(printf '%s\n%s' "$CURRENT_CRON" "$entry" | sed '/^$/d')"
+            printf '%s\n' "$CURRENT_CRON" | crontab - && { fix "${label}: restored"; ((FIXED++)); }
+        fi
+    fi
+done
+# Duplicate-entry guard (deploy script appends every time it runs)
+DUPES=$(crontab -l 2>/dev/null | sort | uniq -d | grep -c . || true)
+if (( DUPES > 0 )); then
+    warn "${DUPES} duplicate scheduled task(s) found"
+    if can_fix; then
+        crontab -l 2>/dev/null | awk '!seen[$0]++' | crontab - && fix "Removed duplicate scheduled tasks"
+    fi
+fi
+systemctl is-active --quiet crond 2>/dev/null || systemctl is-active --quiet cron 2>/dev/null \
+    && ok "Scheduler service running" \
+    || warn "Scheduler service is not running - auto-start will not work"
+
+# ---------------------- 6. The web UI itself ---------------------------------
+http_probe 127.0.0.1
+if is_healthy_code "$CODE"; then
+    ok "License UI responding locally: ${SCHEME}://127.0.0.1:${APP_PORT}${APP_PATH} (HTTP ${CODE})"
+else
+    fail "License UI NOT responding locally (HTTP ${CODE})"
+    ((ISSUES++))
+    if port_listening; then
+        warn "Something is listening on ${APP_PORT} but not serving correctly (hung/broken worker)"
+        ss -ltnpH "sport = :${APP_PORT}" | tee -a "$LOG_FILE"
+    else
+        warn "Nothing is listening on port ${APP_PORT}"
+    fi
+
+    if can_fix; then
+        restart_webapp && ((FIXED++))
+    fi
+fi
+
+# ---------------------- 7. Reachability from the network ---------------------
+if port_listening; then
+    if ss -ltnH "sport = :${APP_PORT}" | awk '{print $4}' | grep -qE '^(127\.0\.0\.1|\[::1\]):'; then
+        fail "App is bound to localhost only - other machines cannot reach it"
+        fail "  -> bind gunicorn/Flask to 0.0.0.0:${APP_PORT} in ${START_WEBAPP_SCRIPT}"
+        ((ISSUES++))
+    fi
+    HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [[ -n "$HOST_IP" ]]; then
+        http_probe "$HOST_IP"
+        if is_healthy_code "$CODE"; then
+            ok "Reachable on host IP: ${SCHEME}://${HOST_IP}:${APP_PORT}${APP_PATH} (HTTP ${CODE})"
+        else
+            fail "Not reachable on host IP ${HOST_IP}:${APP_PORT} (HTTP ${CODE})"
+        fi
+    fi
+fi
+
+# SELinux hint (only informational)
+if command -v getenforce >/dev/null && [[ "$(getenforce)" == "Enforcing" ]]; then
+    if command -v ausearch >/dev/null && ausearch -m avc -ts recent 2>/dev/null | grep -q "${APP_PORT}"; then
+        warn "Recent SELinux denials mention port ${APP_PORT} - check: ausearch -m avc -ts recent"
+    fi
+fi
+
+# ---------------------- 8. Final Flask web app restart -----------------------
+# Restart at the end so any fixes above (packages, firewall, start script)
+# take effect. Skipped if the app was already restarted in step 6, or with
+# --check / --no-restart.
+if (( FINAL_RESTART )); then
+    if (( RESTARTED )); then
+        log "INFO" "Final restart skipped - web app was already restarted during this run"
+    else
+        log "INFO" "Final step: restarting Flask web app"
+        restart_webapp || ((ISSUES++))
+    fi
+else
+    log "INFO" "Final restart skipped (--check or --no-restart)"
+fi
+
+# ---------------------- Summary ----------------------------------------------
+http_probe 127.0.0.1; FINAL="$CODE"
+log "INFO" "Issues found: ${ISSUES}, fixes applied: ${FIXED}"
+if is_healthy_code "$FINAL"; then
+    log "INFO" "RESULT: License UI is UP (HTTP ${FINAL})"
+    exit 0
+else
+    log "INFO" "RESULT: License UI is DOWN (HTTP ${FINAL}) - see ${LOG_FILE}"
+    exit 1
+fi

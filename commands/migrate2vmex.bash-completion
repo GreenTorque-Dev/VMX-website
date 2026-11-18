@@ -1,0 +1,100 @@
+# bash completion for migrate2vmex - installed by: migrate2vmex -installautocomplete
+
+# VM names from the ESXi host given with -sourcehost (SSH key login, cached for 5 minutes)
+_migrate2vmex_vms() {
+  local host=$1 user=${2:-root} port=${3:-22} key=$4 cache now
+  [[ -n $host ]] || return 0
+  if [[ -z $key ]]; then
+    for key in /root/.ssh/migrate2vmex_rsa /root/.ssh/esxi2kvm_rsa ~/.ssh/migrate2vmex_rsa; do [[ -r $key ]] && break; done
+  fi
+  [[ -r $key ]] || return 0
+  cache="${TMPDIR:-/tmp}/.migrate2vmex-vms-$UID-$host"
+  now=$(date +%s)
+  if [[ ! -s $cache ]] || (( now - $(stat -c %Y "$cache" 2>/dev/null || echo 0) > 300 )); then
+    timeout 8 ssh -n -i "$key" -p "$port" -o BatchMode=yes -o ConnectTimeout=4 \
+        -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR "$user@$host" \
+        'vim-cmd vmsvc/getallvms 2>/dev/null' 2>/dev/null \
+      | awk 'NR > 1 && $1 ~ /^[0-9]+$/ { line = $0; sub(/^[0-9]+[ \t]+/, "", line); sub(/[ \t]+\[.*$/, "", line); print line; print $1 }' \
+      >"$cache.$$" 2>/dev/null && mv -f "$cache.$$" "$cache" 2>/dev/null
+    rm -f "$cache.$$" 2>/dev/null
+  fi
+  [[ -s $cache ]] && cat "$cache"
+}
+
+_migrate2vmex() {
+  local cur prev words cword
+  if declare -F _init_completion >/dev/null; then
+    _init_completion -n = || return
+  else
+    cur=${COMP_WORDS[COMP_CWORD]}; prev=${COMP_WORDS[COMP_CWORD-1]}; words=("${COMP_WORDS[@]}"); cword=$COMP_CWORD
+  fi
+
+  local opts="-interactive -setup -list -vm -all
+    -sourcehost -user -port -key
+    -method -no-fallback -pool -target-dir -format -min-free -skip-space-check
+    -target-name -v2v-arg -virtio-win -keep-virtio -force-in-transit
+    -stream-libdir -stream-thumbprint -stream-transports -stream-config -stream-tarball -stream-url -esxi-password-file
+    -san-portal -san-target -san-cleanup
+    -network -bridge -net-map -no-keep-mac
+    -shutdown -force-off -shutdown-timeout -consolidate -warm -cutover
+    -skip-rdm -no-compress -verify -start -autostart -dry-run -yes
+    -log-dir -debug -ignore-os -help"
+
+  # host/user/port/key already on the command line (for --vm lookups)
+  # options are written with one dash (-pool); two dashes are accepted too
+  _m2v_opt() { if [[ $1 == -[A-Za-z]?* && $1 != --* ]]; then printf -- '-%s' "$1"; else printf '%s' "$1"; fi; }
+  local i host="" user="" port="" key=""
+  for ((i = 1; i < cword; i++)); do
+    case $(_m2v_opt "${words[i]}") in
+      -sourcehost|--sourcehost|-H|--host) host=${words[i+1]} ;;
+      -u|--user) user=${words[i+1]} ;;
+      -p|--port) port=${words[i+1]} ;;
+      -k|--key)  key=${words[i+1]} ;;
+    esac
+  done
+
+  case $(_m2v_opt "$prev") in
+    --method)            COMPREPLY=($(compgen -W "auto copy stream vmfs v2v raw" -- "$cur")); return ;;
+    --format)            COMPREPLY=($(compgen -W "qcow2 raw" -- "$cur")); return ;;
+    --cutover)           COMPREPLY=($(compgen -W "ask auto" -- "$cur")); return ;;
+    --stream-transports|--vddk-transports) COMPREPLY=($(compgen -W "nbd nbdssl nbd:nbdssl" -- "$cur")); return ;;
+    --pool)
+      COMPREPLY=($(compgen -W "$(virsh -q pool-list --all --name 2>/dev/null)" -- "$cur")); return ;;
+    --network)
+      COMPREPLY=($(compgen -W "$(virsh -q net-list --all --name 2>/dev/null)" -- "$cur")); return ;;
+    --bridge)
+      local b brs=""
+      for b in /sys/class/net/*/bridge; do [[ -e $b ]] && brs+=" $(basename "${b%/bridge}")"; done
+      COMPREPLY=($(compgen -W "$brs" -- "$cur")); return ;;
+    -sourcehost|--sourcehost|-H|--host|--san-portal)
+      local hs
+      hs=$(awk '{ split($1, a, ","); for (i in a) { h = a[i]; sub(/^\[/, "", h); sub(/\]:.*$/, "", h); if (h !~ /^\|/) print h } }' \
+             ~/.ssh/known_hosts /root/.ssh/known_hosts 2>/dev/null | sort -u)
+      COMPREPLY=($(compgen -W "$hs" -- "$cur")); return ;;
+    -u|--user)           COMPREPLY=($(compgen -W "root" -- "$cur")); return ;;
+    -p|--port)           COMPREPLY=($(compgen -W "22" -- "$cur")); return ;;
+    --vm)
+      local n c=${cur//\\/}; c=${c#[\"\']}
+      while IFS= read -r n; do
+        [[ -n $n && $n == "$c"* ]] && COMPREPLY+=("$(printf '%q' "$n")")
+      done < <(_migrate2vmex_vms "$host" "$user" "$port" "$key")
+      return ;;
+    --stream-tarball|--vddk-tarball)
+      COMPREPLY=($(compgen -f -X '!*.tar.gz' -- "$cur") $(compgen -d -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    -k|--key|--stream-config|--vddk-config|--esxi-password-file|--virtio-win)
+      COMPREPLY=($(compgen -f -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    --target-dir|--stream-libdir|--vddk-libdir|--log-dir)
+      COMPREPLY=($(compgen -d -- "$cur")); compopt -o filenames 2>/dev/null; return ;;
+    --stream-url|--vddk-url|--min-free|--shutdown-timeout|--target-name|--v2v-arg|--stream-thumbprint|--vddk-thumbprint|--san-target|--net-map)
+      return ;;   # free text
+  esac
+
+  if [[ $cur == --* ]]; then   # two dashes typed: offer the same options with two dashes
+    COMPREPLY=($(compgen -W "$(printf -- '-%s ' $opts)" -- "$cur"))
+  else
+    COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+  fi
+}
+
+complete -F _migrate2vmex migrate2vmex
+complete -F _migrate2vmex ./migrate2vmex 2>/dev/null || true

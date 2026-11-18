@@ -1,0 +1,168 @@
+# =============================================================================
+#  Tool        : vmexsanconnect.bash-completion
+#  Description : Bash Tab completion for the vmexsanconnect command
+#  Version     : 1.10  (matches vmexsanconnect 1.13)
+#  Last change : 1.10 (2026-11-16) - New switch -cluster-ready.
+# =============================================================================
+#
+#  Versioning: bump the version on every change and update "Last change".
+#  When vmexsanconnect gets a new command or option, add it here too.
+#
+#  CHANGELOG
+#  ---------
+#  1.10 2026-11-16  -cluster-ready.
+#  1.9  2026-11-16  -troubleshoot, completing ISCSI_PORTALS and network card names.
+#  1.8  2026-11-15  -monitor, -monitor-enable (offers 30 60 120 300), -monitor-disable.
+#  1.7  2026-11-15  -validate; -force after -all (skips the validation).
+#  1.6  2026-11-15  -iscsi-test, completing the ISCSI_PORTALS from the config.
+#  1.5  2026-11-15  WWID completion covers IBM 2145 arrays as well as Lenovo DE-Series.
+#  1.4  2026-11-11  All commands and options completed as single-dash switches, like
+#                   vmexhealthcheck: -all -verify -volumes -config -json -dry-run ...
+#                   Options are still offered after a command switch; arguments
+#                   (config keys, WWIDs, run IDs) are counted correctly after options.
+#  1.3  2026-11-03  Install location /usr/share/bash-completion/completions/vmexsanconnect
+#                   (file must be named exactly like the command there). New words:
+#                   install-completion, --installautocomplete. This file is now also
+#                   built into vmexsanconnect, which installs it.
+#  1.2  2026-10-31  Run ID completion reads logs from /var/log/vmex/ (or LOG_DIR).
+#  1.1  2026-10-31  Install location changed to /etc/bash_completion.d/.
+#  1.0  2026-10-31  First release.
+#
+#  Install:  vmexsanconnect -installautocomplete
+#     (or by hand: install -m 644 vmexsanconnect.bash-completion \
+#                  /usr/share/bash-completion/completions/vmexsanconnect)
+#  Loaded automatically the first time Tab is pressed after "vmexsanconnect"
+#  in a NEW bash shell (needs the bash-completion package).
+# -----------------------------------------------------------------------------
+
+_vmexsanconnect_wwids() {
+    # WWIDs of SAN volumes (DE-Series, IBM 2145) visible to multipath, plus WWIDs in the config
+    {
+        multipath -ll 2>/dev/null | awk '/LENOVO,DE_Series|IBM,2145/ { w = $1; if ($2 ~ /^\(/) { w = $2; gsub(/[()]/, "", w) } print w }'
+        sed -n 's/.*\[\([0-9a-fA-F]\{8,\}\)\]=.*/\1/p' \
+            "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null
+    } | sort -u
+}
+
+_vmexsanconnect_alias_wwids() {
+    # Only WWIDs that currently have an alias in the config
+    grep -o '\[[0-9a-fA-F]\{8,\}\]' \
+        "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d '[]'
+}
+
+_vmexsanconnect_run_ids() {
+    local logdir
+    logdir=$(sed -n 's/^LOG_DIR=//p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null)
+    logdir=${logdir:-/var/log/vmex}
+    [[ $logdir == /var/log/vmexsanconnect ]] && logdir=/var/log/vmex
+    grep -o '"run_id":"[^"]*"' "$logdir/vmexsanconnect.jsonl" 2>/dev/null \
+        | cut -d'"' -f4 | sort -u | tail -n 30
+}
+
+_vmexsanconnect() {
+    local cur prev words cword
+    if declare -F _init_completion >/dev/null; then
+        _init_completion || return
+    else
+        cur=${COMP_WORDS[COMP_CWORD]}; prev=${COMP_WORDS[COMP_CWORD-1]}
+        words=("${COMP_WORDS[@]}"); cword=$COMP_CWORD
+    fi
+
+    # every command and option is a single-dash switch
+    local commands="-cluster-ready -troubleshoot -monitor -monitor-enable -monitor-disable -validate -all -install -load-driver -iscsi-setup -multipath-config -rescan
+                    -detect -identifiers -fc-status -status -volumes -verify -iscsi-test
+                    -config -init-config -config-set -alias-set -alias-remove
+                    -logs -runs -installautocomplete -help -version"
+    local options="-json -dry-run -verbose -quiet -config-file"
+    local keys="PROTOCOL ISCSI_PORTALS ISCSI_PORT INITIATOR_IQN CHAP_USER CHAP_PASS
+                ISCSI_REPLACEMENT_TIMEOUT EXPECTED_VOLUMES MIN_PATHS_PER_VOLUME
+                MIN_PATH_GROUPS LOG_DIR LOG_LEVEL"
+    local cmdnames=" cluster-ready troubleshoot monitor monitor-enable monitor-disable validate iscsi-test all install load-driver iscsi-setup multipath-config rescan detect identifiers fc-status status volumes verify config show-config init-config config-set alias-set alias-remove logs runs installautocomplete install-completion help version "
+
+    # -config-file FILE
+    if [[ $prev == -config-file || $prev == --config-file ]]; then
+        COMPREPLY=($(compgen -f -- "$cur"))
+        return
+    fi
+
+    # Find the command switch (dashes optional; old plain words still count)
+    local i w cmd="" cmd_idx=0
+    for (( i = 1; i < cword; i++ )); do
+        w=${words[i]#-}; w=${w#-}
+        if [[ $w == config-file ]]; then (( i++ )); continue; fi
+        if [[ $cmdnames == *" $w "* ]]; then cmd=$w; cmd_idx=$i; break; fi
+    done
+    case $cmd in
+        config) cmd=show-config ;;
+        installautocomplete) cmd=install-completion ;;
+    esac
+
+    if [[ -z $cmd ]]; then
+        # nothing chosen yet: offer every switch
+        COMPREPLY=($(compgen -W "$commands $options" -- "$cur"))
+        return
+    fi
+
+    if [[ $cur == -* ]]; then
+        local extra=""
+        [[ $cmd == init-config || $cmd == all ]] && extra="-force"
+        COMPREPLY=($(compgen -W "$options $extra" -- "$cur"))
+        return
+    fi
+
+    # argn = position of the current word among the command's own arguments
+    local argn=1
+    for (( i = cmd_idx + 1; i < cword; i++ )); do
+        case ${words[i]} in
+            -config-file|--config-file) (( i++ )) ;;
+            -*) ;;
+            *) (( argn++ )) ;;
+        esac
+    done
+    case $cmd in
+        config-set)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$keys" -- "$cur"))
+            elif (( argn == 2 )); then
+                case $prev in
+                    PROTOCOL)  COMPREPLY=($(compgen -W "fc iscsi sas auto" -- "$cur")) ;;
+                    LOG_LEVEL) COMPREPLY=($(compgen -W "DEBUG INFO WARN ERROR" -- "$cur")) ;;
+                    LOG_DIR)   COMPREPLY=($(compgen -d -- "$cur")) ;;
+                    EXPECTED_VOLUMES|MIN_PATHS_PER_VOLUME|MIN_PATH_GROUPS)
+                               COMPREPLY=($(compgen -W "1 2 3 4 5 6 7 8" -- "$cur")) ;;
+                    ISCSI_PORT) COMPREPLY=($(compgen -W "3260" -- "$cur")) ;;
+                    INITIATOR_IQN)
+                        local iqn
+                        iqn=$(sed -n 's/^InitiatorName=//p' /etc/iscsi/initiatorname.iscsi 2>/dev/null)
+                        COMPREPLY=($(compgen -W "$iqn" -- "$cur")) ;;
+                esac
+            fi ;;
+        alias-set)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_wwids)" -- "$cur"))
+            fi ;;
+        alias-remove)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_alias_wwids)" -- "$cur"))
+            fi ;;
+        logs)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "20 50 100 200 500" -- "$cur"))
+            elif (( argn == 2 )); then
+                COMPREPLY=($(compgen -W "$(_vmexsanconnect_run_ids)" -- "$cur"))
+            fi ;;
+        troubleshoot)
+            COMPREPLY=($(compgen -W "$(sed -n 's/^ISCSI_PORTALS=(\(.*\))/\1/p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d "'\"") $(ls /sys/class/net 2>/dev/null | grep -v '^lo$')" -- "$cur")) ;;
+        monitor-enable)
+            (( argn == 1 )) && COMPREPLY=($(compgen -W "30 60 120 300" -- "$cur")) ;;
+        iscsi-test)
+            # the portal IPs from the config: ISCSI_PORTALS=( 10.10.10.231 ... )
+            COMPREPLY=($(compgen -W "$(sed -n 's/^ISCSI_PORTALS=(\(.*\))/\1/p' "${VMEXSANCONNECT_CONFIG:-/etc/vmexsanconnect/vmexsanconnect.conf}" 2>/dev/null | tr -d "'\"")" -- "$cur")) ;;
+        runs)
+            if (( argn == 1 )); then
+                COMPREPLY=($(compgen -W "10 20 50 100" -- "$cur"))
+            fi ;;
+    esac
+}
+
+complete -F _vmexsanconnect vmexsanconnect

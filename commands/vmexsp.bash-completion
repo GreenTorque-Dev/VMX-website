@@ -1,0 +1,169 @@
+# bash completion for vmexsp - VMEX Storage Pool Management Tool v1.6
+#
+# Installed by: vmexsp -installautocomplete
+#   (writes this file to /usr/share/bash-completion/completions/vmexsp)
+
+# folder that holds the SPs: /etc/vmexsp.conf first, then the installed vmexsp's default
+_vmexsp_base() {
+  local bin base
+  [[ -r /etc/vmexsp.conf ]] &&
+    base=$(sed -n 's/^[[:space:]]*BASE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([^"'\'' #]*\).*/\1/p' /etc/vmexsp.conf | tail -1)
+  if [[ -z "$base" ]]; then
+    bin=$(command -v vmexsp 2>/dev/null)
+    [[ -n "$bin" ]] && base=$(sed -n 's/^BASE="\([^"]*\)".*/\1/p' "$bin" 2>/dev/null | head -1)
+  fi
+  echo "${base:-/storages}"
+}
+
+# SP display names (Finance, HR ...) from vmexsp itself; 3s limit so Tab never hangs.
+# Falls back to the internal IDs (mounted folders) if that is not possible.
+_vmexsp_sps() {
+  local out base d
+  out=$(timeout 3 vmexsp _names 2>/dev/null)
+  if [[ -n "$out" ]]; then echo "$out"; return 0; fi
+  base=$(_vmexsp_base)
+  for d in "$base"/*/; do
+    [[ -d "$d" ]] || continue
+    d=${d%/}
+    mountpoint -q "$d" 2>/dev/null && echo "${d##*/}"
+  done
+}
+
+# all libvirt pools (needs root / libvirt access; 3s limit so Tab never hangs)
+_vmexsp_pools() {
+  timeout 3 virsh -c qemu:///system pool-list --all --name 2>/dev/null | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'
+}
+
+# libvirt pools that are not SPs (candidates for cleanup)
+_vmexsp_extra_pools() {
+  local sps
+  sps=$(_vmexsp_sps)
+  _vmexsp_pools | grep -vxF -f <(printf '%s\n' $sps) 2>/dev/null
+}
+
+# shared SAN/NAS disks by short name: multipath devices (ibmstorwize = /dev/mapper/ibmstorwize)
+# and single-path iSCSI/FC disks (wwn-... = /dev/disk/by-id/wwn-..., the same on every host)
+_vmexsp_san_devs() {
+  lsblk -nro NAME,TYPE 2>/dev/null | awk '$2=="mpath" {print $1}' | sort -u
+  local n t tr l
+  while read -r n t tr; do
+    [[ "$t" == disk && "$tr" =~ ^(iscsi|fc|fcoe)$ ]] || continue
+    lsblk -nro TYPE "$n" 2>/dev/null | grep -qx mpath && continue
+    for l in /dev/disk/by-id/wwn-*; do
+      [[ "$l" != *-part* && "$(readlink -f "$l")" == "$n" ]] && { echo "${l##*/}"; break; }
+    done
+  done < <(lsblk -dnpro NAME,TYPE,TRAN 2>/dev/null)
+}
+
+# COMPREPLY from a newline-separated list (handles names with spaces)
+_vmexsp_reply() {
+  local IFS=$'\n'
+  COMPREPLY=($(compgen -W "$1" -- "$2"))
+}
+
+_vmexsp() {
+  local cur prev cmd
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  cmd="${COMP_WORDS[1]:-}"
+  cmd="${cmd#-}"; cmd="${cmd#-}"          # -create, --create and create are the same
+  COMPREPLY=()
+
+  # switches take ONE hyphen, like the other VMeX tools
+  local commands="-create -import -rename -delete -detach -start -stop -refresh -list -vms -sync -cleanup -log -shared-check -shared-init -shared-add -shared-join -version -help -installautocomplete"
+
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    return 0
+  fi
+
+  # words already typed after the command (to avoid suggesting them twice)
+  local -a used=("${COMP_WORDS[@]:2:COMP_CWORD-2}")
+  local w
+
+  case "$cmd" in
+    create)
+      # -create [name] [size] [-shared] - the name is free text, so sizes and -shared are suggested
+      local have_size="" opts=""
+      for w in "${used[@]}"; do
+        [[ "$w" =~ ^[0-9]+(\.[0-9]+)?[KkMmGgTtPp]?[Bb]?$ ]] && have_size=1
+      done
+      [[ -z "$have_size" ]] && opts+="100G 200G 500G 1T 2T "
+      [[ " ${used[*]} " == *" -shared "* || " ${used[*]} " == *" --shared "* ]] || opts+="-shared"
+      COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      ;;
+
+    detach)
+      # detach <name> - shared SPs on this host
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    shared-init|shared-add|shared-join)
+      # <disk>; -shared-init / -shared-add then take node names, -yes, -local
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$(_vmexsp_san_devs)" "$cur"
+      elif [[ "$cmd" != shared-join ]]; then
+        local opts="" me n
+        me=$(timeout 3 crm_node -n 2>/dev/null)
+        for n in $(timeout 3 crm_node -l 2>/dev/null | awk '{print $2}'); do
+          [[ "$n" == "$me" || " ${used[*]} " == *" $n "* ]] || opts+="$n "
+        done
+        [[ " ${used[*]} " == *" -yes "* ]]   || opts+="-yes "
+        [[ " ${used[*]} " == *" -local "* ]] || opts+="-local"
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      fi
+      ;;
+
+    import)
+      # import [id] [name] - suggest LVs not yet registered as storage pools
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(timeout 3 vmexsp _unregistered 2>/dev/null)" "$cur"
+      ;;
+
+    rename)
+      # rename <name> <new name> - suggest existing names for the first argument only
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    delete)
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      else
+        local opts=""
+        [[ " ${used[*]} " == *" -force "* || " ${used[*]} " == *" --force "* ]] || opts+="-force "
+        [[ " ${used[*]} " == *" -yes "*   || " ${used[*]} " == *" --yes "*   ]] || opts+="-yes"
+        COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+      fi
+      ;;
+
+    start|stop|refresh)
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(_vmexsp_sps)" "$cur"
+      ;;
+
+    vms)
+      # SPs first; extra pools (e.g. migrated VM pools) also accepted
+      if (( COMP_CWORD == 2 )); then
+        _vmexsp_reply "$( { _vmexsp_sps; _vmexsp_pools; } | sort -u)" "$cur"
+      fi
+      ;;
+
+    list)
+      (( COMP_CWORD == 2 )) && COMPREPLY=($(compgen -W "-all" -- "$cur"))
+      ;;
+
+    cleanup)
+      # any number of extra pools, each suggested once
+      local cand p
+      cand=$(_vmexsp_extra_pools | while IFS= read -r p; do
+               [[ " ${used[*]} " == *" $p "* ]] || echo "$p"
+             done)
+      _vmexsp_reply "$cand" "$cur"
+      ;;
+
+    log)
+      (( COMP_CWORD == 2 )) && _vmexsp_reply "$(printf '50\n100\n200\n500\n'; _vmexsp_sps)" "$cur"
+      ;;
+  esac
+  return 0
+}
+
+complete -F _vmexsp vmexsp
